@@ -3,26 +3,18 @@ import * as echarts from "echarts/core";
 import {
   GeoComponent,
   TooltipComponent,
-  VisualMapComponent,
 } from "echarts/components";
-import {
-  EffectScatterChart,
-  HeatmapChart,
-  LinesChart,
-  ScatterChart,
-} from "echarts/charts";
+import { LinesChart, ScatterChart } from "echarts/charts";
 import { CanvasRenderer } from "echarts/renderers";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
+import { useThemeStore } from "../stores/useThemeStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import { CityGallery } from "./CityGallery";
 
 echarts.use([
   GeoComponent,
   TooltipComponent,
-  VisualMapComponent,
-  EffectScatterChart,
-  HeatmapChart,
   LinesChart,
   ScatterChart,
   CanvasRenderer,
@@ -41,7 +33,8 @@ export function MapView() {
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
 
-  const { scatterData, heatmapData, entries } = useCityAggregation();
+  const themeId = useThemeStore((s) => s.themeId);
+  const { scatterData, entries } = useCityAggregation();
 
   // Progressive route drawing
   const totalSegments = routePath ? routePath.length - 1 : 0;
@@ -69,10 +62,54 @@ export function MapView() {
     return [item.locations[0].lng, item.locations[0].lat] as [number, number];
   }, [selectedItemId, items]);
 
-  // ── Base option (geo + heatmap + effectScatter + selected highlight) ──
-  // Does NOT include route data — route is updated incrementally.
+  // ── Build chart option ──
+  // Province choropleth (primary) + uniform city dots (secondary).
+  // No heatmap, no ripple effects — clean & modern.
   const buildOption = useCallback((): echarts.EChartsCoreOption => {
-    const maxCount = Math.max(...scatterData.map((d) => d.value[2]), 1);
+    const isDark = themeId === "rose";
+
+    // ── Province choropleth: aggregate items per province ──
+    const provCounts = new Map<string, number>();
+    for (const item of items) {
+      for (const loc of item.locations) {
+        provCounts.set(loc.province, (provCounts.get(loc.province) || 0) + 1);
+      }
+    }
+    const maxProv = provCounts.size > 0 ? Math.max(...provCounts.values()) : 1;
+
+    // Smooth fill: linear interpolation in RGB
+    const fill = (t: number) => {
+      if (isDark) {
+        // #1a2240 → #1e5588
+        return `rgb(${26 + Math.round(t * 4)},${34 + Math.round(t * 51)},${64 + Math.round(t * 72)})`;
+      }
+      // #fce8ec → #e87088
+      return `rgb(${252 - Math.round(t * 20)},${232 - Math.round(t * 120)},${236 - Math.round(t * 100)})`;
+    };
+
+    const regions = [...provCounts.entries()].map(([name, count]) => {
+      const t = count / Math.max(maxProv, 3); // dampen single-item provinces
+      return {
+        name,
+        itemStyle: { areaColor: fill(t) },
+        emphasis: { itemStyle: { areaColor: fill(Math.min(t + 0.1, 1)) } },
+      };
+    });
+
+    // ── Theme palette ──
+    const pal = isDark
+      ? {
+          area: "#1a2240", border: "#283050", emphasis: "#222d50",
+          dot: "#4a90b8", selectedDot: "#f59e0b", selectedBorder: "#1a2240",
+          tipBg: "#1e2a45", tipBd: "#2d3f5f", tipTxt: "#e2e8f0", tipSub: "#94a3b8",
+          shadow: 0.25, lbl: "#94a3b8",
+        }
+      : {
+          area: "#f5f5f8", border: "#e8e8ec", emphasis: "#eeeef2",
+          dot: "#e94560", selectedDot: "#f59e0b", selectedBorder: "#ffffff",
+          tipBg: "#ffffff", tipBd: "#eeeeee", tipTxt: "#1a1a1a", tipSub: "#999999",
+          shadow: 0.06, lbl: "#6b7280",
+        };
 
     return {
       geo: {
@@ -81,134 +118,113 @@ export function MapView() {
         zoom: 1.2,
         center: [104, 35],
         itemStyle: {
-          areaColor: "#f0f0f2",
-          borderColor: "#d4d4d8",
-          borderWidth: 0.8,
+          areaColor: pal.area,
+          borderColor: pal.border,
+          borderWidth: 0.5,
         },
         emphasis: {
-          itemStyle: { areaColor: "#e4e4e7" },
-          label: { show: false },
+          itemStyle: { areaColor: pal.emphasis },
+          label: {
+            show: true,
+            formatter: (params: { name: string }) => {
+              const c = provCounts.get(params.name);
+              return c ? `${params.name} · ${c}` : params.name;
+            },
+            color: pal.lbl,
+            fontSize: 11,
+            fontWeight: 500,
+          },
         },
-        select: {
-          itemStyle: { areaColor: "#e4e4e7" },
-        },
+        select: { itemStyle: { areaColor: pal.emphasis } },
         label: { show: false },
+        regions,
       },
       tooltip: {
         trigger: "item",
-        backgroundColor: "#ffffff",
-        borderColor: "#e5e5e5",
+        backgroundColor: pal.tipBg,
+        borderColor: pal.tipBd,
         borderWidth: 1,
-        textStyle: { color: "#1a1a1a", fontSize: 12 },
-        extraCssText: "box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;",
+        textStyle: { color: pal.tipTxt, fontSize: 12 },
+        extraCssText: `box-shadow: 0 4px 16px rgba(0,0,0,${pal.shadow}); border-radius: 10px; padding: 10px 12px;`,
         formatter: (params: unknown) => {
-          const p = params as { name?: string; data?: { titles?: string[] } };
-          if (p.data?.titles) {
-            const titleList = p.data.titles
-              .map(
-                (t: string) =>
-                  `<div style="font-size:11px;color:#8c8c8c">· ${t}</div>`
-              )
-              .join("");
-            return `<div style="font-weight:600;color:#1a1a1a;margin-bottom:4px">${p.name}</div>${titleList}`;
-          }
-          return p.name || "";
+          const d = params as { name?: string; data?: { titles?: string[] } };
+          if (!d.data?.titles) return d.name || "";
+          const list = d.data.titles
+            .slice(0, 4)
+            .map((t: string) => `<div style="font-size:11px;color:${pal.tipSub};margin-top:2px;line-height:1.4">· ${t}</div>`)
+            .join("");
+          const more = d.data.titles.length > 4
+            ? `<div style="font-size:10px;color:${pal.tipSub};margin-top:3px">还有 ${d.data.titles.length - 4} 条…</div>`
+            : "";
+          return `<div style="font-weight:600;font-size:13px;margin-bottom:4px">${d.name}</div>${list}${more}`;
         },
-      },
-      visualMap: {
-        show: false,
-        min: 0,
-        max: maxCount,
-        inRange: {
-          color: ["transparent", "rgba(233,69,96,0.15)", "rgba(233,69,96,0.5)", "#e94560"],
-        },
-        seriesIndex: 0,
       },
       series: [
-        // 0: Heatmap
+        // 0: City dots — small, uniform size, no effects
         {
-          type: "heatmap",
-          coordinateSystem: "geo",
-          data: heatmapData,
-          pointSize: 30,
-          blurSize: 40,
-          zlevel: 0,
-        },
-        // 1: effectScatter
-        {
-          type: "effectScatter",
+          type: "scatter",
           coordinateSystem: "geo",
           data: scatterData,
-          symbolSize: (val: number[]) => Math.min(6 + val[2] * 2, 18),
-          showEffectOn: "emphasis",
-          rippleEffect: { brushType: "stroke", scale: 3, period: 4 },
-          itemStyle: {
-            color: "#e94560",
-            shadowBlur: 4,
-            shadowColor: "rgba(233,69,96,0.3)",
-          },
+          symbolSize: 5,
+          itemStyle: { color: pal.dot },
           zlevel: 1,
         },
-        // 2: Route lines (placeholder — data set by route effect)
+        // 1: Route lines
         {
           type: "lines",
           coordinateSystem: "geo",
           data: [],
           lineStyle: {
             color: "#0ea5e9",
-            width: 2,
-            opacity: 0.7,
-            curveness: 0.15,
+            width: 1.5,
+            opacity: 0.6,
+            curveness: 0.1,
           },
           effect: {
             show: true,
-            period: 5,
-            trailLength: 0.3,
+            period: 6,
+            trailLength: 0.2,
             symbol: "arrow",
-            symbolSize: 8,
+            symbolSize: 6,
             color: "#0ea5e9",
           },
           zlevel: 2,
         },
-        // 3: Route node numbers (placeholder)
+        // 2: Route node numbers
         {
           type: "scatter",
           coordinateSystem: "geo",
           data: [],
-          symbolSize: 22,
-          itemStyle: {
-            color: "#0ea5e9",
-            shadowBlur: 6,
-            shadowColor: "rgba(14,165,233,0.3)",
-          },
+          symbolSize: 18,
+          itemStyle: { color: "#0ea5e9" },
           label: {
             show: true,
-            formatter: (p: unknown) => {
-              const params = p as { data?: { value?: number[] } };
+            formatter: (pr: unknown) => {
+              const params = pr as { data?: { value?: number[] } };
               return `${params.data?.value?.[2] ?? ""}`;
             },
             color: "#fff",
-            fontSize: 9,
+            fontSize: 8,
             fontWeight: "bold" as const,
           },
           zlevel: 3,
         },
-        // 4: Selected item highlight
+        // 3: Selected item — subtle highlight dot
         {
           type: "scatter",
           coordinateSystem: "geo",
           data: selectedCoord ? [{ value: selectedCoord }] : [],
-          symbolSize: 20,
+          symbolSize: 8,
           itemStyle: {
-            color: "#f59e0b",
-            shadowBlur: 8,
-            shadowColor: "rgba(245,158,11,0.4)",
+            color: pal.selectedDot,
+            borderColor: pal.selectedBorder,
+            borderWidth: 1.5,
           },
           zlevel: 4,
         },
       ],
     };
-  }, [scatterData, heatmapData, selectedCoord]);
+  }, [scatterData, selectedCoord, themeId, items]);
 
   // ── Init chart ──
   useEffect(() => {
@@ -253,7 +269,7 @@ export function MapView() {
 
         instanceRef.current.on(
           "click",
-          "series.effectScatter",
+          { seriesIndex: 0 },
           (params: unknown) => {
             const p = params as { name?: string };
             if (p.name) {
@@ -281,13 +297,11 @@ export function MapView() {
     if (!chart || !ready) return;
 
     if (!routePath || revealedSegments === 0) {
-      // Clear route series data
       chart.setOption({
         series: [
-          { /* 0 heatmap — skip */ },
-          { /* 1 effectScatter — skip */ },
-          { data: [] },   // 2: lines
-          { data: [] },   // 3: route nodes
+          { /* 0 city dots — skip */ },
+          { data: [] },   // 1: lines
+          { data: [] },   // 2: route nodes
         ],
       });
       return;
@@ -308,11 +322,9 @@ export function MapView() {
       value: [...node.coord, i + 1] as [number, number, number],
     }));
 
-    // Merge — does NOT touch geo/zoom/center
     chart.setOption({
       series: [
-        { /* 0 heatmap — skip */ },
-        { /* 1 effectScatter — skip */ },
+        { /* 0 city dots — skip */ },
         { data: lines },
         { data: nodes },
       ],

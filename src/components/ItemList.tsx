@@ -50,7 +50,7 @@ export function ItemList() {
       <div className="px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <List size={14} className="text-[var(--accent-cyan)]" />
-          <span className="text-[11px] font-medium text-primary truncate max-w-[180px]">
+          <span className="text-[11px] font-medium text-primary truncate max-w-[140px]">
             {listTitle || "收藏夹"}
           </span>
         </div>

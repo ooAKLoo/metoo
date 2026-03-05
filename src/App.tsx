@@ -32,7 +32,7 @@ export default function App() {
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: -20, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                className="absolute top-3 left-3 bottom-3 w-[340px] z-20
+                className="absolute top-3 left-3 bottom-3 w-[280px] z-20
                            flex flex-col min-h-0
                            bg-[var(--bg-panel)]/95 backdrop-blur-xl
                            rounded-2xl

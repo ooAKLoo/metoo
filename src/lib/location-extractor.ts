@@ -40,8 +40,12 @@ export function extractLocations(title: string, intro: string): ExtractedLocatio
   }
 
   // Match province names (less specific)
+  // Skip province if we already found a city belonging to it
+  const foundProvinces = new Set(
+    Array.from(found.values()).map((loc) => loc.province)
+  );
   for (const prov of PROVINCE_NAMES) {
-    if (text.includes(prov) && !found.has(prov)) {
+    if (text.includes(prov) && !found.has(prov) && !foundProvinces.has(prov)) {
       const coords = PROVINCES[prov];
       if (coords) {
         found.set(prov, {

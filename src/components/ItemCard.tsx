@@ -36,7 +36,7 @@ export function ItemCard({ item, index }: Props) {
         }`}
     >
       {/* Thumbnail */}
-      <div className="w-[100px] h-[63px] rounded-lg overflow-hidden shrink-0 bg-card relative">
+      <div className="w-[72px] h-[54px] rounded-lg overflow-hidden shrink-0 bg-card relative">
         {coverSrc && (
           <img
             src={coverSrc}

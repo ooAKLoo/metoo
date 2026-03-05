@@ -18,7 +18,7 @@ export function TitleBar() {
       className="h-[48px] flex items-center px-4 select-none shrink-0"
     >
       {/* Traffic light spacer */}
-      <div className="w-[78px] shrink-0" />
+      <div data-tauri-drag-region className="w-[78px] shrink-0" />
 
       <button
         onClick={onToggleSidebar}
@@ -31,7 +31,7 @@ export function TitleBar() {
         <PanelLeft size={16} />
       </button>
 
-      <div className="flex items-center gap-2">
+      <div data-tauri-drag-region className="flex items-center gap-2 pointer-events-none">
         <MapPin size={16} className="text-[var(--accent-pink)]" />
         <span className="text-[13px] font-bold tracking-wide text-primary">
           觅途
@@ -39,7 +39,10 @@ export function TitleBar() {
         <span className="text-[9px] text-secondary font-medium">MeToo</span>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      {/* Drag-transparent spacer fills remaining area */}
+      <div data-tauri-drag-region className="flex-1" />
+
+      <div className="flex items-center gap-2">
         {status === "done" && (
           <button
             onClick={reset}
