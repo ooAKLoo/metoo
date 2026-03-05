@@ -29,14 +29,14 @@ export function ItemCard({ item, index }: Props) {
       transition={{ delay: index * 0.03, duration: 0.25, ease: "easeOut" }}
       whileTap={{ scale: 0.985 }}
       onClick={() => setSelectedItem(isSelected ? null : item.id)}
-      className={`flex gap-3 p-2.5 rounded-lg cursor-pointer transition-colors
+      className={`flex gap-3 p-2.5 rounded-xl cursor-pointer transition-colors
         ${isSelected
-          ? "bg-[var(--accent-pink)]/15 neo-border"
+          ? "bg-[var(--accent-cyan)]/8 ring-1 ring-[var(--accent-cyan)]/30"
           : "bg-panel hover:bg-card"
         }`}
     >
       {/* Thumbnail */}
-      <div className="w-[100px] h-[63px] rounded-md overflow-hidden shrink-0 bg-card relative">
+      <div className="w-[100px] h-[63px] rounded-lg overflow-hidden shrink-0 bg-card relative">
         {coverSrc && (
           <img
             src={coverSrc}
@@ -70,7 +70,7 @@ export function ItemCard({ item, index }: Props) {
               <span
                 key={loc.name}
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5
-                           bg-[var(--accent-pink)]/20 text-[var(--accent-pink)]
+                           bg-[var(--accent-pink)]/10 text-[var(--accent-pink)]
                            text-[9px] font-medium rounded"
               >
                 <MapPin size={8} />

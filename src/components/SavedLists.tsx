@@ -32,15 +32,18 @@ export function SavedLists() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer group transition-colors
-                  ${isActive ? "bg-card neo-border" : "bg-panel hover:bg-card"}`}
+                className={`flex items-center gap-2 px-2.5 py-2 rounded-xl cursor-pointer group transition-colors
+                  ${isActive
+                    ? "bg-[var(--accent-cyan)]/8 ring-1 ring-[var(--accent-cyan)]/30"
+                    : "bg-panel hover:bg-card"
+                  }`}
                 onClick={() => {
                   if (!isActive) loadList(entry.media_id);
                 }}
               >
                 <FolderOpen
                   size={14}
-                  className={isActive ? "text-[var(--accent-yellow)]" : "text-secondary"}
+                  className={isActive ? "text-[var(--accent-cyan)]" : "text-secondary"}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-primary truncate">
@@ -56,8 +59,8 @@ export function SavedLists() {
                     e.stopPropagation();
                     deleteList(entry.media_id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded
-                             hover:bg-[var(--accent-pink)]/20 transition-opacity"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded-lg
+                             hover:bg-[var(--accent-pink)]/10 transition-opacity"
                 >
                   <Trash2 size={12} className="text-[var(--accent-pink)]" />
                 </motion.button>

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { motion } from "motion/react";
-import { Play, RotateCcw, ClipboardPaste } from "lucide-react";
+import { Play, ClipboardPaste } from "lucide-react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { isXhsHtml } from "../lib/xhs-parser";
 
@@ -10,12 +10,14 @@ const TABS = [
 ] as const;
 
 export function InputPanel() {
-  const { url, setUrl, fetchAll, importFromXhsHtml, reset, status, inputMode, setInputMode } =
+  const { url, setUrl, fetchAll, importFromXhsHtml, status, inputMode, setInputMode } =
     useFavoriteStore();
   const [xhsHtml, setXhsHtml] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isFetching = status === "fetching";
-  const isDone = status === "done";
+
+  // Hide when done — reset button is in TitleBar
+  if (status === "done") return null;
 
   const handleBiliSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,58 +36,35 @@ export function InputPanel() {
       const text = await navigator.clipboard.readText();
       if (isXhsHtml(text)) {
         setXhsHtml(text);
-        // Auto-import if clearly XHS
         importFromXhsHtml(text);
       } else {
         setXhsHtml(text);
       }
     } catch {
-      // Clipboard API failed, user can paste manually
       textareaRef.current?.focus();
     }
   };
 
-  if (isDone) {
-    return (
-      <div className="flex gap-3 items-center px-4 py-3 shrink-0">
-        <div className="flex-1" />
-        <motion.button
-          type="button"
-          onClick={reset}
-          whileTap={{ scale: 0.93 }}
-          whileHover={{ scale: 1.05 }}
-          transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          className="px-5 py-2.5 bg-[var(--accent-cyan)] text-[var(--bg-deep)]
-                     font-bold text-[13px] rounded-lg neo-btn flex items-center gap-2"
-          style={{ color: "var(--accent-cyan)" }}
-        >
-          <RotateCcw size={14} />
-          <span className="text-[var(--bg-deep)]">重置</span>
-        </motion.button>
-      </div>
-    );
-  }
-
   return (
-    <div className="px-4 py-3 shrink-0 space-y-2.5">
+    <div className="px-3 pt-3 pb-2 shrink-0 space-y-2">
       {/* Tab switcher */}
-      <div className="flex gap-1 bg-panel rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-card rounded-lg p-0.5 w-fit">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setInputMode(tab.key)}
-            className="relative px-3 py-1.5 text-[11px] font-medium rounded-md z-[1]"
+            className="relative px-3 py-1.5 text-[10px] font-medium rounded-md z-[1]"
           >
             {inputMode === tab.key && (
               <motion.div
                 layoutId="input-mode-tab"
-                className="absolute inset-0 bg-card rounded-md"
+                className="absolute inset-0 bg-panel rounded-md shadow-sm"
                 transition={{ type: "spring", stiffness: 500, damping: 35 }}
               />
             )}
             <span
               className={`relative z-[1] transition-colors duration-200 ${
-                inputMode === tab.key ? "text-[var(--accent-yellow)]" : "text-secondary"
+                inputMode === tab.key ? "text-primary" : "text-secondary"
               }`}
             >
               {tab.label}
@@ -96,64 +75,61 @@ export function InputPanel() {
 
       {/* B站 mode */}
       {inputMode === "bilibili" && (
-        <form onSubmit={handleBiliSubmit} className="flex gap-3 items-center">
+        <form onSubmit={handleBiliSubmit} className="flex gap-2 items-center">
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="粘贴 B 站收藏夹链接..."
             disabled={isFetching}
-            className="flex-1 px-4 py-2.5 bg-panel text-primary text-[13px] rounded-lg
-                       neo-border placeholder:text-secondary
-                       focus:outline-none focus:shadow-[0_0_0_2px_var(--accent-yellow)]
+            className="flex-1 px-3 py-2 bg-card text-primary text-[12px] rounded-lg
+                       placeholder:text-secondary
+                       focus:outline-none focus:ring-2 focus:ring-[var(--accent-cyan)]/20
                        disabled:opacity-50 transition-shadow"
           />
           <motion.button
             type="submit"
             disabled={isFetching || !url.trim()}
-            whileTap={{ scale: 0.93 }}
-            whileHover={{ scale: 1.05 }}
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-            className="px-5 py-2.5 bg-[var(--accent-yellow)] text-[var(--bg-deep)]
-                       font-bold text-[13px] rounded-lg neo-btn
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       flex items-center gap-2"
-            style={{ color: "var(--accent-yellow)" }}
+            whileTap={{ scale: 0.96 }}
+            className="px-4 py-2 bg-[var(--accent-cyan)] text-white
+                       font-medium text-[12px] rounded-lg
+                       hover:opacity-90 transition-opacity
+                       disabled:opacity-40 disabled:cursor-not-allowed
+                       flex items-center gap-1.5"
           >
-            <Play size={14} fill="var(--bg-deep)" className="text-[var(--bg-deep)]" />
-            <span className="text-[var(--bg-deep)]">{isFetching ? "抓取中..." : "Go"}</span>
+            <Play size={12} fill="white" />
+            {isFetching ? "抓取中..." : "Go"}
           </motion.button>
         </form>
       )}
 
       {/* 小红书 HTML paste mode */}
       {inputMode === "xhs-paste" && (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="flex gap-2 items-start">
             <textarea
               ref={textareaRef}
               value={xhsHtml}
               onChange={(e) => setXhsHtml(e.target.value)}
-              placeholder={"打开小红书收藏夹页面 → F12 开发者工具 → 复制 .board 元素的 HTML → 粘贴到这里"}
-              rows={3}
-              className="flex-1 px-4 py-2.5 bg-panel text-primary text-[12px] rounded-lg
-                         neo-border placeholder:text-secondary resize-none
-                         focus:outline-none focus:shadow-[0_0_0_2px_var(--accent-yellow)]
+              placeholder="复制小红书收藏夹页面 HTML → 粘贴到这里"
+              rows={2}
+              className="flex-1 px-3 py-2 bg-card text-primary text-[11px] rounded-lg
+                         placeholder:text-secondary resize-none
+                         focus:outline-none focus:ring-2 focus:ring-[var(--accent-cyan)]/20
                          transition-shadow font-mono leading-relaxed"
             />
-            <div className="flex flex-col gap-1.5 shrink-0">
+            <div className="flex flex-col gap-1 shrink-0">
               <motion.button
                 type="button"
                 onClick={handlePaste}
-                whileTap={{ scale: 0.93 }}
-                whileHover={{ scale: 1.05 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                className="px-4 py-2 bg-[var(--accent-pink)] font-bold text-[12px]
-                           rounded-lg neo-btn flex items-center gap-1.5"
-                style={{ color: "var(--accent-pink)" }}
+                whileTap={{ scale: 0.96 }}
+                className="px-3 py-1.5 bg-[var(--accent-pink)] text-white
+                           font-medium text-[11px] rounded-lg
+                           hover:opacity-90 transition-opacity
+                           flex items-center gap-1"
               >
-                <ClipboardPaste size={13} className="text-white" />
-                <span className="text-white">粘贴</span>
+                <ClipboardPaste size={11} />
+                粘贴
               </motion.button>
               {xhsHtml.trim() && (
                 <motion.button
@@ -161,22 +137,18 @@ export function InputPanel() {
                   onClick={handleXhsImport}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  whileTap={{ scale: 0.93 }}
-                  whileHover={{ scale: 1.05 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  className="px-4 py-2 bg-[var(--accent-yellow)] font-bold text-[12px]
-                             rounded-lg neo-btn flex items-center gap-1.5"
-                  style={{ color: "var(--accent-yellow)" }}
+                  whileTap={{ scale: 0.96 }}
+                  className="px-3 py-1.5 bg-[var(--accent-cyan)] text-white
+                             font-medium text-[11px] rounded-lg
+                             hover:opacity-90 transition-opacity
+                             flex items-center gap-1"
                 >
-                  <Play size={13} fill="var(--bg-deep)" className="text-[var(--bg-deep)]" />
-                  <span className="text-[var(--bg-deep)]">导入</span>
+                  <Play size={11} fill="white" />
+                  导入
                 </motion.button>
               )}
             </div>
           </div>
-          <p className="text-[9px] text-secondary leading-relaxed px-1">
-            提示：在收藏夹页面按 F12 → 选择 Elements → 右键 {"<div class=\"board\">"} → Copy → Copy outerHTML
-          </p>
         </div>
       )}
     </div>

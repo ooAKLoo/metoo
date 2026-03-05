@@ -11,11 +11,9 @@ export function SettingsPanel() {
     <>
       <motion.button
         whileTap={{ scale: 0.9 }}
-        whileHover={{ scale: 1.05 }}
-        transition={{ type: "spring", stiffness: 500, damping: 30 }}
         onClick={() => setOpen(true)}
-        className="w-7 h-7 flex items-center justify-center rounded-md
-                   text-secondary hover:text-primary transition-colors"
+        className="w-7 h-7 flex items-center justify-center rounded-lg
+                   text-secondary hover:text-primary hover:bg-card transition-colors"
       >
         <Settings size={15} />
       </motion.button>
@@ -31,7 +29,7 @@ export function SettingsPanel() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               onClick={() => setOpen(false)}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/20 z-50"
             />
 
             {/* Panel */}
@@ -41,8 +39,9 @@ export function SettingsPanel() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -8 }}
               transition={{ type: "spring", stiffness: 500, damping: 35 }}
-              className="fixed top-[60px] right-4 w-[240px] bg-panel neo-border
-                         rounded-xl p-4 z-50"
+              className="fixed top-[60px] right-4 w-[240px] bg-panel
+                         border border-[var(--border-color)] shadow-lg
+                         rounded-2xl p-4 z-50"
             >
               {/* Header */}
               <div className="flex items-center justify-between mb-4">
@@ -50,8 +49,8 @@ export function SettingsPanel() {
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setOpen(false)}
-                  className="w-6 h-6 flex items-center justify-center rounded-md
-                             text-secondary hover:text-primary transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded-lg
+                             text-secondary hover:text-primary hover:bg-card transition-colors"
                 >
                   <X size={14} />
                 </motion.button>
@@ -63,30 +62,26 @@ export function SettingsPanel() {
                   主题配色
                 </div>
 
-                <div className="-m-1">
-                  <div className="flex flex-wrap gap-2 p-1">
-                    {THEMES.map((theme) => {
-                      const isSelected = theme.id === themeId;
-                      return (
-                        <motion.button
-                          key={theme.id}
-                          whileTap={{ scale: 0.9 }}
-                          whileHover={{ scale: 1.1 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          onClick={() => setTheme(theme.id)}
-                          className={`w-8 h-8 rounded-lg transition-all flex-shrink-0 ${
-                            isSelected
-                              ? "ring-2 ring-white/80 ring-offset-2 ring-offset-[var(--bg-panel)]"
-                              : "opacity-60 hover:opacity-100"
-                          }`}
-                          style={{
-                            background: `linear-gradient(135deg, ${theme.deep} 0%, ${theme.card} 40%, ${theme.border} 100%)`,
-                          }}
-                          title={theme.name}
-                        />
-                      );
-                    })}
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  {THEMES.map((theme) => {
+                    const isSelected = theme.id === themeId;
+                    return (
+                      <motion.button
+                        key={theme.id}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setTheme(theme.id)}
+                        className={`w-8 h-8 rounded-lg transition-all flex-shrink-0 ${
+                          isSelected
+                            ? "ring-2 ring-[var(--accent-cyan)] ring-offset-2 ring-offset-[var(--bg-panel)]"
+                            : "opacity-60 hover:opacity-100"
+                        }`}
+                        style={{
+                          background: `linear-gradient(135deg, ${theme.deep} 0%, ${theme.card} 40%, ${theme.accentPink} 100%)`,
+                        }}
+                        title={theme.name}
+                      />
+                    );
+                  })}
                 </div>
 
                 {/* Active theme name */}
@@ -94,11 +89,11 @@ export function SettingsPanel() {
                   const active = THEMES.find((t) => t.id === themeId);
                   if (!active) return null;
                   return (
-                    <div className="mt-3 flex items-center gap-2 bg-card rounded-lg px-2.5 py-2">
+                    <div className="mt-3 flex items-center gap-2 bg-card rounded-xl px-2.5 py-2">
                       <div className="flex gap-1">
                         <div
                           className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: active.border }}
+                          style={{ backgroundColor: active.accentPink }}
                         />
                         <div
                           className="w-3 h-3 rounded-full"

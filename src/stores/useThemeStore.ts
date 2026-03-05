@@ -15,6 +15,42 @@ export interface ThemeDefinition {
 
 export const THEMES: ThemeDefinition[] = [
   {
+    id: "minimal",
+    name: "极简",
+    deep: "#f8f8f8",
+    panel: "#ffffff",
+    card: "#f0f0f2",
+    border: "#e5e5e5",
+    accentPink: "#e94560",
+    accentYellow: "#f59e0b",
+    accentCyan: "#0ea5e9",
+    accentGreen: "#10b981",
+  },
+  {
+    id: "cool",
+    name: "清冷",
+    deep: "#f5f7fa",
+    panel: "#ffffff",
+    card: "#eef1f6",
+    border: "#dde2ea",
+    accentPink: "#6366f1",
+    accentYellow: "#f59e0b",
+    accentCyan: "#0ea5e9",
+    accentGreen: "#10b981",
+  },
+  {
+    id: "warm",
+    name: "暖阳",
+    deep: "#faf8f5",
+    panel: "#ffffff",
+    card: "#f5f0ea",
+    border: "#e8e0d6",
+    accentPink: "#e94560",
+    accentYellow: "#d97706",
+    accentCyan: "#0284c7",
+    accentGreen: "#059669",
+  },
+  {
     id: "rose",
     name: "玫瑰",
     deep: "#1a1a2e",
@@ -25,66 +61,6 @@ export const THEMES: ThemeDefinition[] = [
     accentYellow: "#ffd700",
     accentCyan: "#00d2ff",
     accentGreen: "#00e676",
-  },
-  {
-    id: "ocean",
-    name: "海洋",
-    deep: "#0d1b2a",
-    panel: "#1b2838",
-    card: "#1a3a4a",
-    border: "#00b4d8",
-    accentPink: "#00b4d8",
-    accentYellow: "#fca311",
-    accentCyan: "#90e0ef",
-    accentGreen: "#52b788",
-  },
-  {
-    id: "violet",
-    name: "紫罗兰",
-    deep: "#1a1625",
-    panel: "#231c35",
-    card: "#2d2548",
-    border: "#a855f7",
-    accentPink: "#a855f7",
-    accentYellow: "#facc15",
-    accentCyan: "#c4b5fd",
-    accentGreen: "#4ade80",
-  },
-  {
-    id: "emerald",
-    name: "翡翠",
-    deep: "#0f1a15",
-    panel: "#142822",
-    card: "#1a3a30",
-    border: "#34d399",
-    accentPink: "#34d399",
-    accentYellow: "#fbbf24",
-    accentCyan: "#67e8f9",
-    accentGreen: "#6ee7b7",
-  },
-  {
-    id: "amber",
-    name: "琥珀",
-    deep: "#1a1610",
-    panel: "#2a2318",
-    card: "#3d3222",
-    border: "#f59e0b",
-    accentPink: "#f59e0b",
-    accentYellow: "#fde68a",
-    accentCyan: "#38bdf8",
-    accentGreen: "#86efac",
-  },
-  {
-    id: "sakura",
-    name: "樱花",
-    deep: "#1c1520",
-    panel: "#2a1f30",
-    card: "#3a2a42",
-    border: "#f472b6",
-    accentPink: "#f472b6",
-    accentYellow: "#fcd34d",
-    accentCyan: "#e879f9",
-    accentGreen: "#a7f3d0",
   },
 ];
 
@@ -107,7 +83,7 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
-  themeId: localStorage.getItem("metoo-theme") || "rose",
+  themeId: localStorage.getItem("metoo-theme") || "minimal",
 
   setTheme: (id) => {
     const theme = THEMES.find((t) => t.id === id);
@@ -118,7 +94,7 @@ export const useThemeStore = create<ThemeState>((set) => ({
   },
 
   init: () => {
-    const id = localStorage.getItem("metoo-theme") || "rose";
+    const id = localStorage.getItem("metoo-theme") || "minimal";
     const theme = THEMES.find((t) => t.id === id) || THEMES[0];
     applyTheme(theme);
     set({ themeId: theme.id });

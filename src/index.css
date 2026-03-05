@@ -1,19 +1,17 @@
 @import "tailwindcss";
 
-/* Neo-Pop Design Tokens */
+/* Minimal Light Design Tokens */
 :root {
-  --bg-deep: #1a1a2e;
-  --bg-panel: #16213e;
-  --bg-card: #0f3460;
-  --border-color: #e94560;
-  --accent-yellow: #ffd700;
+  --bg-deep: #f8f8f8;
+  --bg-panel: #ffffff;
+  --bg-card: #f0f0f2;
+  --border-color: #e5e5e5;
   --accent-pink: #e94560;
-  --accent-cyan: #00d2ff;
-  --accent-green: #00e676;
-  --text-primary: #f0f0f0;
-  --text-secondary: #a0a0b8;
-  --neo-offset: 4px;
-  --neo-border: 3px;
+  --accent-yellow: #f59e0b;
+  --accent-cyan: #0ea5e9;
+  --accent-green: #10b981;
+  --text-primary: #1a1a1a;
+  --text-secondary: #8c8c8c;
 }
 
 body {
@@ -29,48 +27,20 @@ body {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(233, 69, 96, 0.3);
+  background: rgba(0, 0, 0, 0.12);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(233, 69, 96, 0.5);
+  background: rgba(0, 0, 0, 0.2);
 }
 
-/* Neo-Pop Utilities */
 @layer utilities {
-  .neo-border {
-    border: var(--neo-border) solid var(--border-color);
-  }
-
-  .neo-shadow {
-    box-shadow: var(--neo-offset) var(--neo-offset) 0 var(--border-color);
-  }
-
-  .neo-shadow-yellow {
-    box-shadow: var(--neo-offset) var(--neo-offset) 0 var(--accent-yellow);
-  }
-
-  .neo-shadow-cyan {
-    box-shadow: var(--neo-offset) var(--neo-offset) 0 var(--accent-cyan);
-  }
-
-  .neo-btn {
-    border: var(--neo-border) solid currentColor;
-    box-shadow: var(--neo-offset) var(--neo-offset) 0 currentColor;
-    transition: transform 0.1s, box-shadow 0.1s;
-  }
-
-  .neo-btn:active {
-    transform: translate(var(--neo-offset), var(--neo-offset));
-    box-shadow: 0 0 0 currentColor;
-  }
-
   .bg-deep {
     background-color: var(--bg-deep);
   }
