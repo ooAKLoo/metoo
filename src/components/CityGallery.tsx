@@ -14,7 +14,6 @@ export function CityGallery() {
   const { entries } = useCityAggregation();
   const selectedCity = useMapStore((s) => s.selectedCity);
   const routePath = useMapStore((s) => s.routePath);
-  const sidebarOpen = useMapStore((s) => s.sidebarOpen);
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
   const clearCityFilter = useMapStore((s) => s.clearCityFilter);
   const generateRoute = useMapStore((s) => s.generateRoute);
@@ -35,7 +34,7 @@ export function CityGallery() {
   return (
     <div
       className="absolute bottom-0 right-0 z-10 pointer-events-none transition-[left] duration-300 ease-out"
-      style={{ left: sidebarOpen ? 296 : 0 }}
+      style={{ left: 0 }}
     >
       {/* Gradient fade */}
       <div className="h-8 bg-gradient-to-b from-transparent to-[var(--bg-deep)]/80" />

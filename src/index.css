@@ -2,7 +2,7 @@
 
 /* Minimal Light Design Tokens */
 :root {
-  --bg-deep: #f8f8f8;
+  --bg-deep: #eeeef2;
   --bg-panel: #ffffff;
   --bg-card: #f0f0f2;
   --border-color: #e5e5e5;
@@ -38,6 +38,19 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.2);
+}
+
+/* Hide scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.font-playful {
+  font-family: "ZCOOL KuaiLe", cursive;
 }
 
 @layer utilities {

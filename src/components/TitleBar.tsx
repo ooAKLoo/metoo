@@ -1,35 +1,24 @@
-import { useCallback } from "react";
-import { MapPin, PanelLeft } from "lucide-react";
+import { MapPin, Plus, RotateCcw } from "lucide-react";
+import { motion } from "motion/react";
 import { SettingsPanel } from "./SettingsPanel";
-import { RotateCcw } from "lucide-react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
-import { useMapStore } from "../stores/useMapStore";
 
-export function TitleBar() {
+interface Props {
+  addOpen: boolean;
+  onToggleAdd: () => void;
+}
+
+export function TitleBar({ addOpen, onToggleAdd }: Props) {
   const status = useFavoriteStore((s) => s.status);
   const reset = useFavoriteStore((s) => s.reset);
-  const sidebarOpen = useMapStore((s) => s.sidebarOpen);
-  const setSidebarOpen = useMapStore((s) => s.setSidebarOpen);
-  const onToggleSidebar = useCallback(() => setSidebarOpen(!sidebarOpen), [sidebarOpen, setSidebarOpen]);
 
   return (
     <div
       data-tauri-drag-region
-      className="h-[48px] flex items-center px-4 select-none shrink-0"
+      className="h-[48px] flex items-center px-4 select-none shrink-0 relative z-30"
     >
       {/* Traffic light spacer */}
       <div data-tauri-drag-region className="w-[78px] shrink-0" />
-
-      <button
-        onClick={onToggleSidebar}
-        className={`p-1.5 rounded-lg transition-colors mr-3
-          ${sidebarOpen
-            ? "bg-card text-[var(--accent-cyan)]"
-            : "text-secondary hover:bg-card hover:text-primary"
-          }`}
-      >
-        <PanelLeft size={16} />
-      </button>
 
       <div data-tauri-drag-region className="flex items-center gap-2 pointer-events-none">
         <MapPin size={16} className="text-[var(--accent-pink)]" />
@@ -39,10 +28,26 @@ export function TitleBar() {
         <span className="text-[9px] text-secondary font-medium">MeToo</span>
       </div>
 
-      {/* Drag-transparent spacer fills remaining area */}
       <div data-tauri-drag-region className="flex-1" />
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={onToggleAdd}
+          className={`p-1.5 rounded-lg transition-colors
+            ${addOpen
+              ? "bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]"
+              : "text-secondary hover:bg-card hover:text-primary"
+            }`}
+        >
+          <motion.div
+            animate={{ rotate: addOpen ? 45 : 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          >
+            <Plus size={16} />
+          </motion.div>
+        </motion.button>
+
         {status === "done" && (
           <button
             onClick={reset}

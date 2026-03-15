@@ -12,14 +12,12 @@ interface MapState {
   hoveredProvince: string | null;
   selectedCity: string | null;
   selectedTag: string | null;
-  sidebarOpen: boolean;
   viewMode: ViewMode;
   routePath: RouteNode[] | null;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
   setSelectedTag: (tag: string | null) => void;
-  setSidebarOpen: (open: boolean) => void;
   clearCityFilter: () => void;
   generateRoute: (cities: RouteNode[]) => void;
   clearRoute: () => void;
@@ -71,7 +69,6 @@ export const useMapStore = create<MapState>((set, get) => ({
   hoveredProvince: null,
   selectedCity: null,
   selectedTag: null,
-  sidebarOpen: true,
   viewMode: "all",
   routePath: null,
   setSelectedItem: (id) => set({ selectedItemId: id }),
@@ -88,7 +85,6 @@ export const useMapStore = create<MapState>((set, get) => ({
     const current = get().selectedTag;
     set({ selectedTag: current === tag ? null : tag });
   },
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
   clearCityFilter: () => set({ selectedCity: null, viewMode: "all" }),
   generateRoute: (cities) => {
     if (cities.length < 2) return;

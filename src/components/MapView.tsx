@@ -10,7 +10,6 @@ import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useThemeStore } from "../stores/useThemeStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
-import { CityGallery } from "./CityGallery";
 
 echarts.use([
   GeoComponent,
@@ -19,6 +18,34 @@ echarts.use([
   ScatterChart,
   CanvasRenderer,
 ]);
+
+/** Map short province names to GeoJSON full names */
+const PROV_FULL: Record<string, string> = {
+  北京: "北京市", 天津: "天津市", 上海: "上海市", 重庆: "重庆市",
+  河北: "河北省", 山西: "山西省", 辽宁: "辽宁省", 吉林: "吉林省",
+  黑龙江: "黑龙江省", 江苏: "江苏省", 浙江: "浙江省", 安徽: "安徽省",
+  福建: "福建省", 江西: "江西省", 山东: "山东省", 河南: "河南省",
+  湖北: "湖北省", 湖南: "湖南省", 广东: "广东省", 海南: "海南省",
+  四川: "四川省", 贵州: "贵州省", 云南: "云南省", 陕西: "陕西省",
+  甘肃: "甘肃省", 青海: "青海省", 台湾: "台湾省",
+  内蒙古: "内蒙古自治区", 广西: "广西壮族自治区", 西藏: "西藏自治区",
+  宁夏: "宁夏回族自治区", 新疆: "新疆维吾尔自治区",
+  香港: "香港特别行政区", 澳门: "澳门特别行政区",
+};
+
+/** Interpolate between two hex colors. t: 0→colorA, 1→colorB */
+function lerpColor(a: string, b: string, t: number): string {
+  const parse = (hex: string) => {
+    const v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+  };
+  const [r1, g1, b1] = parse(a);
+  const [r2, g2, b2] = parse(b);
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const bl = Math.round(b1 + (b2 - b1) * t);
+  return `rgb(${r},${g},${bl})`;
+}
 
 export function MapView() {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -62,54 +89,70 @@ export function MapView() {
     return [item.locations[0].lng, item.locations[0].lat] as [number, number];
   }, [selectedItemId, items]);
 
+  // Province counts for choropleth + legend (keyed by GeoJSON full name)
+  const { provCounts, maxProv } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const loc of item.locations) {
+        const fullName = PROV_FULL[loc.province] || loc.province;
+        counts.set(fullName, (counts.get(fullName) || 0) + 1);
+      }
+    }
+    if (counts.size > 0) {
+      console.log("[MapView] province choropleth:", Object.fromEntries(counts));
+    }
+    const max = counts.size > 0 ? Math.max(...counts.values()) : 0;
+    return { provCounts: counts, maxProv: max };
+  }, [items]);
+
   // ── Build chart option ──
-  // Province choropleth (primary) + uniform city dots (secondary).
-  // No heatmap, no ripple effects — clean & modern.
   const buildOption = useCallback((): echarts.EChartsCoreOption => {
     const isDark = themeId === "rose";
 
-    // ── Province choropleth: aggregate items per province ──
-    const provCounts = new Map<string, number>();
-    for (const item of items) {
-      for (const loc of item.locations) {
-        provCounts.set(loc.province, (provCounts.get(loc.province) || 0) + 1);
-      }
-    }
-    const maxProv = provCounts.size > 0 ? Math.max(...provCounts.values()) : 1;
+    // 3-stop gradient: base → mid → high
+    const ramp = isDark
+      ? { lo: "#1a2240", mid: "#2d4878", hi: "#5a9ad6" }
+      : { lo: "#eeeef2", mid: "#a8c8e8", hi: "#3b82f6" };
 
-    // Smooth fill: linear interpolation in RGB
-    const fill = (t: number) => {
-      if (isDark) {
-        // #1a2240 → #1e5588
-        return `rgb(${26 + Math.round(t * 4)},${34 + Math.round(t * 51)},${64 + Math.round(t * 72)})`;
-      }
-      // #fce8ec → #e87088
-      return `rgb(${252 - Math.round(t * 20)},${232 - Math.round(t * 120)},${236 - Math.round(t * 100)})`;
-    };
-
-    const regions = [...provCounts.entries()].map(([name, count]) => {
-      const t = count / Math.max(maxProv, 3); // dampen single-item provinces
-      return {
-        name,
-        itemStyle: { areaColor: fill(t) },
-        emphasis: { itemStyle: { areaColor: fill(Math.min(t + 0.1, 1)) } },
-      };
-    });
-
-    // ── Theme palette ──
     const pal = isDark
       ? {
-          area: "#1a2240", border: "#283050", emphasis: "#222d50",
-          dot: "#4a90b8", selectedDot: "#f59e0b", selectedBorder: "#1a2240",
+          area: "#1a2240", border: "#283050", emphasis: "#2a3560",
+          dot: "#7c9cbf", selectedDot: "#f59e0b", selectedBorder: "#1a2240",
           tipBg: "#1e2a45", tipBd: "#2d3f5f", tipTxt: "#e2e8f0", tipSub: "#94a3b8",
           shadow: 0.25, lbl: "#94a3b8",
         }
       : {
-          area: "#f5f5f8", border: "#e8e8ec", emphasis: "#eeeef2",
-          dot: "#e94560", selectedDot: "#f59e0b", selectedBorder: "#ffffff",
+          area: "#eeeef2", border: "#dddde2", emphasis: "#ddd8e6",
+          dot: "#9070a0", selectedDot: "#e94560", selectedBorder: "#ffffff",
           tipBg: "#ffffff", tipBd: "#eeeeee", tipTxt: "#1a1a1a", tipSub: "#999999",
-          shadow: 0.06, lbl: "#6b7280",
+          shadow: 0.06, lbl: "#9ca3af",
         };
+
+    // Build regions with gradient fill
+    const safeMax = Math.max(maxProv, 1);
+    const regions = [...provCounts.entries()].map(([name, count]) => {
+      // Non-linear mapping: sqrt to make low counts more visible
+      const t = Math.sqrt(count / safeMax);
+      // 2-segment interpolation through mid stop
+      const color = t < 0.5
+        ? lerpColor(ramp.lo, ramp.mid, t * 2)
+        : lerpColor(ramp.mid, ramp.hi, (t - 0.5) * 2);
+      const emphT = Math.min(t + 0.15, 1);
+      const emphColor = emphT < 0.5
+        ? lerpColor(ramp.lo, ramp.mid, emphT * 2)
+        : lerpColor(ramp.mid, ramp.hi, (emphT - 0.5) * 2);
+      return {
+        name,
+        itemStyle: { areaColor: color },
+        emphasis: { itemStyle: { areaColor: emphColor } },
+        label: {
+          show: true,
+          formatter: `${name}`,
+          color: isDark ? "#8899b4" : "#6a6a80",
+          fontSize: 9,
+        },
+      };
+    });
 
     return {
       geo: {
@@ -123,14 +166,14 @@ export function MapView() {
           borderWidth: 0.5,
         },
         emphasis: {
-          itemStyle: { areaColor: pal.emphasis },
+          itemStyle: { areaColor: pal.emphasis, borderColor: pal.border },
           label: {
             show: true,
             formatter: (params: { name: string }) => {
               const c = provCounts.get(params.name);
               return c ? `${params.name} · ${c}` : params.name;
             },
-            color: pal.lbl,
+            color: isDark ? "#e2e8f0" : "#4a4a5a",
             fontSize: 11,
             fontWeight: 500,
           },
@@ -160,7 +203,7 @@ export function MapView() {
         },
       },
       series: [
-        // 0: City dots — small, uniform size, no effects
+        // 0: City dots
         {
           type: "scatter",
           coordinateSystem: "geo",
@@ -175,18 +218,22 @@ export function MapView() {
           coordinateSystem: "geo",
           data: [],
           lineStyle: {
-            color: "#0ea5e9",
-            width: 1.5,
-            opacity: 0.6,
-            curveness: 0.1,
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0, color: "#ff6b6b" },
+              { offset: 1, color: "#ee5a24" },
+            ]),
+            width: 2,
+            opacity: 0.7,
+            curveness: 0.15,
+            type: "dashed" as const,
           },
           effect: {
             show: true,
-            period: 6,
-            trailLength: 0.2,
-            symbol: "arrow",
-            symbolSize: 6,
-            color: "#0ea5e9",
+            period: 5,
+            trailLength: 0.25,
+            symbol: "circle",
+            symbolSize: 4,
+            color: "#ff6b6b",
           },
           zlevel: 2,
         },
@@ -195,8 +242,17 @@ export function MapView() {
           type: "scatter",
           coordinateSystem: "geo",
           data: [],
-          symbolSize: 18,
-          itemStyle: { color: "#0ea5e9" },
+          symbolSize: 20,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: "#ff6b6b" },
+              { offset: 1, color: "#ee5a24" },
+            ]),
+            borderColor: "#fff",
+            borderWidth: 1.5,
+            shadowColor: "rgba(238,90,36,0.35)",
+            shadowBlur: 8,
+          },
           label: {
             show: true,
             formatter: (pr: unknown) => {
@@ -204,12 +260,12 @@ export function MapView() {
               return `${params.data?.value?.[2] ?? ""}`;
             },
             color: "#fff",
-            fontSize: 8,
-            fontWeight: "bold" as const,
+            fontSize: 9,
+            fontFamily: "ZCOOL KuaiLe, cursive",
           },
           zlevel: 3,
         },
-        // 3: Selected item — subtle highlight dot
+        // 3: Selected item highlight dot
         {
           type: "scatter",
           coordinateSystem: "geo",
@@ -224,7 +280,7 @@ export function MapView() {
         },
       ],
     };
-  }, [scatterData, selectedCoord, themeId, items]);
+  }, [scatterData, selectedCoord, themeId, items, provCounts, maxProv]);
 
   // ── Init chart ──
   useEffect(() => {
@@ -291,7 +347,7 @@ export function MapView() {
     };
   }, [buildOption, setHoveredProvince, setSelectedCity]);
 
-  // ── Route animation: incremental series update only ──
+  // ── Route animation ──
   useEffect(() => {
     const chart = instanceRef.current;
     if (!chart || !ready) return;
@@ -365,6 +421,10 @@ export function MapView() {
     }
   }, [selectedCity, entries]);
 
+  const isDark = themeId === "rose";
+  const rampLo = isDark ? "#1a2240" : "#eeeef2";
+  const rampHi = isDark ? "#5a9ad6" : "#3b82f6";
+
   return (
     <div className="absolute inset-0">
       <div ref={chartRef} className="absolute inset-0" />
@@ -375,7 +435,21 @@ export function MapView() {
           </span>
         </div>
       )}
-      <CityGallery />
+
+      {/* Gradient legend bar */}
+      {maxProv > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[5] pointer-events-none
+                        flex items-center gap-2">
+          <span className="text-[8px] text-secondary tabular-nums">0</span>
+          <div
+            className="w-[100px] h-[6px] rounded-full"
+            style={{
+              background: `linear-gradient(to right, ${rampLo}, ${rampHi})`,
+            }}
+          />
+          <span className="text-[8px] text-secondary tabular-nums">{maxProv}</span>
+        </div>
+      )}
     </div>
   );
 }
