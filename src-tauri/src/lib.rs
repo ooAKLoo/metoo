@@ -140,12 +140,19 @@ async fn download_cover(url: &str, covers_dir: &Path) -> String {
         return local_path.to_string_lossy().to_string();
     }
 
+    // Pick Referer based on the image CDN origin
+    let referer = if url.contains("xhscdn") || url.contains("xiaohongshu") {
+        "https://www.xiaohongshu.com/"
+    } else {
+        "https://www.bilibili.com/"
+    };
+
     // Download the image
     let client = reqwest::Client::new();
     let resp = match client
         .get(url)
-        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
-        .header("Referer", "https://www.bilibili.com/")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header("Referer", referer)
         .send()
         .await
     {
@@ -153,10 +160,19 @@ async fn download_cover(url: &str, covers_dir: &Path) -> String {
         Err(_) => return url.to_string(), // fallback to remote URL
     };
 
+    if !resp.status().is_success() {
+        return url.to_string();
+    }
+
     let bytes = match resp.bytes().await {
         Ok(b) => b,
         Err(_) => return url.to_string(),
     };
+
+    // Sanity check: skip empty or suspiciously small responses
+    if bytes.len() < 100 {
+        return url.to_string();
+    }
 
     match fs::write(&local_path, &bytes) {
         Ok(_) => local_path.to_string_lossy().to_string(),
