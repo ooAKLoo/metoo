@@ -131,25 +131,17 @@ function drawProvince(
     centerY - (lat - geoCenterLat) * scale,
   ];
 
-  const drawPolygonRings = (rings: number[][][]) => {
-    // Outer ring — stroke only, no fill
-    ctx.beginPath();
-    const outer = rings[0];
-    for (let i = 0; i < outer.length; i++) {
-      const [x, y] = project(outer[i][0], outer[i][1]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = "#c0c0c0";
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
 
-    // Holes — stroke only
-    for (let h = 1; h < rings.length; h++) {
+  ctx.strokeStyle = "#c0c0c0";
+  ctx.lineWidth = 1.2;
+
+  const drawPolygonRings = (rings: number[][][]) => {
+    for (const ring of rings) {
       ctx.beginPath();
-      const hole = rings[h];
-      for (let i = 0; i < hole.length; i++) {
-        const [x, y] = project(hole[i][0], hole[i][1]);
+      for (let i = 0; i < ring.length; i++) {
+        const [x, y] = project(ring[i][0], ring[i][1]);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
@@ -164,12 +156,8 @@ function drawProvince(
     drawPolygonRings(feature.geometry.coordinates as number[][][]);
   }
 
-  // City marker dot — solid, no glow
-  const [cx, cy] = project(cityCoord[0], cityCoord[1]);
-  ctx.fillStyle = "#ef4444";
-  ctx.beginPath();
-  ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
 }
 
 /* ── Main Poster Generation ────────────────────────── */

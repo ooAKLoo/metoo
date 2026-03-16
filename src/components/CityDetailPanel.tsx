@@ -16,7 +16,6 @@ function coverSrc(cover: string) {
 }
 
 function CityItemCard({ item }: { item: FavoriteItem }) {
-  const isXhs = item.source === "xiaohongshu";
   const src = coverSrc(item.cover);
 
   return (
@@ -37,12 +36,6 @@ function CityItemCard({ item }: { item: FavoriteItem }) {
             loading="lazy"
           />
         )}
-        <span
-          className={`absolute top-0.5 left-0.5 px-1 py-px text-[7px] font-bold rounded
-            ${isXhs ? "bg-[#fe2c55] text-white" : "bg-[#00a1d6] text-white"}`}
-        >
-          {isXhs ? "红" : "B"}
-        </span>
       </div>
 
       {/* Content */}
@@ -61,7 +54,7 @@ function CityItemCard({ item }: { item: FavoriteItem }) {
             </span>
           ))}
           <span className="text-[8px] text-secondary ml-auto flex items-center gap-1">
-            {isXhs && item.likes && (
+            {item.likes && (
               <>
                 <Heart size={7} className="text-[#fe2c55]" />
                 <span>{item.likes}</span>
