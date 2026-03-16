@@ -62,6 +62,18 @@ export const THEMES: ThemeDefinition[] = [
     accentCyan: "#00d2ff",
     accentGreen: "#00e676",
   },
+  {
+    id: "fauvist",
+    name: "野兽派",
+    deep: "#faf5ee",
+    panel: "#fffdf8",
+    card: "#f5efe6",
+    border: "#e0d5c5",
+    accentPink: "#E63946",
+    accentYellow: "#F77F00",
+    accentCyan: "#3A86FF",
+    accentGreen: "#06D6A0",
+  },
 ];
 
 function applyTheme(theme: ThemeDefinition) {

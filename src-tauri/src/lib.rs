@@ -407,6 +407,22 @@ async fn delete_favorite_list(app: tauri::AppHandle, media_id: String) -> Result
     Ok(())
 }
 
+#[tauri::command]
+async fn save_image_to_downloads(
+    app: tauri::AppHandle,
+    data: Vec<u8>,
+    filename: String,
+) -> Result<String, String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("Cannot resolve downloads dir: {}", e))?;
+    fs::create_dir_all(&downloads).map_err(|e| format!("Cannot create dir: {}", e))?;
+    let path = downloads.join(&filename);
+    fs::write(&path, &data).map_err(|e| format!("Write error: {}", e))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -416,7 +432,8 @@ pub fn run() {
             save_favorite_list,
             load_favorite_list,
             list_saved_favorites,
-            delete_favorite_list
+            delete_favorite_list,
+            save_image_to_downloads
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

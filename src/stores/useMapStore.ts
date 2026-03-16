@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 type ViewMode = "all" | "city";
+export type MapLevel = "world" | "china";
+export type ChartView = "map" | "rainbow" | "bubble";
 
 export interface RouteNode {
   name: string;
@@ -14,6 +16,8 @@ interface MapState {
   selectedTag: string | null;
   viewMode: ViewMode;
   routePath: RouteNode[] | null;
+  mapLevel: MapLevel;
+  chartView: ChartView;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -21,6 +25,8 @@ interface MapState {
   clearCityFilter: () => void;
   generateRoute: (cities: RouteNode[]) => void;
   clearRoute: () => void;
+  setMapLevel: (level: MapLevel) => void;
+  setChartView: (view: ChartView) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -71,6 +77,8 @@ export const useMapStore = create<MapState>((set, get) => ({
   selectedTag: null,
   viewMode: "all",
   routePath: null,
+  mapLevel: "world",
+  chartView: "map",
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -92,4 +100,6 @@ export const useMapStore = create<MapState>((set, get) => ({
     set({ routePath: path });
   },
   clearRoute: () => set({ routePath: null }),
+  setMapLevel: (level) => set({ mapLevel: level }),
+  setChartView: (view) => set({ chartView: view }),
 }));
