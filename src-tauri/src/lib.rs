@@ -354,8 +354,28 @@ async fn load_favorite_list(
         return Err("List not found".to_string());
     }
     let raw = fs::read_to_string(&list_path).map_err(|e| format!("Read error: {}", e))?;
-    let list: SavedFavoriteList =
+    let mut list: SavedFavoriteList =
         serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
+
+    // Auto-repair: download any covers that are still remote URLs
+    let covers = covers_dir(&app)?;
+    let mut dirty = false;
+    for item in &mut list.items {
+        if !item.cover.is_empty() && !item.cover.starts_with('/') {
+            let local = download_cover(&item.cover, &covers).await;
+            if local.starts_with('/') {
+                item.cover = local;
+                dirty = true;
+            }
+        }
+    }
+    // Persist repaired data back to JSON
+    if dirty {
+        if let Ok(json) = serde_json::to_string_pretty(&list) {
+            let _ = fs::write(&list_path, json);
+        }
+    }
+
     Ok(list)
 }
 

@@ -18,6 +18,7 @@ interface MapState {
   routePath: RouteNode[] | null;
   mapLevel: MapLevel;
   chartView: ChartView;
+  activePosterModule: string | null;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -27,6 +28,7 @@ interface MapState {
   clearRoute: () => void;
   setMapLevel: (level: MapLevel) => void;
   setChartView: (view: ChartView) => void;
+  setActivePosterModule: (id: string | null) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -79,6 +81,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   routePath: null,
   mapLevel: "world",
   chartView: "map",
+  activePosterModule: null,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -102,4 +105,5 @@ export const useMapStore = create<MapState>((set, get) => ({
   clearRoute: () => set({ routePath: null }),
   setMapLevel: (level) => set({ mapLevel: level }),
   setChartView: (view) => set({ chartView: view }),
+  setActivePosterModule: (id) => set({ activePosterModule: id }),
 }));

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronRight, Trash2, Merge, Check, X } from "lucide-react";
+import { ChevronRight, Trash2, Merge, Check } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useFavoriteStore, type SavedListEntry } from "../stores/useFavoriteStore";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -16,7 +16,6 @@ function CollectionCard({
   entry,
   isActive,
   covers,
-  titles,
   onSelect,
   onDelete,
   mergeMode,
@@ -26,15 +25,13 @@ function CollectionCard({
   entry: SavedListEntry;
   isActive: boolean;
   covers: string[];
-  titles: string[];
   onSelect: () => void;
   onDelete: () => void;
   mergeMode: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
 }) {
-  const previewCovers = covers.slice(0, 3);
-  const previewTitles = titles.slice(0, 3);
+  const previewCovers = covers.slice(0, 5);
 
   return (
     <motion.div
@@ -84,7 +81,7 @@ function CollectionCard({
         </div>
       </div>
 
-      {/* Cover thumbnails */}
+      {/* Twitter-style cover grid: 1 large left + 2×2 right */}
       <AnimatePresence>
         {previewCovers.length > 0 && (
           <motion.div
@@ -94,28 +91,39 @@ function CollectionCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="grid grid-cols-3 gap-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex flex-col gap-1.5">
-                  <div className="aspect-[4/3] rounded-lg overflow-hidden bg-neutral-200">
-                    {previewCovers[i] && (
-                      <img
-                        src={coverSrc(previewCovers[i])}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        crossOrigin="anonymous"
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    )}
-                  </div>
-                  {previewTitles[i] && (
-                    <p className="text-[9px] text-[var(--text-secondary)] leading-tight line-clamp-2">
-                      {previewTitles[i]}
-                    </p>
-                  )}
+            <div className="aspect-[2/1] rounded-xl overflow-hidden flex gap-0.5">
+              {/* Left: large image */}
+              <div className="flex-1 min-w-0 bg-neutral-200">
+                {previewCovers[0] && (
+                  <img
+                    src={coverSrc(previewCovers[0])}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+              </div>
+              {/* Right: 2×2 grid */}
+              {previewCovers.length > 1 && (
+                <div className="flex-1 min-w-0 grid grid-cols-2 grid-rows-2 gap-0.5">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="bg-neutral-200 overflow-hidden">
+                      {previewCovers[i] && (
+                        <img
+                          src={coverSrc(previewCovers[i])}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </motion.div>
         )}
@@ -125,16 +133,27 @@ function CollectionCard({
 }
 
 export function CollectionTabs() {
-  const { savedLists, loadSavedLists, loadList, deleteList, mergeLists, mediaId: activeId, items, listPreviews } =
-    useFavoriteStore();
+  const {
+    savedLists, loadSavedLists, loadList, deleteList, mergeLists,
+    mediaId: activeId, items, listPreviews,
+    mergeMode, setMergeMode,
+  } = useFavoriteStore();
 
   const [pendingDelete, setPendingDelete] = useState<SavedListEntry | null>(null);
-  const [mergeMode, setMergeMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mergeTitle, setMergeTitle] = useState("");
   const [showMergeInput, setShowMergeInput] = useState(false);
 
   useEffect(() => { loadSavedLists(); }, [loadSavedLists]);
+
+  // Reset local merge state when merge mode is toggled off (from toolbar)
+  useEffect(() => {
+    if (!mergeMode) {
+      setSelectedIds(new Set());
+      setShowMergeInput(false);
+      setMergeTitle("");
+    }
+  }, [mergeMode]);
 
   const confirmDelete = useCallback(() => {
     if (!pendingDelete) return;
@@ -143,7 +162,6 @@ export function CollectionTabs() {
   }, [pendingDelete, deleteList]);
 
   const activeCovers = useMemo(() => items.map((it) => it.cover).filter(Boolean), [items]);
-  const activeTitles = useMemo(() => items.map((it) => it.title), [items]);
 
   const toggleSelect = useCallback((mediaId: string) => {
     setSelectedIds((prev) => {
@@ -154,18 +172,11 @@ export function CollectionTabs() {
     });
   }, []);
 
-  const exitMergeMode = useCallback(() => {
-    setMergeMode(false);
-    setSelectedIds(new Set());
-    setShowMergeInput(false);
-    setMergeTitle("");
-  }, []);
-
   const handleMergeConfirm = useCallback(async () => {
     if (selectedIds.size < 2 || !mergeTitle.trim()) return;
     await mergeLists(Array.from(selectedIds), mergeTitle.trim());
-    exitMergeMode();
-  }, [selectedIds, mergeTitle, mergeLists, exitMergeMode]);
+    setMergeMode(false);
+  }, [selectedIds, mergeTitle, mergeLists, setMergeMode]);
 
   // Compute total selected count for display
   const selectedCount = useMemo(() => {
@@ -180,37 +191,6 @@ export function CollectionTabs() {
 
   return (
     <>
-      {/* Header with merge toggle */}
-      {savedLists.length >= 2 && (
-        <div className="shrink-0 flex items-center justify-end px-1 pb-1.5">
-          {mergeMode ? (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={exitMergeMode}
-              className="flex items-center gap-1 px-2 py-1 rounded-md
-                         text-[9px] font-medium text-neutral-400 hover:text-neutral-600
-                         hover:bg-neutral-100 transition-colors cursor-pointer"
-            >
-              <X size={10} />
-              取消
-            </motion.button>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setMergeMode(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded-md
-                         text-[9px] font-medium text-neutral-400 hover:text-neutral-600
-                         hover:bg-neutral-100 transition-colors cursor-pointer"
-            >
-              <Merge size={10} />
-              合并
-            </motion.button>
-          )}
-        </div>
-      )}
-
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide -mx-1 px-1 space-y-1">
         {savedLists.map((entry) => {
           const isActive = activeId === entry.media_id;
@@ -221,7 +201,6 @@ export function CollectionTabs() {
               entry={entry}
               isActive={isActive}
               covers={isActive ? activeCovers : (preview?.covers ?? [])}
-              titles={isActive ? activeTitles : (preview?.titles ?? [])}
               onSelect={() => { if (!isActive) loadList(entry.media_id); }}
               onDelete={() => setPendingDelete(entry)}
               mergeMode={mergeMode}

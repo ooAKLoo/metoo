@@ -72,9 +72,11 @@ interface FavoriteState {
   progress: { current: number; total: number };
   savedLists: SavedListEntry[];
   listPreviews: Record<string, ListPreview>;
+  mergeMode: boolean;
 
   setUrl: (url: string) => void;
   setInputMode: (mode: InputMode) => void;
+  setMergeMode: (mode: boolean) => void;
   fetchAll: () => Promise<void>;
   importFromXhsHtml: (html: string) => Promise<void>;
   reset: () => void;
@@ -96,9 +98,11 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   progress: { current: 0, total: 0 },
   savedLists: [],
   listPreviews: {},
+  mergeMode: false,
 
   setUrl: (url) => set({ url }),
   setInputMode: (mode) => set({ inputMode: mode }),
+  setMergeMode: (mode) => set({ mergeMode: mode }),
 
   fetchAll: async () => {
     const { url } = get();
@@ -165,7 +169,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       }
     }
 
-    // Persist
+    // Persist — download_cover runs server-side, then reload to pick up local paths
     try {
       const rawItems = allItems.map(({ locations: _l, source: _s, likes: _k, ...rest }) => rest);
       await invoke("save_favorite_list", {
@@ -174,6 +178,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         items: rawItems,
       });
       get().loadSavedLists();
+      await get().loadList(mediaId);
     } catch (e) {
       console.warn("Failed to persist:", e);
     }
@@ -215,7 +220,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         progress: { current: items.length, total: board.noteCount },
       });
 
-      // Persist
+      // Persist — reload to pick up locally-downloaded cover paths
       try {
         const rawItems = items.map(({ locations: _l, source: _s, likes: _k, ...rest }) => rest);
         await invoke("save_favorite_list", {
@@ -224,6 +229,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
           items: rawItems,
         });
         get().loadSavedLists();
+        await get().loadList(mediaId);
       } catch (e) {
         console.warn("Failed to persist XHS:", e);
       }
@@ -257,8 +263,8 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
               mediaId: entry.media_id,
             });
             previews[entry.media_id] = {
-              covers: saved.items.slice(0, 3).map((it) => it.cover).filter(Boolean),
-              titles: saved.items.slice(0, 3).map((it) => it.title),
+              covers: saved.items.slice(0, 5).map((it) => it.cover).filter(Boolean),
+              titles: saved.items.slice(0, 5).map((it) => it.title),
             };
           } catch {
             // skip

@@ -1,0 +1,421 @@
+import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import type { PosterModuleProps } from "../../lib/poster-modules";
+import { coverSrc } from "../map-shared";
+
+/* ── Poster intrinsic size ── */
+const POSTER_W = 1200;
+const POSTER_H = 840;
+
+/* ── Transit map: dynamic city layout ── */
+
+interface StationNode {
+  id: string;
+  x: number;
+  y: number;
+  name: string;
+  count: number;
+  type: "major" | "minor" | "highlight";
+}
+
+function buildTransitNodes(
+  cities: { name: string; count: number }[],
+): StationNode[] {
+  if (cities.length === 0) return [];
+
+  const mainCount = Math.min(cities.length, 7);
+  const branchCount = Math.min(Math.max(cities.length - 7, 0), 3);
+  const maxCount = cities[0].count;
+  const nodes: StationNode[] = [];
+
+  // Main line: evenly spread from x=450 → x=0
+  for (let i = 0; i < mainCount; i++) {
+    const city = cities[i];
+    const x = 450 - i * (450 / Math.max(mainCount - 1, 1));
+    const type: StationNode["type"] =
+      i === 0 ? "highlight" : city.count >= maxCount * 0.4 ? "major" : "minor";
+    nodes.push({ id: `main-${i}`, x, y: 60, name: city.name, count: city.count, type });
+  }
+
+  // Branch line: cities 7-9, from x=230 → x=140 at y=110
+  const branchStartX = 230;
+  for (let i = 0; i < branchCount; i++) {
+    const city = cities[7 + i];
+    const x = branchStartX - i * 45;
+    nodes.push({ id: `branch-${i}`, x, y: 110, name: city.name, count: city.count, type: "minor" });
+  }
+
+  return nodes;
+}
+
+/* ── TransitMap component ── */
+
+const TransitMap: React.FC<{ cities: { name: string; count: number }[] }> = ({
+  cities,
+}) => {
+  const nodes = useMemo(() => buildTransitNodes(cities), [cities]);
+  const hasBranch = cities.length > 7;
+  const mainRight = 480;
+  const mainLeft = nodes.length > 0 ? Math.min(...nodes.filter((n) => n.y === 60).map((n) => n.x)) - 20 : 0;
+
+  return (
+    <div className="relative mr-4 select-none" style={{ width: 480, height: 160 }}>
+      <svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 480 160"
+        className="absolute top-0 left-0 z-0 pointer-events-none overflow-visible"
+      >
+        {/* Main line */}
+        <path d={`M ${mainRight} 60 L ${mainLeft} 60`} stroke="#4b5563" strokeWidth="4" fill="none" />
+        <path
+          d={`M ${mainRight} 60 L ${mainLeft} 60`}
+          stroke="#f3f4f6"
+          strokeWidth="1.5"
+          strokeDasharray="5 3"
+          fill="none"
+        />
+        {/* Branch line */}
+        {hasBranch && (
+          <path
+            d="M 290 60 L 270 60 L 230 110 L 140 110 L 100 60"
+            stroke="#6b7280"
+            strokeWidth="2.5"
+            fill="none"
+          />
+        )}
+      </svg>
+
+      {/* Route labels — z-40 above all station nodes */}
+      <div
+        className="absolute font-bold tracking-widest text-gray-500"
+        style={{ fontSize: 9, left: 210, top: 18, zIndex: 40, backgroundColor: "rgba(255,255,255,0.85)", padding: "1px 4px", borderRadius: 2 }}
+      >
+        收藏线
+      </div>
+      {hasBranch && (
+        <div
+          className="absolute font-bold tracking-widest text-gray-500"
+          style={{ fontSize: 9, left: 180, top: 135, zIndex: 40, backgroundColor: "rgba(255,255,255,0.85)", padding: "1px 4px", borderRadius: 2 }}
+        >
+          发现支线
+        </div>
+      )}
+
+      {/* Station nodes */}
+      {nodes.map((node) => (
+        <div
+          key={node.id}
+          className="absolute flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
+          style={{
+            left: node.x,
+            top: node.y,
+            zIndex: node.type === "highlight" ? 30 : node.type === "major" ? 20 : 10,
+          }}
+        >
+          {node.type === "highlight" ? (
+            <div
+              className="bg-black text-white rounded-full flex items-center justify-center font-bold tracking-widest leading-none"
+              style={{
+                width: 42,
+                height: 42,
+                borderWidth: 3,
+                borderColor: "white",
+                borderStyle: "solid",
+                fontSize: node.name.length > 2 ? 11 : 13,
+                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+              }}
+            >
+              <span style={{ writingMode: "vertical-rl", textOrientation: "upright" }}>
+                {node.name.slice(0, 3)}
+              </span>
+            </div>
+          ) : node.type === "major" ? (
+            <div
+              className="bg-gray-300 text-black rounded-full flex items-center justify-center font-bold tracking-widest leading-none"
+              style={{
+                width: 24,
+                height: node.name.length > 2 ? 62 : 56,
+                border: "2px solid white",
+                fontSize: node.name.length > 2 ? 9 : 11,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+              }}
+            >
+              <span style={{ writingMode: "vertical-rl", textOrientation: "upright" }}>
+                {node.name.slice(0, 3)}
+              </span>
+            </div>
+          ) : (
+            <div
+              className="bg-white text-gray-700 rounded-full flex items-center justify-center font-bold tracking-widest leading-none"
+              style={{
+                width: 18,
+                height: node.name.length > 2 ? 48 : 44,
+                border: "1px solid #9ca3af",
+                fontSize: 9,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              }}
+            >
+              <span style={{ writingMode: "vertical-rl", textOrientation: "upright" }}>
+                {node.name.slice(0, 3)}
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── Main component ── */
+
+function DiscoverWestPoster({ items, cityEntries }: PosterModuleProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fitScale, setFitScale] = useState(1);
+
+  const measure = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const pad = 48;
+    const sx = (el.clientWidth - pad) / POSTER_W;
+    const sy = (el.clientHeight - pad) / POSTER_H;
+    setFitScale(Math.min(sx, sy, 1));
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [measure]);
+
+  const totalCities = cityEntries.length;
+  const totalItems = items.length;
+  const topCity = cityEntries[0];
+
+  // Collect covers from top cities (one per city, ordered by count, local paths)
+  const heroCovers = useMemo(() => {
+    const out: { src: string; city: string }[] = [];
+    for (const city of cityEntries) {
+      if (out.length >= 5) break;
+      const cover = city.covers[0];
+      if (cover) out.push({ src: coverSrc(cover), city: city.name });
+    }
+    return out;
+  }, [cityEntries]);
+
+  // Cities for transit map (up to 10)
+  const transitCities = useMemo(
+    () => cityEntries.slice(0, 10).map((c) => ({ name: c.name, count: c.count })),
+    [cityEntries],
+  );
+
+  // Footer text
+  const footerLine1 = topCity
+    ? `从收藏夹出发，${topCity.name}是你最常标记的城市。`
+    : "从收藏夹出发，探索你的旅行足迹。";
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
+      style={{
+        backgroundColor: "#f1f5f9",
+        backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)",
+        backgroundSize: "20px 20px",
+      }}
+    >
+      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
+        <div
+          className="bg-white relative flex flex-col"
+          style={{
+            width: POSTER_W,
+            height: POSTER_H,
+            padding: 40,
+            fontFamily: '"Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif',
+            boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25), 0 8px 20px -8px rgba(0,0,0,0.1)",
+          }}
+        >
+          {/* ── Top: text + image ── */}
+          <div className="flex-1 flex min-h-0">
+            {/* Left text column */}
+            <div className="flex flex-col justify-between pr-8 py-2" style={{ width: "32%" }}>
+              {/* Logo */}
+              <div className="space-y-1">
+                <div
+                  className="font-bold text-gray-800"
+                  style={{ fontSize: 11, letterSpacing: "0.2em" }}
+                >
+                  在路上，发现远方。
+                </div>
+                <div
+                  className="font-bold flex items-center gap-2"
+                  style={{ fontSize: 15, letterSpacing: "0.15em" }}
+                >
+                  <div
+                    style={{
+                      width: 0,
+                      height: 0,
+                      borderTop: "5px solid transparent",
+                      borderLeft: "8px solid black",
+                      borderBottom: "5px solid transparent",
+                    }}
+                  />
+                  DISCOVER
+                </div>
+              </div>
+
+              {/* Main title */}
+              <div className="mt-20 mb-auto">
+                <h1
+                  className="font-medium text-gray-900 whitespace-nowrap"
+                  style={{ fontSize: 72, lineHeight: 1.2, letterSpacing: "0.15em" }}
+                >
+                  {topCity ? (
+                    <>
+                      {topCity.name.slice(0, 2)}，
+                      <br />
+                      {topCity.name.length > 2 ? topCity.name.slice(2) + "。" : "印记。"}
+                    </>
+                  ) : (
+                    <>
+                      出发，
+                      <br />
+                      去远方。
+                    </>
+                  )}
+                </h1>
+                <div className="flex items-center gap-6 mt-12">
+                  <div className="h-[1px] w-16 bg-gray-400" />
+                  <span
+                    className="text-gray-800 font-sans uppercase"
+                    style={{ fontSize: 22, letterSpacing: "0.35em" }}
+                  >
+                    JOURNEY.
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer info */}
+              <div className="flex items-start gap-5 mt-auto mb-8 font-sans">
+                <div
+                  className="w-14 h-14 border border-gray-600 rounded-full flex flex-col items-center justify-center leading-tight text-center relative shrink-0"
+                  style={{ fontSize: 8 }}
+                >
+                  <div className="font-bold">途</div>
+                  <div className="flex gap-1">
+                    <span className="w-1 h-1 bg-black rounded-full" />
+                    <span className="w-1 h-1 bg-black rounded-full" />
+                    <span className="w-1 h-1 bg-black rounded-full" />
+                  </div>
+                  <div className="scale-75">METOO</div>
+                </div>
+                <div
+                  className="text-gray-600"
+                  style={{ fontSize: 10, lineHeight: 1.6, letterSpacing: "0.05em" }}
+                >
+                  <p className="font-bold text-gray-800">
+                    觅途 · 旅行收藏可视化
+                  </p>
+                  <p>{totalCities} 座城市 · {totalItems} 个收藏</p>
+                  {topCity && <p>最多收藏: {topCity.name} ({topCity.count})</p>}
+                  <div className="h-3" />
+                  <p>Design: 觅途 METOO</p>
+                  <p>Data: Bilibili / 小红书收藏夹</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Right cover grid */}
+            <div className="h-full flex gap-2.5" style={{ width: "68%" }}>
+              {/* Main large cover */}
+              {heroCovers.length > 0 && (
+                <div className="flex-1 min-w-0 relative rounded-2xl overflow-hidden bg-gray-200">
+                  <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{ backgroundImage: `url(${heroCovers[0].src})` }}
+                  />
+                  <div
+                    className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8"
+                    style={{
+                      background: "linear-gradient(transparent, rgba(0,0,0,0.5))",
+                    }}
+                  >
+                    <span
+                      className="text-white font-bold font-sans"
+                      style={{ fontSize: 13, letterSpacing: "0.1em" }}
+                    >
+                      {heroCovers[0].city}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {/* Side column: stacked smaller covers */}
+              {heroCovers.length > 1 && (
+                <div className="flex flex-col gap-2.5" style={{ width: 180 }}>
+                  {heroCovers.slice(1, 5).map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 min-h-0 relative rounded-xl overflow-hidden bg-gray-200"
+                    >
+                      <div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{ backgroundImage: `url(${item.src})` }}
+                      />
+                      <div
+                        className="absolute bottom-0 left-0 right-0 px-2.5 pb-1.5 pt-5"
+                        style={{
+                          background: "linear-gradient(transparent, rgba(0,0,0,0.45))",
+                        }}
+                      >
+                        <span
+                          className="text-white font-bold font-sans"
+                          style={{ fontSize: 9, letterSpacing: "0.05em" }}
+                        >
+                          {item.city}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Bottom: footer text + transit map ── */}
+          <div className="flex items-end justify-between pt-8 pb-4" style={{ height: 180 }}>
+            <div
+              className="text-gray-900 pb-2"
+              style={{ width: "45%", fontSize: 24, lineHeight: 1.6, letterSpacing: "0.1em" }}
+            >
+              <p>{footerLine1}</p>
+              <p>
+                <span className="font-bold font-sans mx-1" style={{ fontSize: 28 }}>
+                  {totalItems}
+                </span>
+                个收藏 ·
+                <span className="font-bold font-sans mx-1" style={{ fontSize: 28 }}>
+                  {totalCities}
+                </span>
+                座城市
+              </p>
+            </div>
+
+            <div className="flex items-end justify-end gap-6 relative" style={{ width: "55%" }}>
+              <TransitMap cities={transitCities} />
+              <div className="flex flex-col items-center justify-end pb-2 shrink-0">
+                <div className="font-bold font-sans tracking-tighter" style={{ fontSize: 30 }}>
+                  觅途
+                </div>
+                <div className="tracking-widest mt-1" style={{ fontSize: 8 }}>
+                  METOO
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default DiscoverWestPoster;
