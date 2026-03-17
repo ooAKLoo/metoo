@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 type ViewMode = "all" | "city";
-export type MapLevel = "world" | "china";
-export type ChartView = "map" | "rainbow" | "bubble";
+export type MapLevel = "world" | "china" | `country:${string}`;
+export type ChartView = "map" | "grid" | "bubble";
 
 export interface RouteNode {
   name: string;

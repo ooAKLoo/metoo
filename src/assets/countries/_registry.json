@@ -1,0 +1,1062 @@
+{
+  "Afghanistan": {
+    "file": "Afghanistan",
+    "provinces": 34,
+    "size_kb": 154.5
+  },
+  "Aland": {
+    "file": "Aland",
+    "provinces": 11,
+    "size_kb": 5.8
+  },
+  "Albania": {
+    "file": "Albania",
+    "provinces": 12,
+    "size_kb": 34.7
+  },
+  "Algeria": {
+    "file": "Algeria",
+    "provinces": 48,
+    "size_kb": 106.7
+  },
+  "American Samoa": {
+    "file": "American_Samoa",
+    "provinces": 5,
+    "size_kb": 1.8
+  },
+  "Andorra": {
+    "file": "Andorra",
+    "provinces": 7,
+    "size_kb": 3.3
+  },
+  "Angola": {
+    "file": "Angola",
+    "provinces": 18,
+    "size_kb": 99.9
+  },
+  "Anguilla": {
+    "file": "Anguilla",
+    "provinces": 15,
+    "size_kb": 4.4
+  },
+  "Antarctica": {
+    "file": "Antarctica",
+    "provinces": 2,
+    "size_kb": 367.1
+  },
+  "Antigua and Barb.": {
+    "file": "Antigua_and_Barb_",
+    "provinces": 8,
+    "size_kb": 3.7
+  },
+  "Argentina": {
+    "file": "Argentina",
+    "provinces": 24,
+    "size_kb": 168.8
+  },
+  "Armenia": {
+    "file": "Armenia",
+    "provinces": 11,
+    "size_kb": 23.5
+  },
+  "Australia": {
+    "file": "Australia",
+    "provinces": 11,
+    "size_kb": 246.2
+  },
+  "Austria": {
+    "file": "Austria",
+    "provinces": 9,
+    "size_kb": 35.0
+  },
+  "Azerbaijan": {
+    "file": "Azerbaijan",
+    "provinces": 78,
+    "size_kb": 69.8
+  },
+  "Bahamas": {
+    "file": "Bahamas",
+    "provinces": 30,
+    "size_kb": 27.9
+  },
+  "Bahrain": {
+    "file": "Bahrain",
+    "provinces": 5,
+    "size_kb": 3.1
+  },
+  "Bangladesh": {
+    "file": "Bangladesh",
+    "provinces": 7,
+    "size_kb": 45.6
+  },
+  "Barbados": {
+    "file": "Barbados",
+    "provinces": 11,
+    "size_kb": 6.9
+  },
+  "Belarus": {
+    "file": "Belarus",
+    "provinces": 7,
+    "size_kb": 78.5
+  },
+  "Belgium": {
+    "file": "Belgium",
+    "provinces": 11,
+    "size_kb": 24.4
+  },
+  "Belize": {
+    "file": "Belize",
+    "provinces": 6,
+    "size_kb": 14.9
+  },
+  "Benin": {
+    "file": "Benin",
+    "provinces": 12,
+    "size_kb": 17.6
+  },
+  "Bermuda": {
+    "file": "Bermuda",
+    "provinces": 11,
+    "size_kb": 3.6
+  },
+  "Bhutan": {
+    "file": "Bhutan",
+    "provinces": 20,
+    "size_kb": 38.1
+  },
+  "Bolivia": {
+    "file": "Bolivia",
+    "provinces": 9,
+    "size_kb": 66.6
+  },
+  "Bosnia and Herz.": {
+    "file": "Bosnia_and_Herz_",
+    "provinces": 18,
+    "size_kb": 31.9
+  },
+  "Botswana": {
+    "file": "Botswana",
+    "provinces": 15,
+    "size_kb": 24.3
+  },
+  "Brazil": {
+    "file": "Brazil",
+    "provinces": 27,
+    "size_kb": 514.9
+  },
+  "Brunei": {
+    "file": "Brunei",
+    "provinces": 4,
+    "size_kb": 3.4
+  },
+  "Bulgaria": {
+    "file": "Bulgaria",
+    "provinces": 28,
+    "size_kb": 49.6
+  },
+  "Burkina Faso": {
+    "file": "Burkina_Faso",
+    "provinces": 45,
+    "size_kb": 79.8
+  },
+  "Burundi": {
+    "file": "Burundi",
+    "provinces": 17,
+    "size_kb": 17.8
+  },
+  "Cambodia": {
+    "file": "Cambodia",
+    "provinces": 24,
+    "size_kb": 70.0
+  },
+  "Cameroon": {
+    "file": "Cameroon",
+    "provinces": 10,
+    "size_kb": 47.4
+  },
+  "Canada": {
+    "file": "Canada",
+    "provinces": 13,
+    "size_kb": 1134.8
+  },
+  "Cape Verde": {
+    "file": "Cape_Verde",
+    "provinces": 22,
+    "size_kb": 11.7
+  },
+  "Central African Rep.": {
+    "file": "Central_African_Rep_",
+    "provinces": 17,
+    "size_kb": 90.2
+  },
+  "Chad": {
+    "file": "Chad",
+    "provinces": 22,
+    "size_kb": 67.5
+  },
+  "Chile": {
+    "file": "Chile",
+    "provinces": 15,
+    "size_kb": 291.6
+  },
+  "Colombia": {
+    "file": "Colombia",
+    "provinces": 34,
+    "size_kb": 180.0
+  },
+  "Comoros": {
+    "file": "Comoros",
+    "provinces": 3,
+    "size_kb": 2.2
+  },
+  "Congo": {
+    "file": "Congo",
+    "provinces": 12,
+    "size_kb": 59.9
+  },
+  "Cook Islands": {
+    "file": "Cook_Islands",
+    "provinces": 11,
+    "size_kb": 3.4
+  },
+  "Costa Rica": {
+    "file": "Costa_Rica",
+    "provinces": 7,
+    "size_kb": 36.9
+  },
+  "Croatia": {
+    "file": "Croatia",
+    "provinces": 21,
+    "size_kb": 81.1
+  },
+  "Cuba": {
+    "file": "Cuba",
+    "provinces": 16,
+    "size_kb": 80.0
+  },
+  "Cyprus": {
+    "file": "Cyprus",
+    "provinces": 5,
+    "size_kb": 12.0
+  },
+  "Czech Rep.": {
+    "file": "Czech_Rep_",
+    "provinces": 14,
+    "size_kb": 59.0
+  },
+  "Côte d'Ivoire": {
+    "file": "C_te_d_Ivoire",
+    "provinces": 19,
+    "size_kb": 82.5
+  },
+  "Dem. Rep. Congo": {
+    "file": "Dem__Rep__Congo",
+    "provinces": 11,
+    "size_kb": 118.2
+  },
+  "Dem. Rep. Korea": {
+    "file": "Dem__Rep__Korea",
+    "provinces": 11,
+    "size_kb": 64.7
+  },
+  "Denmark": {
+    "file": "Denmark",
+    "provinces": 5,
+    "size_kb": 33.0
+  },
+  "Djibouti": {
+    "file": "Djibouti",
+    "provinces": 6,
+    "size_kb": 4.9
+  },
+  "Dominica": {
+    "file": "Dominica",
+    "provinces": 10,
+    "size_kb": 6.9
+  },
+  "Dominican Rep.": {
+    "file": "Dominican_Rep_",
+    "provinces": 32,
+    "size_kb": 31.6
+  },
+  "East Timor": {
+    "file": "East_Timor",
+    "provinces": 13,
+    "size_kb": 12.1
+  },
+  "Ecuador": {
+    "file": "Ecuador",
+    "provinces": 24,
+    "size_kb": 92.8
+  },
+  "Egypt": {
+    "file": "Egypt",
+    "provinces": 27,
+    "size_kb": 66.7
+  },
+  "El Salvador": {
+    "file": "El_Salvador",
+    "provinces": 14,
+    "size_kb": 34.6
+  },
+  "Eq. Guinea": {
+    "file": "Eq__Guinea",
+    "provinces": 7,
+    "size_kb": 9.3
+  },
+  "Eritrea": {
+    "file": "Eritrea",
+    "provinces": 6,
+    "size_kb": 19.1
+  },
+  "Estonia": {
+    "file": "Estonia",
+    "provinces": 15,
+    "size_kb": 39.1
+  },
+  "Ethiopia": {
+    "file": "Ethiopia",
+    "provinces": 11,
+    "size_kb": 62.9
+  },
+  "Federated States of Micronesia": {
+    "file": "Federated_States_of_Micronesia",
+    "provinces": 4,
+    "size_kb": 4.2
+  },
+  "Fiji": {
+    "file": "Fiji",
+    "provinces": 5,
+    "size_kb": 27.7
+  },
+  "Finland": {
+    "file": "Finland",
+    "provinces": 18,
+    "size_kb": 100.6
+  },
+  "France": {
+    "file": "France",
+    "provinces": 101,
+    "size_kb": 304.1
+  },
+  "French Polynesia": {
+    "file": "French_Polynesia",
+    "provinces": 5,
+    "size_kb": 18.0
+  },
+  "French Southern and Antarctic Lands": {
+    "file": "French_Southern_and_Antarctic_Lands",
+    "provinces": 4,
+    "size_kb": 8.5
+  },
+  "Gabon": {
+    "file": "Gabon",
+    "provinces": 9,
+    "size_kb": 38.3
+  },
+  "Gambia": {
+    "file": "Gambia",
+    "provinces": 6,
+    "size_kb": 8.5
+  },
+  "Georgia": {
+    "file": "Georgia",
+    "provinces": 12,
+    "size_kb": 20.1
+  },
+  "Germany": {
+    "file": "Germany",
+    "provinces": 16,
+    "size_kb": 190.3
+  },
+  "Ghana": {
+    "file": "Ghana",
+    "provinces": 10,
+    "size_kb": 61.3
+  },
+  "Greece": {
+    "file": "Greece",
+    "provinces": 14,
+    "size_kb": 96.4
+  },
+  "Greenland": {
+    "file": "Greenland",
+    "provinces": 6,
+    "size_kb": 342.7
+  },
+  "Grenada": {
+    "file": "Grenada",
+    "provinces": 7,
+    "size_kb": 2.6
+  },
+  "Guatemala": {
+    "file": "Guatemala",
+    "provinces": 22,
+    "size_kb": 53.6
+  },
+  "Guinea": {
+    "file": "Guinea",
+    "provinces": 34,
+    "size_kb": 62.4
+  },
+  "Guinea Bissau": {
+    "file": "Guinea_Bissau",
+    "provinces": 9,
+    "size_kb": 34.1
+  },
+  "Guyana": {
+    "file": "Guyana",
+    "provinces": 10,
+    "size_kb": 34.9
+  },
+  "Haiti": {
+    "file": "Haiti",
+    "provinces": 10,
+    "size_kb": 17.9
+  },
+  "Honduras": {
+    "file": "Honduras",
+    "provinces": 18,
+    "size_kb": 56.1
+  },
+  "Hong Kong S.A.R.": {
+    "file": "Hong_Kong_S_A_R_",
+    "provinces": 18,
+    "size_kb": 10.8
+  },
+  "Hungary": {
+    "file": "Hungary",
+    "provinces": 43,
+    "size_kb": 50.7
+  },
+  "Iceland": {
+    "file": "Iceland",
+    "provinces": 9,
+    "size_kb": 60.0
+  },
+  "India": {
+    "file": "India",
+    "provinces": 35,
+    "size_kb": 440.0
+  },
+  "Indian Ocean Territories": {
+    "file": "Indian_Ocean_Territories",
+    "provinces": 2,
+    "size_kb": 1.1
+  },
+  "Indonesia": {
+    "file": "Indonesia",
+    "provinces": 33,
+    "size_kb": 343.2
+  },
+  "Iran": {
+    "file": "Iran",
+    "provinces": 31,
+    "size_kb": 86.0
+  },
+  "Iraq": {
+    "file": "Iraq",
+    "provinces": 18,
+    "size_kb": 67.6
+  },
+  "Ireland": {
+    "file": "Ireland",
+    "provinces": 34,
+    "size_kb": 112.2
+  },
+  "Israel": {
+    "file": "Israel",
+    "provinces": 6,
+    "size_kb": 17.5
+  },
+  "Italy": {
+    "file": "Italy",
+    "provinces": 110,
+    "size_kb": 268.6
+  },
+  "Jamaica": {
+    "file": "Jamaica",
+    "provinces": 14,
+    "size_kb": 15.0
+  },
+  "Japan": {
+    "file": "Japan",
+    "provinces": 47,
+    "size_kb": 188.8
+  },
+  "Jordan": {
+    "file": "Jordan",
+    "provinces": 12,
+    "size_kb": 15.6
+  },
+  "Kazakhstan": {
+    "file": "Kazakhstan",
+    "provinces": 16,
+    "size_kb": 87.5
+  },
+  "Kenya": {
+    "file": "Kenya",
+    "provinces": 8,
+    "size_kb": 57.7
+  },
+  "Kiribati": {
+    "file": "Kiribati",
+    "provinces": 2,
+    "size_kb": 10.6
+  },
+  "Korea": {
+    "file": "Korea",
+    "provinces": 17,
+    "size_kb": 68.0
+  },
+  "Kosovo": {
+    "file": "Kosovo",
+    "provinces": 30,
+    "size_kb": 19.4
+  },
+  "Kuwait": {
+    "file": "Kuwait",
+    "provinces": 6,
+    "size_kb": 5.0
+  },
+  "Kyrgyzstan": {
+    "file": "Kyrgyzstan",
+    "provinces": 8,
+    "size_kb": 48.7
+  },
+  "Laos": {
+    "file": "Laos",
+    "provinces": 17,
+    "size_kb": 55.4
+  },
+  "Latvia": {
+    "file": "Latvia",
+    "provinces": 119,
+    "size_kb": 102.1
+  },
+  "Lebanon": {
+    "file": "Lebanon",
+    "provinces": 6,
+    "size_kb": 14.8
+  },
+  "Lesotho": {
+    "file": "Lesotho",
+    "provinces": 10,
+    "size_kb": 26.8
+  },
+  "Liberia": {
+    "file": "Liberia",
+    "provinces": 15,
+    "size_kb": 44.5
+  },
+  "Libya": {
+    "file": "Libya",
+    "provinces": 22,
+    "size_kb": 28.6
+  },
+  "Liechtenstein": {
+    "file": "Liechtenstein",
+    "provinces": 11,
+    "size_kb": 4.1
+  },
+  "Lithuania": {
+    "file": "Lithuania",
+    "provinces": 10,
+    "size_kb": 44.5
+  },
+  "Luxembourg": {
+    "file": "Luxembourg",
+    "provinces": 3,
+    "size_kb": 4.6
+  },
+  "Macedonia": {
+    "file": "Macedonia",
+    "provinces": 84,
+    "size_kb": 101.9
+  },
+  "Madagascar": {
+    "file": "Madagascar",
+    "provinces": 22,
+    "size_kb": 98.9
+  },
+  "Malawi": {
+    "file": "Malawi",
+    "provinces": 28,
+    "size_kb": 51.3
+  },
+  "Malaysia": {
+    "file": "Malaysia",
+    "provinces": 16,
+    "size_kb": 84.7
+  },
+  "Maldives": {
+    "file": "Maldives",
+    "provinces": 21,
+    "size_kb": 21.7
+  },
+  "Mali": {
+    "file": "Mali",
+    "provinces": 9,
+    "size_kb": 38.4
+  },
+  "Malta": {
+    "file": "Malta",
+    "provinces": 68,
+    "size_kb": 24.2
+  },
+  "Marshall Is.": {
+    "file": "Marshall_Is_",
+    "provinces": 2,
+    "size_kb": 3.2
+  },
+  "Mauritania": {
+    "file": "Mauritania",
+    "provinces": 13,
+    "size_kb": 28.8
+  },
+  "Mauritius": {
+    "file": "Mauritius",
+    "provinces": 16,
+    "size_kb": 6.9
+  },
+  "Mexico": {
+    "file": "Mexico",
+    "provinces": 33,
+    "size_kb": 325.7
+  },
+  "Moldova": {
+    "file": "Moldova",
+    "provinces": 40,
+    "size_kb": 41.1
+  },
+  "Mongolia": {
+    "file": "Mongolia",
+    "provinces": 22,
+    "size_kb": 83.3
+  },
+  "Montenegro": {
+    "file": "Montenegro",
+    "provinces": 21,
+    "size_kb": 16.3
+  },
+  "Montserrat": {
+    "file": "Montserrat",
+    "provinces": 3,
+    "size_kb": 1.0
+  },
+  "Morocco": {
+    "file": "Morocco",
+    "provinces": 16,
+    "size_kb": 38.8
+  },
+  "Mozambique": {
+    "file": "Mozambique",
+    "provinces": 11,
+    "size_kb": 86.0
+  },
+  "Myanmar": {
+    "file": "Myanmar",
+    "provinces": 14,
+    "size_kb": 140.3
+  },
+  "N. Mariana Is.": {
+    "file": "N__Mariana_Is_",
+    "provinces": 4,
+    "size_kb": 3.2
+  },
+  "Namibia": {
+    "file": "Namibia",
+    "provinces": 13,
+    "size_kb": 55.4
+  },
+  "Nauru": {
+    "file": "Nauru",
+    "provinces": 14,
+    "size_kb": 2.9
+  },
+  "Nepal": {
+    "file": "Nepal",
+    "provinces": 14,
+    "size_kb": 46.1
+  },
+  "Netherlands": {
+    "file": "Netherlands",
+    "provinces": 14,
+    "size_kb": 30.7
+  },
+  "New Caledonia": {
+    "file": "New_Caledonia",
+    "provinces": 3,
+    "size_kb": 17.5
+  },
+  "New Zealand": {
+    "file": "New_Zealand",
+    "provinces": 24,
+    "size_kb": 103.4
+  },
+  "Nicaragua": {
+    "file": "Nicaragua",
+    "provinces": 17,
+    "size_kb": 44.9
+  },
+  "Niger": {
+    "file": "Niger",
+    "provinces": 8,
+    "size_kb": 25.7
+  },
+  "Nigeria": {
+    "file": "Nigeria",
+    "provinces": 37,
+    "size_kb": 81.7
+  },
+  "Norway": {
+    "file": "Norway",
+    "provinces": 21,
+    "size_kb": 251.2
+  },
+  "Oman": {
+    "file": "Oman",
+    "provinces": 11,
+    "size_kb": 17.6
+  },
+  "Pakistan": {
+    "file": "Pakistan",
+    "provinces": 8,
+    "size_kb": 92.9
+  },
+  "Palau": {
+    "file": "Palau",
+    "provinces": 16,
+    "size_kb": 5.0
+  },
+  "Panama": {
+    "file": "Panama",
+    "provinces": 12,
+    "size_kb": 50.5
+  },
+  "Papua New Guinea": {
+    "file": "Papua_New_Guinea",
+    "provinces": 20,
+    "size_kb": 93.7
+  },
+  "Paraguay": {
+    "file": "Paraguay",
+    "provinces": 18,
+    "size_kb": 69.9
+  },
+  "Peru": {
+    "file": "Peru",
+    "provinces": 26,
+    "size_kb": 139.8
+  },
+  "Philippines": {
+    "file": "Philippines",
+    "provinces": 118,
+    "size_kb": 183.6
+  },
+  "Poland": {
+    "file": "Poland",
+    "provinces": 16,
+    "size_kb": 48.5
+  },
+  "Portugal": {
+    "file": "Portugal",
+    "provinces": 20,
+    "size_kb": 61.1
+  },
+  "Qatar": {
+    "file": "Qatar",
+    "provinces": 7,
+    "size_kb": 5.6
+  },
+  "Republic of Serbia": {
+    "file": "Republic_of_Serbia",
+    "provinces": 25,
+    "size_kb": 188.5
+  },
+  "Romania": {
+    "file": "Romania",
+    "provinces": 42,
+    "size_kb": 111.2
+  },
+  "Russia": {
+    "file": "Russia",
+    "provinces": 86,
+    "size_kb": 1863.5
+  },
+  "Rwanda": {
+    "file": "Rwanda",
+    "provinces": 5,
+    "size_kb": 13.0
+  },
+  "S. Sudan": {
+    "file": "S__Sudan",
+    "provinces": 10,
+    "size_kb": 30.7
+  },
+  "Saint Helena": {
+    "file": "Saint_Helena",
+    "provinces": 3,
+    "size_kb": 1.6
+  },
+  "Saint Pierre and Miquelon": {
+    "file": "Saint_Pierre_and_Miquelon",
+    "provinces": 2,
+    "size_kb": 1.5
+  },
+  "Samoa": {
+    "file": "Samoa",
+    "provinces": 11,
+    "size_kb": 5.2
+  },
+  "San Marino": {
+    "file": "San_Marino",
+    "provinces": 9,
+    "size_kb": 3.2
+  },
+  "Sao Tome and Principe": {
+    "file": "Sao_Tome_and_Principe",
+    "provinces": 2,
+    "size_kb": 1.4
+  },
+  "Saudi Arabia": {
+    "file": "Saudi_Arabia",
+    "provinces": 13,
+    "size_kb": 69.8
+  },
+  "Senegal": {
+    "file": "Senegal",
+    "provinces": 14,
+    "size_kb": 49.3
+  },
+  "Seychelles": {
+    "file": "Seychelles",
+    "provinces": 26,
+    "size_kb": 10.0
+  },
+  "Sierra Leone": {
+    "file": "Sierra_Leone",
+    "provinces": 4,
+    "size_kb": 20.2
+  },
+  "Singapore": {
+    "file": "Singapore",
+    "provinces": 5,
+    "size_kb": 2.9
+  },
+  "Slovakia": {
+    "file": "Slovakia",
+    "provinces": 8,
+    "size_kb": 48.6
+  },
+  "Slovenia": {
+    "file": "Slovenia",
+    "provinces": 193,
+    "size_kb": 114.7
+  },
+  "Solomon Is.": {
+    "file": "Solomon_Is_",
+    "provinces": 10,
+    "size_kb": 33.5
+  },
+  "Somalia": {
+    "file": "Somalia",
+    "provinces": 13,
+    "size_kb": 13.4
+  },
+  "South Africa": {
+    "file": "South_Africa",
+    "provinces": 9,
+    "size_kb": 102.6
+  },
+  "Spain": {
+    "file": "Spain",
+    "provinces": 52,
+    "size_kb": 199.9
+  },
+  "Sri Lanka": {
+    "file": "Sri_Lanka",
+    "provinces": 25,
+    "size_kb": 42.2
+  },
+  "St. Kitts and Nevis": {
+    "file": "St__Kitts_and_Nevis",
+    "provinces": 14,
+    "size_kb": 4.4
+  },
+  "St. Lucia": {
+    "file": "St__Lucia",
+    "provinces": 11,
+    "size_kb": 4.0
+  },
+  "St. Vin. and Gren.": {
+    "file": "St__Vin__and_Gren_",
+    "provinces": 6,
+    "size_kb": 3.0
+  },
+  "Sudan": {
+    "file": "Sudan",
+    "provinces": 17,
+    "size_kb": 40.0
+  },
+  "Suriname": {
+    "file": "Suriname",
+    "provinces": 10,
+    "size_kb": 22.6
+  },
+  "Swaziland": {
+    "file": "Swaziland",
+    "provinces": 4,
+    "size_kb": 9.2
+  },
+  "Sweden": {
+    "file": "Sweden",
+    "provinces": 21,
+    "size_kb": 111.2
+  },
+  "Switzerland": {
+    "file": "Switzerland",
+    "provinces": 26,
+    "size_kb": 65.1
+  },
+  "Syria": {
+    "file": "Syria",
+    "provinces": 15,
+    "size_kb": 50.9
+  },
+  "Taiwan": {
+    "file": "Taiwan",
+    "provinces": 21,
+    "size_kb": 28.7
+  },
+  "Tajikistan": {
+    "file": "Tajikistan",
+    "provinces": 5,
+    "size_kb": 32.8
+  },
+  "Thailand": {
+    "file": "Thailand",
+    "provinces": 77,
+    "size_kb": 378.7
+  },
+  "Togo": {
+    "file": "Togo",
+    "provinces": 5,
+    "size_kb": 13.7
+  },
+  "Tonga": {
+    "file": "Tonga",
+    "provinces": 5,
+    "size_kb": 4.3
+  },
+  "Trinidad and Tobago": {
+    "file": "Trinidad_and_Tobago",
+    "provinces": 16,
+    "size_kb": 10.6
+  },
+  "Tunisia": {
+    "file": "Tunisia",
+    "provinces": 23,
+    "size_kb": 49.4
+  },
+  "Turkey": {
+    "file": "Turkey",
+    "provinces": 81,
+    "size_kb": 142.3
+  },
+  "Turkmenistan": {
+    "file": "Turkmenistan",
+    "provinces": 5,
+    "size_kb": 33.9
+  },
+  "Turks and Caicos Islands": {
+    "file": "Turks_and_Caicos_Islands",
+    "provinces": 6,
+    "size_kb": 3.9
+  },
+  "U.S. Virgin Is.": {
+    "file": "U_S__Virgin_Is_",
+    "provinces": 3,
+    "size_kb": 1.4
+  },
+  "Uganda": {
+    "file": "Uganda",
+    "provinces": 112,
+    "size_kb": 77.4
+  },
+  "Ukraine": {
+    "file": "Ukraine",
+    "provinces": 25,
+    "size_kb": 267.8
+  },
+  "United Arab Emirates": {
+    "file": "United_Arab_Emirates",
+    "provinces": 9,
+    "size_kb": 23.5
+  },
+  "United Kingdom": {
+    "file": "United_Kingdom",
+    "provinces": 232,
+    "size_kb": 300.0
+  },
+  "United Republic of Tanzania": {
+    "file": "United_Republic_of_Tanzania",
+    "provinces": 30,
+    "size_kb": 77.6
+  },
+  "United States": {
+    "file": "United_States",
+    "provinces": 51,
+    "size_kb": 802.9
+  },
+  "United States Minor Outlying Islands": {
+    "file": "United_States_Minor_Outlying_Islands",
+    "provinces": 8,
+    "size_kb": 2.7
+  },
+  "Uruguay": {
+    "file": "Uruguay",
+    "provinces": 19,
+    "size_kb": 64.8
+  },
+  "Uzbekistan": {
+    "file": "Uzbekistan",
+    "provinces": 14,
+    "size_kb": 51.9
+  },
+  "Vanuatu": {
+    "file": "Vanuatu",
+    "provinces": 6,
+    "size_kb": 16.5
+  },
+  "Venezuela": {
+    "file": "Venezuela",
+    "provinces": 26,
+    "size_kb": 149.9
+  },
+  "Vietnam": {
+    "file": "Vietnam",
+    "provinces": 63,
+    "size_kb": 143.0
+  },
+  "Wallis and Futuna": {
+    "file": "Wallis_and_Futuna",
+    "provinces": 3,
+    "size_kb": 1.5
+  },
+  "Yemen": {
+    "file": "Yemen",
+    "provinces": 21,
+    "size_kb": 44.9
+  },
+  "Zambia": {
+    "file": "Zambia",
+    "provinces": 10,
+    "size_kb": 89.8
+  },
+  "Zimbabwe": {
+    "file": "Zimbabwe",
+    "provinces": 10,
+    "size_kb": 81.4
+  }
+}

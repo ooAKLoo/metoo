@@ -1,20 +1,10 @@
-import { MapPin, RotateCcw, Map, Sparkles, Shapes } from "lucide-react";
-import { motion } from "motion/react";
+import { MapPin, RotateCcw } from "lucide-react";
 import { SettingsPanel } from "./SettingsPanel";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
-import { useMapStore, type ChartView } from "../stores/useMapStore";
-
-const VIEW_OPTIONS: { id: ChartView; icon: typeof Map; label: string }[] = [
-  { id: "map", icon: Map, label: "地图" },
-  { id: "rainbow", icon: Sparkles, label: "彩虹" },
-  { id: "bubble", icon: Shapes, label: "气泡" },
-];
 
 export function TitleBar() {
   const status = useFavoriteStore((s) => s.status);
   const reset = useFavoriteStore((s) => s.reset);
-  const chartView = useMapStore((s) => s.chartView);
-  const setChartView = useMapStore((s) => s.setChartView);
 
   return (
     <div
@@ -31,44 +21,6 @@ export function TitleBar() {
         </span>
         <span className="text-[9px] text-secondary font-medium">MeToo</span>
       </div>
-
-      {/* View switcher */}
-      {status === "done" && (
-        <div className="flex gap-0.5 bg-[var(--bg-card)] rounded-lg p-0.5 ml-4">
-          {VIEW_OPTIONS.map((opt) => {
-            const Icon = opt.icon;
-            const active = chartView === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => setChartView(opt.id)}
-                className="relative flex items-center gap-1 px-2.5 py-1 rounded-md z-[1]"
-              >
-                {active && (
-                  <motion.div
-                    layoutId="chart-view-indicator"
-                    className="absolute inset-0 bg-white rounded-md"
-                    transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                  />
-                )}
-                <Icon
-                  size={12}
-                  className={`relative z-[1] transition-colors duration-200 ${
-                    active ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                  }`}
-                />
-                <span
-                  className={`relative z-[1] text-[10px] font-medium transition-colors duration-200 ${
-                    active ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                  }`}
-                >
-                  {opt.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       <div data-tauri-drag-region className="flex-1" />
 
