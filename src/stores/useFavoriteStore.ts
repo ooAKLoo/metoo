@@ -56,6 +56,11 @@ interface SavedFavoriteList {
 type FetchStatus = "idle" | "fetching" | "done" | "error";
 type InputMode = "bilibili" | "xhs-paste";
 
+interface ListPreview {
+  covers: string[];
+  titles: string[];
+}
+
 interface FavoriteState {
   url: string;
   inputMode: InputMode;
@@ -66,6 +71,7 @@ interface FavoriteState {
   error: string | null;
   progress: { current: number; total: number };
   savedLists: SavedListEntry[];
+  listPreviews: Record<string, ListPreview>;
 
   setUrl: (url: string) => void;
   setInputMode: (mode: InputMode) => void;
@@ -76,6 +82,7 @@ interface FavoriteState {
   loadSavedLists: () => Promise<void>;
   loadList: (mediaId: string) => Promise<void>;
   deleteList: (mediaId: string) => Promise<void>;
+  mergeLists: (sourceIds: string[], newTitle: string) => Promise<void>;
 }
 
 export const useFavoriteStore = create<FavoriteState>((set, get) => ({
@@ -88,6 +95,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   error: null,
   progress: { current: 0, total: 0 },
   savedLists: [],
+  listPreviews: {},
 
   setUrl: (url) => set({ url }),
   setInputMode: (mode) => set({ inputMode: mode }),
@@ -183,7 +191,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       }
 
       const mediaId = `xhs_${board.boardId}`;
-      const listTitle = `🍠 ${board.boardName}`;
+      const listTitle = board.boardName;
 
       const items: FavoriteItem[] = notes.map((note, i) => ({
         id: parseInt(note.id.slice(-8), 16) || i + 1, // Convert hex tail to number
@@ -239,6 +247,25 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     try {
       const lists = await invoke<SavedListEntry[]>("list_saved_favorites");
       set({ savedLists: lists });
+
+      // Load preview covers for all lists
+      const previews: Record<string, ListPreview> = {};
+      await Promise.all(
+        lists.map(async (entry) => {
+          try {
+            const saved = await invoke<SavedFavoriteList>("load_favorite_list", {
+              mediaId: entry.media_id,
+            });
+            previews[entry.media_id] = {
+              covers: saved.items.slice(0, 3).map((it) => it.cover).filter(Boolean),
+              titles: saved.items.slice(0, 3).map((it) => it.title),
+            };
+          } catch {
+            // skip
+          }
+        }),
+      );
+      set({ listPreviews: previews });
     } catch {
       set({ savedLists: [] });
     }
@@ -277,6 +304,19 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       get().loadSavedLists();
     } catch (err) {
       console.warn("Delete failed:", err);
+    }
+  },
+
+  mergeLists: async (sourceIds: string[], newTitle: string) => {
+    try {
+      const newMediaId = await invoke<string>("merge_favorite_lists", {
+        sourceIds,
+        newTitle,
+      });
+      await get().loadSavedLists();
+      await get().loadList(newMediaId);
+    } catch (err) {
+      set({ error: String(err), status: "error" });
     }
   },
 }));

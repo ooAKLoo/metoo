@@ -1,4 +1,4 @@
-import { MapPin, Plus, RotateCcw, Map, Sparkles, Shapes } from "lucide-react";
+import { MapPin, RotateCcw, Map, Sparkles, Shapes } from "lucide-react";
 import { motion } from "motion/react";
 import { SettingsPanel } from "./SettingsPanel";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
@@ -10,12 +10,7 @@ const VIEW_OPTIONS: { id: ChartView; icon: typeof Map; label: string }[] = [
   { id: "bubble", icon: Shapes, label: "气泡" },
 ];
 
-interface Props {
-  addOpen: boolean;
-  onToggleAdd: () => void;
-}
-
-export function TitleBar({ addOpen, onToggleAdd }: Props) {
+export function TitleBar() {
   const status = useFavoriteStore((s) => s.status);
   const reset = useFavoriteStore((s) => s.reset);
   const chartView = useMapStore((s) => s.chartView);
@@ -78,23 +73,6 @@ export function TitleBar({ addOpen, onToggleAdd }: Props) {
       <div data-tauri-drag-region className="flex-1" />
 
       <div className="flex items-center gap-1.5">
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={onToggleAdd}
-          className={`p-1.5 rounded-lg transition-colors
-            ${addOpen
-              ? "bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]"
-              : "text-secondary hover:bg-card hover:text-primary"
-            }`}
-        >
-          <motion.div
-            animate={{ rotate: addOpen ? 45 : 0 }}
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          >
-            <Plus size={16} />
-          </motion.div>
-        </motion.button>
-
         {status === "done" && (
           <button
             onClick={reset}

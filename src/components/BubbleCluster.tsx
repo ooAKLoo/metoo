@@ -346,92 +346,211 @@ export function BubbleCluster() {
   );
 }
 
-/* ── Pack category bubbles around a center circle ─────── */
+/* ── Circle packing: place satellites tangent to pairs ── */
 
 function packAroundCenter(bubbles: Bubble[], centerR: number) {
   if (bubbles.length === 0) return;
 
-  // Place bubbles in concentric rings around the center
-  let ringR = centerR;
-  let idx = 0;
+  const GAP = 1.5; // small visual gap between circles
 
-  while (idx < bubbles.length) {
-    const r = bubbles[idx].radius;
-    const gap = 2;
-    ringR += r + gap;
+  // All placed circles (center is always the first)
+  const placed: { x: number; y: number; r: number }[] = [
+    { x: 0, y: 0, r: centerR },
+  ];
 
-    const circ = 2 * Math.PI * ringR;
-    const fit = Math.max(1, Math.floor(circ / (r * 2 + gap)));
-    const count = Math.min(fit, bubbles.length - idx);
-    // Offset each ring slightly for organic feel
-    const angleOffset = -Math.PI / 2 + (idx % 2) * 0.3;
+  // Place first bubble tangent to center at top
+  bubbles[0].x = 0;
+  bubbles[0].y = -(centerR + bubbles[0].radius + GAP);
+  placed.push({ x: bubbles[0].x, y: bubbles[0].y, r: bubbles[0].radius });
 
-    for (let j = 0; j < count && idx < bubbles.length; j++, idx++) {
-      const angle = angleOffset + (j / count) * 2 * Math.PI;
-      bubbles[idx].x = ringR * Math.cos(angle);
-      bubbles[idx].y = ringR * Math.sin(angle);
+  if (bubbles.length === 1) return;
+
+  // Place second bubble tangent to center and first bubble
+  const pos2 = tangentToTwo(
+    0, 0, centerR,
+    bubbles[0].x, bubbles[0].y, bubbles[0].radius,
+    bubbles[1].radius, GAP,
+  );
+  if (pos2) {
+    bubbles[1].x = pos2.x;
+    bubbles[1].y = pos2.y;
+  } else {
+    bubbles[1].x = centerR + bubbles[1].radius + GAP;
+    bubbles[1].y = 0;
+  }
+  placed.push({ x: bubbles[1].x, y: bubbles[1].y, r: bubbles[1].radius });
+
+  // For each remaining bubble, find best position tangent to any pair
+  for (let i = 2; i < bubbles.length; i++) {
+    const r = bubbles[i].radius;
+    let bestX = 0;
+    let bestY = 0;
+    let bestDist = Infinity;
+
+    for (let a = 0; a < placed.length; a++) {
+      for (let b = a + 1; b < placed.length; b++) {
+        const solutions = circleTangentPositions(
+          placed[a].x, placed[a].y, placed[a].r,
+          placed[b].x, placed[b].y, placed[b].r,
+          r, GAP,
+        );
+
+        for (const sol of solutions) {
+          // Verify no overlap with any placed circle
+          let valid = true;
+          for (const p of placed) {
+            const dx = sol.x - p.x;
+            const dy = sol.y - p.y;
+            if (Math.sqrt(dx * dx + dy * dy) < p.r + r + GAP - 0.5) {
+              valid = false;
+              break;
+            }
+          }
+          if (valid) {
+            const d = Math.sqrt(sol.x * sol.x + sol.y * sol.y);
+            if (d < bestDist) {
+              bestDist = d;
+              bestX = sol.x;
+              bestY = sol.y;
+            }
+          }
+        }
+      }
     }
 
-    ringR += r;
+    if (bestDist < Infinity) {
+      bubbles[i].x = bestX;
+      bubbles[i].y = bestY;
+    } else {
+      // Fallback: place tangent to center at a free angle
+      const angle = (i / bubbles.length) * 2 * Math.PI - Math.PI / 2;
+      bubbles[i].x = (centerR + r + GAP) * Math.cos(angle);
+      bubbles[i].y = (centerR + r + GAP) * Math.sin(angle);
+    }
+    placed.push({ x: bubbles[i].x, y: bubbles[i].y, r: bubbles[i].radius });
   }
 }
 
-/* ── Distribute clusters evenly across the viewport ───── */
+/** Find two candidate positions for a circle of radius r tangent to two circles */
+function circleTangentPositions(
+  x1: number, y1: number, r1: number,
+  x2: number, y2: number, r2: number,
+  r: number, gap: number,
+): { x: number; y: number }[] {
+  const d1 = r1 + r + gap;
+  const d2 = r2 + r + gap;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const d = Math.sqrt(dx * dx + dy * dy);
+
+  if (d > d1 + d2 || d < Math.abs(d1 - d2) || d === 0) return [];
+
+  const a = (d1 * d1 - d2 * d2 + d * d) / (2 * d);
+  const h2 = d1 * d1 - a * a;
+  if (h2 < 0) return [];
+  const h = Math.sqrt(h2);
+
+  const mx = x1 + (a * dx) / d;
+  const my = y1 + (a * dy) / d;
+
+  return [
+    { x: mx + (h * dy) / d, y: my - (h * dx) / d },
+    { x: mx - (h * dy) / d, y: my + (h * dx) / d },
+  ];
+}
+
+/** Place tangent to two circles, pick the solution closer to origin */
+function tangentToTwo(
+  x1: number, y1: number, r1: number,
+  x2: number, y2: number, r2: number,
+  r: number, gap: number,
+): { x: number; y: number } | null {
+  const sols = circleTangentPositions(x1, y1, r1, x2, y2, r2, r, gap);
+  if (sols.length === 0) return null;
+  // Pick solution closer to origin
+  return sols.reduce((best, s) => {
+    const dBest = best.x * best.x + best.y * best.y;
+    const dS = s.x * s.x + s.y * s.y;
+    return dS < dBest ? s : best;
+  });
+}
+
+/* ── Distribute clusters organically via force simulation ── */
 
 function distributeInViewport(clusters: Cluster[]) {
   const n = clusters.length;
   if (n === 0) return;
 
-  const usableW = W - PAD * 2;
-  const usableH = H - PAD * 2;
+  const cx = W / 2;
+  const cy = H / 2;
+  const CLUSTER_GAP = 10;
 
-  // Grid-based initial placement
-  const cols = Math.ceil(Math.sqrt(n * (usableW / usableH)));
-  const rows = Math.ceil(n / cols);
-  const cellW = usableW / cols;
-  const cellH = usableH / rows;
-
+  // Initial placement: ALL at center with tiny spiral offset
+  // This forces collision to push them apart naturally (like soap bubbles)
   for (let i = 0; i < n; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    // Center within each cell, with slight jitter for organic look
-    const jitterX = (seededRandom(i * 7 + 3) - 0.5) * cellW * 0.2;
-    const jitterY = (seededRandom(i * 13 + 7) - 0.5) * cellH * 0.2;
-    clusters[i].cx = PAD + cellW * (col + 0.5) + jitterX;
-    clusters[i].cy = PAD + cellH * (row + 0.5) + jitterY;
+    const angle = i * 2.399963; // golden angle ≈ 137.5°
+    const spiralR = 3 * Math.sqrt(i + 1); // very tight spiral
+    clusters[i].cx = cx + spiralR * Math.cos(angle);
+    clusters[i].cy = cy + spiralR * Math.sin(angle);
   }
 
-  // Force-based overlap resolution
-  for (let iter = 0; iter < 60; iter++) {
-    let moved = false;
+  // Velocity for each cluster
+  const vx = new Float64Array(n);
+  const vy = new Float64Array(n);
+
+  for (let iter = 0; iter < 300; iter++) {
+    const alpha = 1 - iter / 300; // linear decay 1→0
+    if (alpha < 0.01) break;
+
+    // 1) Gravity: pull toward center (keeps the whole mass compact)
+    for (let i = 0; i < n; i++) {
+      const c = clusters[i];
+      vx[i] += (cx - c.cx) * 0.008 * alpha;
+      vy[i] += (cy - c.cy) * 0.008 * alpha;
+    }
+
+    // 2) Collision repulsion: push overlapping clusters apart
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = clusters[i];
         const b = clusters[j];
         const dx = b.cx - a.cx;
         const dy = b.cy - a.cy;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-        const minDist = a.boundingR + b.boundingR + 12;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const minDist = a.boundingR + b.boundingR + CLUSTER_GAP;
 
         if (dist < minDist) {
-          const push = (minDist - dist) * 0.3;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          a.cx -= nx * push;
-          a.cy -= ny * push;
-          b.cx += nx * push;
-          b.cy += ny * push;
-
-          // Clamp
-          a.cx = clamp(a.cx, PAD, W - PAD);
-          a.cy = clamp(a.cy, PAD, H - PAD);
-          b.cx = clamp(b.cx, PAD, W - PAD);
-          b.cy = clamp(b.cy, PAD, H - PAD);
-          moved = true;
+          const force = ((minDist - dist) / dist) * 0.5;
+          const nx = dx * force;
+          const ny = dy * force;
+          // Mass-weighted: heavier clusters resist more
+          const mA = a.boundingR * a.boundingR;
+          const mB = b.boundingR * b.boundingR;
+          const total = mA + mB;
+          vx[i] -= nx * (mB / total);
+          vy[i] -= ny * (mB / total);
+          vx[j] += nx * (mA / total);
+          vy[j] += ny * (mA / total);
         }
       }
     }
-    if (!moved) break;
+
+    // 3) Apply velocity with damping
+    for (let i = 0; i < n; i++) {
+      clusters[i].cx += vx[i];
+      clusters[i].cy += vy[i];
+      vx[i] *= 0.6; // friction
+      vy[i] *= 0.6;
+
+      // Soft boundary: bounce off edges
+      const r = clusters[i].boundingR;
+      const minX = PAD + r, maxX = W - PAD - r;
+      const minY = PAD + r, maxY = H - PAD - r;
+      if (clusters[i].cx < minX) { clusters[i].cx = minX; vx[i] = Math.abs(vx[i]) * 0.3; }
+      if (clusters[i].cx > maxX) { clusters[i].cx = maxX; vx[i] = -Math.abs(vx[i]) * 0.3; }
+      if (clusters[i].cy < minY) { clusters[i].cy = minY; vy[i] = Math.abs(vy[i]) * 0.3; }
+      if (clusters[i].cy > maxY) { clusters[i].cy = maxY; vy[i] = -Math.abs(vy[i]) * 0.3; }
+    }
   }
 }
 

@@ -129,20 +129,15 @@ export function CityDetailPanel() {
       {selectedCity && (
         <motion.div
           key="city-detail"
-          initial={{ opacity: 0, x: 60 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 60 }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
           transition={{
             type: "spring",
             stiffness: 400,
             damping: 30,
           }}
-          className="absolute top-3 right-3 bottom-3 w-[260px] z-[25]
-                     flex flex-col
-                     bg-panel/80 backdrop-blur-xl
-                     border border-[var(--border-color)]/30
-                     rounded-2xl
-                     shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
+          className="flex-1 min-h-0 flex flex-col"
         >
           {/* Header */}
           <div className="shrink-0 flex items-center gap-2 px-3 pt-3 pb-2">

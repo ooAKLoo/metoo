@@ -408,6 +408,77 @@ async fn delete_favorite_list(app: tauri::AppHandle, media_id: String) -> Result
 }
 
 #[tauri::command]
+async fn merge_favorite_lists(
+    app: tauri::AppHandle,
+    source_ids: Vec<String>,
+    new_title: String,
+) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+
+    // Collect all items from source lists, dedup by bvid
+    let mut merged_items: Vec<FavoriteItem> = Vec::new();
+    let mut seen_bvids = std::collections::HashSet::new();
+
+    for source_id in &source_ids {
+        let list_path = dir.join(format!("{}.json", source_id));
+        if !list_path.exists() {
+            continue;
+        }
+        let raw = fs::read_to_string(&list_path)
+            .map_err(|e| format!("Read error: {}", e))?;
+        let list: SavedFavoriteList =
+            serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
+        for item in list.items {
+            if seen_bvids.insert(item.bvid.clone()) {
+                merged_items.push(item);
+            }
+        }
+    }
+
+    if merged_items.is_empty() {
+        return Err("No items to merge".to_string());
+    }
+
+    // Generate a new media_id for the merged list
+    let now = chrono::Local::now();
+    let new_media_id = format!("merged_{}", now.format("%Y%m%d%H%M%S"));
+    let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    let list = SavedFavoriteList {
+        media_id: new_media_id.clone(),
+        title: new_title.clone(),
+        items: merged_items.clone(),
+        saved_at: now_str.clone(),
+    };
+    let list_path = dir.join(format!("{}.json", new_media_id));
+    let json = serde_json::to_string_pretty(&list)
+        .map_err(|e| format!("Serialize error: {}", e))?;
+    fs::write(&list_path, json).map_err(|e| format!("Write error: {}", e))?;
+
+    // Update index
+    let index_path = dir.join("index.json");
+    let mut index: FavoriteIndex = if index_path.exists() {
+        let raw = fs::read_to_string(&index_path).unwrap_or_default();
+        serde_json::from_str(&raw).unwrap_or(FavoriteIndex { lists: vec![] })
+    } else {
+        FavoriteIndex { lists: vec![] }
+    };
+
+    index.lists.push(FavoriteIndexEntry {
+        media_id: new_media_id.clone(),
+        title: new_title,
+        count: merged_items.len(),
+        saved_at: now_str,
+    });
+
+    let index_json = serde_json::to_string_pretty(&index)
+        .map_err(|e| format!("Serialize index error: {}", e))?;
+    fs::write(&index_path, index_json).map_err(|e| format!("Write index error: {}", e))?;
+
+    Ok(new_media_id)
+}
+
+#[tauri::command]
 async fn save_image_to_downloads(
     app: tauri::AppHandle,
     data: Vec<u8>,
@@ -433,6 +504,7 @@ pub fn run() {
             load_favorite_list,
             list_saved_favorites,
             delete_favorite_list,
+            merge_favorite_lists,
             save_image_to_downloads
         ])
         .run(tauri::generate_context!())
