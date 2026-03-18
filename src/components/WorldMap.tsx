@@ -15,6 +15,8 @@ const DOT_LAND_DEFAULT = "#d0d0d0";
 const DOT_LAND_ACTIVE = "#E63946";
 const DOT_COLS = 90;
 const DOT_RADIUS_RATIO = 2.5 / (1000 / DOT_COLS);
+// World map effective aspect ratio: 360° / (145° × aspectScale 0.9) ≈ 2.76
+const MAP_W_H_RATIO = 360 / (145 * 0.9);
 
 // ── Geometry helpers ──
 
@@ -72,6 +74,12 @@ function buildWorldDotGrid(features: GeoFeature[]) {
     extractCountryPolygons(f.geometry as { type: string; coordinates: number[][][][] | number[][][][][] }),
   );
 
+  // Build name → countryIdx mapping for hover lookup
+  const nameToIdx = new Map<string, number>();
+  validFeatures.forEach((f, i) => {
+    if (f.properties?.name) nameToIdx.set(f.properties.name, i);
+  });
+
   const BOUNDS = { minLng: -180, maxLng: 180, minLat: -60, maxLat: 85 };
   const spacing = (BOUNDS.maxLng - BOUNDS.minLng) / DOT_COLS;
   const rows = Math.ceil((BOUNDS.maxLat - BOUNDS.minLat) / spacing);
@@ -94,7 +102,7 @@ function buildWorldDotGrid(features: GeoFeature[]) {
       if (countryIdx >= 0) dots.push({ lng, lat, countryIdx });
     }
   }
-  return { dots, countryPolygons };
+  return { dots, countryPolygons, nameToIdx };
 }
 
 // ── Component ──
@@ -114,6 +122,11 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
   const { entries } = useCityAggregation();
 
+  // ── Hover animation (driven directly from ECharts events via refs) ──
+  const hoverAnimRef = useRef({ countryIdx: -1, dotOpacity: 1, rafId: 0 });
+  const nameToIdxRef = useRef(new Map<string, number>());
+  const drawDotMatrixRef = useRef(() => {});
+
   // ── Avatar overlay ──
   const [avatarPositions, setAvatarPositions] = useState<AvatarPos[]>([]);
   const avatarPosRef = useRef<AvatarPos[]>([]);
@@ -123,18 +136,26 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const chart = instanceRef.current;
     if (!chart || entries.length === 0) return [];
 
+    const w = chart.getWidth();
+    const h = chart.getHeight();
+    if (!w || !h) return [];
+
     const geoOpt = (chart.getOption() as { geo?: { zoom?: number }[] })?.geo;
     const zoom = geoOpt?.[0]?.zoom ?? 1;
     const zoomScale = Math.pow(zoom, 0.4);
     const effectiveMin = Math.max(18, AVATAR_MIN * zoomScale);
     const effectiveMax = Math.min(72, AVATAR_MAX * zoomScale);
     const maxCount = Math.max(...entries.map((e) => e.count), 1);
+    const maxSize = effectiveMax;
 
     const raw: AvatarPos[] = [];
     for (const city of entries) {
       if (city.covers.length === 0) continue;
       const px = chart.convertToPixel("geo", city.coord);
       if (!px || !isFinite(px[0]) || !isFinite(px[1])) continue;
+      // Skip avatars outside viewport
+      if (px[0] < -maxSize || px[0] > w + maxSize) continue;
+      if (px[1] < -maxSize || px[1] > h + maxSize) continue;
       const t = Math.sqrt(city.count / maxCount);
       const size = effectiveMin + t * (effectiveMax - effectiveMin);
       raw.push({ city, x: px[0], y: px[1], size, visible: true });
@@ -164,12 +185,20 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const container = avatarContainerRef.current;
     if (!chart || !container) return;
 
+    const w = chart.getWidth();
+    const h = chart.getHeight();
+
     for (const ap of avatarPosRef.current) {
       if (!ap.visible) continue;
       const el = container.querySelector(`[data-city="${CSS.escape(ap.city.name)}"]`) as HTMLElement | null;
       if (!el) continue;
       const px = chart.convertToPixel("geo", ap.city.coord);
       if (!px || !isFinite(px[0]) || !isFinite(px[1])) {
+        el.style.display = "none";
+        continue;
+      }
+      // Hide avatars outside viewport
+      if (w && h && (px[0] < -ap.size || px[0] > w + ap.size || px[1] < -ap.size || px[1] > h + ap.size)) {
         el.style.display = "none";
         continue;
       }
@@ -185,10 +214,14 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const dotCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const worldDotData = useMemo(
-    () => (worldFeatures ? buildWorldDotGrid(worldFeatures) : { dots: [], countryPolygons: [] }),
+    () => (worldFeatures
+      ? buildWorldDotGrid(worldFeatures)
+      : { dots: [], countryPolygons: [], nameToIdx: new Map<string, number>() }),
     [worldFeatures],
   );
   const dotGrid = worldDotData.dots;
+  const nameToIdx = worldDotData.nameToIdx;
+  nameToIdxRef.current = nameToIdx;
 
   const countryDataCounts = useMemo(() => {
     const counts = new Map<number, number>();
@@ -233,7 +266,9 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
 
-    if (!chart.getWidth() || !chart.getHeight()) return;
+    const cw = chart.getWidth();
+    const ch = chart.getHeight();
+    if (!cw || !ch) return;
 
     const geoSpacing = 360 / DOT_COLS;
     const p0 = chart.convertToPixel("geo", [0, 0]);
@@ -243,27 +278,53 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const baseR = spacingPx * DOT_RADIUS_RATIO;
     if (baseR < 0.3) return;
 
+    // Pre-calculate visible geographic bounds to skip off-screen dots early
+    const pad = geoSpacing * 2;
+    const geoTL = chart.convertFromPixel("geo", [0, 0]);
+    const geoBR = chart.convertFromPixel("geo", [rect.width, rect.height]);
+    let visMinLng = -180, visMaxLng = 180, visMinLat = -90, visMaxLat = 90;
+    if (geoTL && geoBR && isFinite(geoTL[0]) && isFinite(geoBR[0])
+        && isFinite(geoTL[1]) && isFinite(geoBR[1])) {
+      visMinLng = Math.min(geoTL[0], geoBR[0]) - pad;
+      visMaxLng = Math.max(geoTL[0], geoBR[0]) + pad;
+      visMaxLat = Math.max(geoTL[1], geoBR[1]) + pad;
+      visMinLat = Math.min(geoTL[1], geoBR[1]) - pad;
+    }
+
     const maxCount = countryDataCounts.size > 0 ? Math.max(...countryDataCounts.values()) : 1;
     const defaultDots: { x: number; y: number }[] = [];
     const activeBuckets = new Map<number, { x: number; y: number }[]>();
+    // Hovered country dots separated for fade animation
+    const hoverIdx = hoverAnimRef.current.countryIdx;
+    const hoverDefaultDots: { x: number; y: number }[] = [];
+    const hoverActiveBuckets = new Map<number, { x: number; y: number }[]>();
 
     for (const dot of dotGrid) {
+      // Fast geographic bounds check — skip dots outside visible area
+      if (dot.lng < visMinLng || dot.lng > visMaxLng) continue;
+      if (dot.lat < visMinLat || dot.lat > visMaxLat) continue;
+
       const px = chart.convertToPixel("geo", [dot.lng, dot.lat]);
       if (!px || !isFinite(px[0]) || !isFinite(px[1])) continue;
       if (px[0] < -baseR * 2 || px[0] > rect.width + baseR * 2) continue;
       if (px[1] < -baseR * 2 || px[1] > rect.height + baseR * 2) continue;
 
+      const isHovered = hoverIdx >= 0 && dot.countryIdx === hoverIdx;
+      const targetDefault = isHovered ? hoverDefaultDots : defaultDots;
+      const targetActive = isHovered ? hoverActiveBuckets : activeBuckets;
+
       const count = countryDataCounts.get(dot.countryIdx) || 0;
       if (count > 0) {
         const t = Math.sqrt(count / maxCount);
         const opacity = Math.round((0.45 + t * 0.55) * 10) / 10;
-        if (!activeBuckets.has(opacity)) activeBuckets.set(opacity, []);
-        activeBuckets.get(opacity)!.push({ x: px[0], y: px[1] });
+        if (!targetActive.has(opacity)) targetActive.set(opacity, []);
+        targetActive.get(opacity)!.push({ x: px[0], y: px[1] });
       } else {
-        defaultDots.push({ x: px[0], y: px[1] });
+        targetDefault.push({ x: px[0], y: px[1] });
       }
     }
 
+    // ── Draw non-hovered dots (always full opacity) ──
     ctx.fillStyle = DOT_LAND_DEFAULT;
     ctx.beginPath();
     for (const p of defaultDots) {
@@ -282,8 +343,79 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       }
       ctx.fill();
     }
+
+    // ── Draw hovered country dots with animated fade ──
+    const dotAlpha = hoverAnimRef.current.dotOpacity;
+    if (dotAlpha > 0.01) {
+      if (hoverDefaultDots.length > 0) {
+        ctx.fillStyle = DOT_LAND_DEFAULT;
+        ctx.globalAlpha = dotAlpha;
+        ctx.beginPath();
+        for (const p of hoverDefaultDots) {
+          ctx.moveTo(p.x + baseR, p.y);
+          ctx.arc(p.x, p.y, baseR, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+      for (const [opacity, pts] of hoverActiveBuckets) {
+        ctx.fillStyle = DOT_LAND_ACTIVE;
+        ctx.globalAlpha = opacity * dotAlpha;
+        ctx.beginPath();
+        for (const p of pts) {
+          ctx.moveTo(p.x + baseR, p.y);
+          ctx.arc(p.x, p.y, baseR, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+    }
     ctx.globalAlpha = 1;
   }, [dotGrid, countryDataCounts]);
+  drawDotMatrixRef.current = drawDotMatrix;
+
+  // ── Hover animation trigger (called directly from ECharts events) ──
+  const startHoverAnim = useCallback((newIdx: number) => {
+    const anim = hoverAnimRef.current;
+    if (newIdx === anim.countryIdx) return;
+
+    const fadeOut = newIdx >= 0;
+    anim.countryIdx = newIdx;
+    const startOpacity = anim.dotOpacity;
+    const endOpacity = fadeOut ? 0 : 1;
+    if (startOpacity === endOpacity) {
+      drawDotMatrixRef.current();
+      return;
+    }
+
+    const start = performance.now();
+    // Per motion spec: exit (fade-out) 200ms easeIn, enter (fade-in) 150ms easeOut
+    const duration = fadeOut ? 200 : 150;
+
+    const animate = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = fadeOut ? t * t : 1 - (1 - t) * (1 - t);
+      anim.dotOpacity = startOpacity + (endOpacity - startOpacity) * eased;
+      drawDotMatrixRef.current();
+      if (t < 1) anim.rafId = requestAnimationFrame(animate);
+    };
+
+    cancelAnimationFrame(anim.rafId);
+    anim.rafId = requestAnimationFrame(animate);
+  }, []);
+  const startHoverAnimRef = useRef(startHoverAnim);
+  startHoverAnimRef.current = startHoverAnim;
+
+  // ── Contain-fit: compute layoutSize so full map fills the container ──
+  const getContainSize = useCallback((): number | string => {
+    const el = chartRef.current;
+    if (!el) return "100%";
+    const { width, height } = el.getBoundingClientRect();
+    if (width <= 0 || height <= 0) return "100%";
+    // layoutSize constrains map width; choose largest size where map still fits
+    // World map: 360° wide, ~145° tall, aspectScale 0.9 → W:H ≈ 2.76
+    const fitByWidth = width;
+    const fitByHeight = height * MAP_W_H_RATIO;
+    return Math.min(fitByWidth, fitByHeight);
+  }, []);
 
   // ── Build chart option ──
   const buildOption = useCallback((): echarts.EChartsCoreOption => ({
@@ -291,9 +423,9 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       map: "world",
       roam: true,
       aspectScale: 0.9,
-      layoutCenter: ["50%", "55%"],
-      layoutSize: "140%",
-      scaleLimit: { min: 0.8, max: 10 },
+      layoutCenter: ["50%", "50%"],
+      layoutSize: getContainSize(),
+      scaleLimit: { min: 1, max: 10 },
       animationDurationUpdate: 500,
       animationEasingUpdate: "cubicInOut",
       itemStyle: {
@@ -305,7 +437,9 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       },
       emphasis: {
         itemStyle: {
-          areaColor: "rgba(0,0,0,0.04)", borderColor: "rgba(0,0,0,0)",
+          areaColor: "rgba(0,0,0,0.02)",
+          borderColor: "rgba(0,0,0,0.2)",
+          borderWidth: 1.5,
           shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0,
         },
         label: {
@@ -328,7 +462,7 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       extraCssText: "box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-radius: 10px; padding: 10px 12px;",
     },
     series: [],
-  }), []);
+  }), [getContainSize]);
 
   // Stable ref for drill-down callback
   const drillDownRef = useRef(onDrillDown);
@@ -347,12 +481,20 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       if (!instanceRef.current) {
         instanceRef.current = echarts.init(chartRef.current!, undefined, { renderer: "canvas" });
 
-        instanceRef.current.on("mouseover", { seriesIndex: undefined }, (params: unknown) => {
+        instanceRef.current.on("mouseover", (params: unknown) => {
           const p = params as { componentType?: string; name?: string };
-          if (p.componentType === "geo") setHoveredProvince(p.name || null);
+          if (p.componentType === "geo") {
+            setHoveredProvince(p.name || null);
+            const idx = p.name ? (nameToIdxRef.current.get(p.name) ?? -1) : -1;
+            startHoverAnimRef.current(idx);
+          }
         });
-        instanceRef.current.on("mouseout", { seriesIndex: undefined }, () => {
-          setHoveredProvince(null);
+        instanceRef.current.on("mouseout", (params: unknown) => {
+          const p = params as { componentType?: string; name?: string };
+          if (p.componentType === "geo") {
+            setHoveredProvince(null);
+            startHoverAnimRef.current(-1);
+          }
         });
 
         instanceRef.current.on("click", (params: unknown) => {
@@ -395,6 +537,9 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const chart = instanceRef.current;
     if (!el || !chart || !ready) return;
     const ro = new ResizeObserver(() => {
+      // Recompute contain-fit layout size for new container dimensions
+      const size = getContainSize();
+      chart.setOption({ geo: { layoutSize: size } }, false);
       chart.resize();
       requestAnimationFrame(() => {
         drawDotMatrix();
@@ -403,7 +548,7 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ready, drawDotMatrix, updateAvatarPositions]);
+  }, [ready, getContainSize, drawDotMatrix, updateAvatarPositions]);
 
   // ── Redraw when data changes ──
   useEffect(() => {

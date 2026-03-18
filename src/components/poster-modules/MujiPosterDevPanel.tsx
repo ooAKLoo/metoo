@@ -67,9 +67,11 @@ function S({ label, value, min, max, step, onChange }: {
 export function MujiPosterDevPanel({
   config,
   onChange,
+  templateLabel,
 }: {
   config: MujiPosterConfig;
   onChange: (c: MujiPosterConfig) => void;
+  templateLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const set = <K extends keyof MujiPosterConfig>(k: K, v: MujiPosterConfig[K]) =>
@@ -88,39 +90,41 @@ export function MujiPosterDevPanel({
       {open && (
         <div className="mt-1 bg-black/80 backdrop-blur-md rounded-lg p-3 space-y-1.5">
           <p className="text-[9px] text-neutral-500 uppercase tracking-widest mb-2">Main Text</p>
-          <S label="字号" value={config.mainSize} min={3} max={12} step={0.5} onChange={(v) => set("mainSize", v)} />
-          <S label="字间距" value={config.mainSpacing} min={0} max={0.6} step={0.01} onChange={(v) => set("mainSpacing", v)} />
+          <S label="字号" value={config.mainSize} min={1} max={20} step={0.5} onChange={(v) => set("mainSize", v)} />
+          <S label="字间距" value={config.mainSpacing} min={-0.2} max={1} step={0.01} onChange={(v) => set("mainSpacing", v)} />
           <S label="字重" value={config.mainWeight} min={100} max={900} step={100} onChange={(v) => set("mainWeight", v)} />
-          <S label="加粗描边" value={config.mainStroke} min={0} max={4} step={0.1} onChange={(v) => set("mainStroke", v)} />
-          <S label="上部 top%" value={config.topPos} min={0} max={40} step={1} onChange={(v) => set("topPos", v)} />
-          <S label="下部 btm%" value={config.bottomPos} min={0} max={40} step={1} onChange={(v) => set("bottomPos", v)} />
+          <S label="加粗描边" value={config.mainStroke} min={0} max={8} step={0.1} onChange={(v) => set("mainStroke", v)} />
+          <S label="上部 top%" value={config.topPos} min={0} max={80} step={1} onChange={(v) => set("topPos", v)} />
+          <S label="下部 btm%" value={config.bottomPos} min={0} max={80} step={1} onChange={(v) => set("bottomPos", v)} />
 
           <hr className="border-white/10 !my-2" />
           <p className="text-[9px] text-neutral-500 uppercase tracking-widest mb-2">Sub Text</p>
-          <S label="字号" value={config.subSize} min={1} max={8} step={0.1} onChange={(v) => set("subSize", v)} />
-          <S label="字间距" value={config.subSpacing} min={0} max={0.8} step={0.01} onChange={(v) => set("subSpacing", v)} />
+          <S label="字号" value={config.subSize} min={0.5} max={12} step={0.1} onChange={(v) => set("subSize", v)} />
+          <S label="字间距" value={config.subSpacing} min={-0.2} max={1.5} step={0.01} onChange={(v) => set("subSpacing", v)} />
           <S label="字重" value={config.subWeight} min={100} max={900} step={100} onChange={(v) => set("subWeight", v)} />
-          <S label="加粗描边" value={config.subStroke} min={0} max={4} step={0.1} onChange={(v) => set("subStroke", v)} />
-          <S label="透明度" value={config.subOpacity} min={0.3} max={1} step={0.02} onChange={(v) => set("subOpacity", v)} />
-          <S label="左右偏移" value={config.subOffsetX} min={-30} max={30} step={1} onChange={(v) => set("subOffsetX", v)} />
-          <S label="上下偏移" value={config.subOffsetY} min={-20} max={20} step={1} onChange={(v) => set("subOffsetY", v)} />
-          <S label="起始 X" value={config.subStartX} min={50} max={98} step={1} onChange={(v) => set("subStartX", v)} />
-          <S label="结束 X" value={config.subEndX} min={2} max={50} step={1} onChange={(v) => set("subEndX", v)} />
-          <S label="基准 Y" value={config.subBaseY} min={30} max={80} step={1} onChange={(v) => set("subBaseY", v)} />
-          <S label="波浪幅度" value={config.subWaveAmp} min={0} max={3} step={0.1} onChange={(v) => set("subWaveAmp", v)} />
+          <S label="加粗描边" value={config.subStroke} min={0} max={8} step={0.1} onChange={(v) => set("subStroke", v)} />
+          <S label="透明度" value={config.subOpacity} min={0} max={1} step={0.02} onChange={(v) => set("subOpacity", v)} />
+          <S label="左右偏移" value={config.subOffsetX} min={-50} max={50} step={1} onChange={(v) => set("subOffsetX", v)} />
+          <S label="上下偏移" value={config.subOffsetY} min={-50} max={50} step={1} onChange={(v) => set("subOffsetY", v)} />
+          <S label="起始 X" value={config.subStartX} min={0} max={100} step={1} onChange={(v) => set("subStartX", v)} />
+          <S label="结束 X" value={config.subEndX} min={0} max={100} step={1} onChange={(v) => set("subEndX", v)} />
+          <S label="基准 Y" value={config.subBaseY} min={0} max={100} step={1} onChange={(v) => set("subBaseY", v)} />
+          <S label="波浪幅度" value={config.subWaveAmp} min={0} max={5} step={0.1} onChange={(v) => set("subWaveAmp", v)} />
 
           <hr className="border-white/10 !my-2" />
           <S label="光斑强度" value={config.lightOpacity} min={0} max={1} step={0.05} onChange={(v) => set("lightOpacity", v)} />
 
           <button
             onClick={() => {
-              const json = JSON.stringify(config, null, 2);
-              console.log("MujiPoster config:", json);
+              const label = templateLabel ?? "unknown";
+              const payload = { template: label, config };
+              const json = JSON.stringify(payload, null, 2);
+              console.log(`MujiPoster config [${label}]:`, json);
               navigator.clipboard.writeText(json);
             }}
             className="w-full mt-2 py-1 text-[10px] bg-white/10 hover:bg-white/20 rounded text-white"
           >
-            Copy Config
+            Copy Config{templateLabel ? ` (${templateLabel})` : ""}
           </button>
         </div>
       )}

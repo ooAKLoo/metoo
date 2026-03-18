@@ -20,6 +20,43 @@ export interface XhsBoardInfo {
   noteCount: number;
 }
 
+// ── Strategy 0: Parse Metoo export JSON (from browser console script) ──
+
+function tryParseMetooExport(text: string): {
+  board: XhsBoardInfo;
+  notes: XhsNoteItem[];
+} | null {
+  if (!text.includes('"_metoo_xhs"')) return null;
+
+  try {
+    const data = JSON.parse(text.trim());
+    if (!data._metoo_xhs) return null;
+
+    const board: XhsBoardInfo = {
+      boardName: data.board?.boardName || "小红书收藏",
+      boardId: data.board?.boardId || `xhs_${Date.now()}`,
+      noteCount: data.board?.noteCount || 0,
+    };
+
+    const notes: XhsNoteItem[] = (data.notes || [])
+      .map((n: Record<string, string>) => ({
+        id: n.id || "",
+        title: n.title || "",
+        cover: n.cover?.startsWith("//") ? `https:${n.cover}` : (n.cover || ""),
+        author: n.author || "",
+        likes: n.likes || "0",
+        noteUrl: n.noteUrl || `/explore/${n.id}`,
+      }))
+      .filter((n: XhsNoteItem) => n.id && n.title);
+
+    if (notes.length === 0) return null;
+
+    return { board: { ...board, noteCount: notes.length }, notes };
+  } catch {
+    return null;
+  }
+}
+
 // ── Strategy 1: Extract from __INITIAL_STATE__ embedded JSON ──
 
 function tryParseInitialState(html: string): {
@@ -251,6 +288,10 @@ export function parseXhsHtml(html: string): {
   board: XhsBoardInfo;
   notes: XhsNoteItem[];
 } {
+  // Strategy 0: Metoo export JSON (from browser console script)
+  const fromExport = tryParseMetooExport(html);
+  if (fromExport && fromExport.notes.length > 0) return fromExport;
+
   // Strategy 1: __INITIAL_STATE__ JSON (most reliable for full-page paste)
   const fromState = tryParseInitialState(html);
   if (fromState && fromState.notes.length > 0) return fromState;
@@ -263,6 +304,9 @@ export function parseXhsHtml(html: string): {
  * Detect if pasted text is likely Xiaohongshu HTML.
  */
 export function isXhsHtml(text: string): boolean {
+  // Metoo export JSON from browser console script
+  if (text.includes('"_metoo_xhs"')) return true;
+
   // Must look like HTML (contains at least one tag)
   if (!/<[a-z][\s>]/i.test(text)) return false;
 
@@ -276,3 +320,58 @@ export function isXhsHtml(text: string): boolean {
     (text.includes("xhs") && text.includes("board"))
   );
 }
+
+/** Browser console script — auto-scrolls XHS board page and collects all notes. */
+export const XHS_COLLECT_SCRIPT = `(async () => {
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+  const notes = new Map();
+  let stale = 0;
+  const nameEl = document.querySelector('.board-info .name') || document.querySelector('.board-owner .title');
+  const boardName = nameEl ? nameEl.textContent.trim().split('\\n')[0].trim() : '小红书收藏';
+  let boardId = '';
+  const um = location.href.match(/\\/board\\/([a-f0-9]+)/);
+  if (um) boardId = um[1];
+  const countEl = document.querySelector('.note-count');
+  const cm = countEl?.textContent?.match(/(\\d+)/);
+  const total = cm ? parseInt(cm[1]) : 0;
+  console.log('🔍 开始收集「' + boardName + '」' + (total ? '（约 ' + total + ' 条）' : '') + '...');
+  while (stale < 8) {
+    let found = 0;
+    document.querySelectorAll('section.note-item, section[data-index]').forEach(el => {
+      const a = el.querySelector('a[href*="/board/"], a[href*="/explore/"]');
+      const href = a?.getAttribute('href') || '';
+      const im = href.match(/\\/(board\\/[^/]+|explore)\\/([a-f0-9]+)/);
+      if (!im || notes.has(im[2])) return;
+      const id = im[2];
+      notes.set(id, {
+        id,
+        title: (el.querySelector('[class*="title"] span') || el.querySelector('a.title span'))?.textContent?.trim() || '',
+        cover: ((el.querySelector('[class*="cover"] img') || el.querySelector('a.cover img'))?.getAttribute('src') || '').replace(/xhscdn\\.com\\/\\d+\\/[a-f0-9]+\\//, 'xhscdn.com/'),
+        author: (el.querySelector('[class*="author"] [class*="name"]') || el.querySelector('a.author .name'))?.textContent?.trim() || '',
+        likes: (el.querySelector('[class*="count"]') || el.querySelector('span.count'))?.textContent?.trim() || '0',
+        noteUrl: '/explore/' + id,
+      });
+      found++;
+    });
+    if (found > 0) { stale = 0; console.log('📦 ' + notes.size + (total ? ' / ' + total : '') + ' 条'); }
+    else stale++;
+    window.scrollBy(0, 600);
+    await delay(350);
+    const ld = document.querySelector('.feeds-loading');
+    if (ld && ld.offsetParent !== null) await delay(800);
+  }
+  window.scrollTo(0, 0);
+  const json = JSON.stringify({ _metoo_xhs: true, board: { boardName, boardId, noteCount: notes.size }, notes: [...notes.values()] });
+  try {
+    await navigator.clipboard.writeText(json);
+    console.log('✅ ' + notes.size + ' 条笔记已复制到剪贴板');
+    alert('✅ 已收集 ' + notes.size + ' 条笔记并复制到剪贴板\\n请到觅途粘贴');
+  } catch {
+    const t = document.createElement('textarea');
+    t.value = json;
+    t.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:200px;z-index:99999;font-size:11px';
+    document.body.appendChild(t);
+    t.select();
+    alert('请手动全选复制文本框内容');
+  }
+})()`;

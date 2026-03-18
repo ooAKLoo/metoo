@@ -4,7 +4,7 @@ import { ArrowUp, Loader2, Merge, X, Utensils } from "lucide-react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
-import { isXhsHtml } from "../lib/xhs-parser";
+import { isXhsHtml, XHS_COLLECT_SCRIPT } from "../lib/xhs-parser";
 
 const TABS = [
   { key: "bilibili" as const, label: "B 站" },
@@ -24,8 +24,11 @@ export function AddPanel() {
   const { entries } = useCityAggregation();
 
   const [value, setValue] = useState("");
+  const [scriptCopied, setScriptCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const isFetching = status === "fetching";
+  const [xhsRawData, setXhsRawData] = useState<string | null>(null);
+  const showXhsIndicator = xhsRawData !== null || (isFetching && inputMode === "xhs-paste");
 
   useEffect(() => {
     if (inputMode === "bilibili") setValue(url);
@@ -38,9 +41,19 @@ export function AddPanel() {
 
   const placeholder = inputMode === "bilibili"
     ? "粘贴 B 站收藏夹链接..."
-    : "粘贴小红书收藏夹页面 HTML...";
+    : "粘贴小红书数据...";
 
-  const canSubmit = value.trim().length > 0 && !isFetching;
+  const handleCopyScript = async () => {
+    try {
+      await navigator.clipboard.writeText(XHS_COLLECT_SCRIPT);
+      setScriptCopied(true);
+      setTimeout(() => setScriptCopied(false), 2000);
+    } catch { /* ignore */ }
+  };
+
+  const canSubmit = inputMode === "xhs-paste"
+    ? xhsRawData !== null && !isFetching
+    : value.trim().length > 0 && !isFetching;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -48,8 +61,9 @@ export function AddPanel() {
       setUrl(value);
       fetchAll();
     } else {
-      if (isXhsHtml(value)) {
-        importFromXhsHtml(value);
+      if (xhsRawData) {
+        importFromXhsHtml(xhsRawData);
+        setXhsRawData(null);
         setValue("");
       }
     }
@@ -73,8 +87,7 @@ export function AddPanel() {
     if (isXhsHtml(text)) {
       e.preventDefault();
       setInputMode("xhs-paste");
-      importFromXhsHtml(text);
-      setValue("");
+      setXhsRawData(text);
     }
   };
 
@@ -151,20 +164,59 @@ export function AddPanel() {
 
         {/* Input card — white, with own rounding visible against gray */}
         <div className="bg-white rounded-t-xl p-3 flex flex-col">
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={placeholder}
-            disabled={isFetching}
-            className="w-full bg-transparent text-neutral-700 text-[12px]
-                       placeholder:text-neutral-400
-                       focus:outline-none
-                       disabled:opacity-50 mb-2.5"
-          />
+          {showXhsIndicator ? (
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <div className="flex-1 flex items-center gap-1.5 px-2.5 py-1 bg-neutral-50 rounded-lg">
+                {isFetching ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin text-neutral-400" />
+                    <span className="text-[12px] text-neutral-500">正在导入...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                    <span className="text-[12px] text-neutral-600">小红书数据已就绪</span>
+                  </>
+                )}
+              </div>
+              {!isFetching && (
+                <button
+                  onClick={() => setXhsRawData(null)}
+                  className="p-0.5 text-neutral-400 hover:text-neutral-600
+                             transition-colors cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <input
+              ref={inputRef}
+              type="text"
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={placeholder}
+              disabled={isFetching}
+              className="w-full bg-transparent text-neutral-700 text-[12px]
+                         placeholder:text-neutral-400
+                         focus:outline-none
+                         disabled:opacity-50 mb-2.5"
+            />
+          )}
+
+          {inputMode === "xhs-paste" && (
+            <button
+              onClick={handleCopyScript}
+              className="text-[10px] text-neutral-400 hover:text-neutral-600
+                         transition-colors cursor-pointer mb-1.5 text-left"
+            >
+              {scriptCopied
+                ? "已复制，请到浏览器控制台粘贴运行 ✓"
+                : "收藏超 30 条？复制采集脚本 →"}
+            </button>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-0.5">
@@ -174,6 +226,7 @@ export function AddPanel() {
                   onClick={() => {
                     setInputMode(tab.key);
                     setValue("");
+                    setXhsRawData(null);
                     inputRef.current?.focus();
                   }}
                   className={`px-2 py-1 text-[10px] font-medium rounded-md

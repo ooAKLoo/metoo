@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { PosterRatio } from "../lib/poster-modules";
-import { DEFAULT_CONFIG, type MujiPosterConfig } from "../components/poster-modules/MujiPosterDevPanel";
+import type { MujiPosterConfig } from "../components/poster-modules/MujiPosterDevPanel";
 
 type ViewMode = "all" | "city";
 export type MapLevel = "world" | "china" | `country:${string}`;
@@ -22,9 +22,10 @@ interface MapState {
   chartView: ChartView;
   activePosterModule: string | null;
   posterRatio: PosterRatio;
-  mujiConfig: MujiPosterConfig;
+  mujiConfigs: Record<string, MujiPosterConfig>;
   keyboardThemeIdx: number;
   popBoardMode: "cells" | "center";
+  mujiTemplateIdx: number;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -36,9 +37,10 @@ interface MapState {
   setChartView: (view: ChartView) => void;
   setActivePosterModule: (id: string | null) => void;
   setPosterRatio: (ratio: PosterRatio) => void;
-  setMujiConfig: (config: MujiPosterConfig) => void;
+  setMujiConfig: (templateId: string, config: MujiPosterConfig) => void;
   setKeyboardThemeIdx: (idx: number) => void;
   setPopBoardMode: (mode: "cells" | "center") => void;
+  setMujiTemplateIdx: (idx: number) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -93,9 +95,10 @@ export const useMapStore = create<MapState>((set, get) => ({
   chartView: "map",
   activePosterModule: null,
   posterRatio: "4:3" as PosterRatio,
-  mujiConfig: DEFAULT_CONFIG,
+  mujiConfigs: {},
   keyboardThemeIdx: 0,
   popBoardMode: "cells",
+  mujiTemplateIdx: -1,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -118,10 +121,13 @@ export const useMapStore = create<MapState>((set, get) => ({
   },
   clearRoute: () => set({ routePath: null }),
   setMapLevel: (level) => set({ mapLevel: level }),
-  setChartView: (view) => set({ chartView: view }),
+  setChartView: (view) => set({ chartView: view, activePosterModule: null }),
   setActivePosterModule: (id) => set({ activePosterModule: id }),
   setPosterRatio: (ratio) => set({ posterRatio: ratio }),
-  setMujiConfig: (config) => set({ mujiConfig: config }),
+  setMujiConfig: (templateId, config) => set((s) => ({
+    mujiConfigs: { ...s.mujiConfigs, [templateId]: config },
+  })),
   setKeyboardThemeIdx: (idx) => set({ keyboardThemeIdx: idx }),
   setPopBoardMode: (mode) => set({ popBoardMode: mode }),
+  setMujiTemplateIdx: (idx) => set({ mujiTemplateIdx: idx }),
 }));

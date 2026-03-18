@@ -81,6 +81,8 @@ pub struct FavoriteIndexEntry {
     pub title: String,
     pub count: usize,
     pub saved_at: String,
+    #[serde(default)]
+    pub preview_covers: Vec<String>,
 }
 
 /// Normalize cover URL: ensure https:// prefix
@@ -108,6 +110,50 @@ fn covers_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .join("covers");
     fs::create_dir_all(&dir).map_err(|e| format!("Cannot create covers dir: {}", e))?;
     Ok(dir)
+}
+
+/// Strip the time-based signature from an XHS CDN URL.
+/// `https://sns-webpic-qc.xhscdn.com/202603171718/hash/image_path`
+/// → `https://sns-webpic-qc.xhscdn.com/image_path`
+fn strip_xhs_cdn_signature(url: &str) -> Option<String> {
+    // Find xhscdn.com in the URL, then skip the /{timestamp}/{hash}/ prefix
+    let marker = "xhscdn.com/";
+    let idx = url.find(marker)? + marker.len();
+    let rest = &url[idx..]; // "202603171718/hash/image_path"
+
+    // Skip timestamp segment (digits + /)
+    let after_ts = rest.find('/')? + 1;
+    let rest2 = &rest[after_ts..]; // "hash/image_path"
+
+    // Skip hash segment (hex + /)
+    let after_hash = rest2.find('/')? + 1;
+    let image_path = &rest2[after_hash..]; // "image_path"
+
+    if image_path.is_empty() {
+        return None;
+    }
+
+    let domain_end = url.find(marker)? + marker.len() - 1; // up to and including the /
+    Some(format!("{}{}", &url[..=domain_end], image_path))
+}
+
+/// Try to download bytes from a URL with appropriate headers.
+async fn try_download(client: &reqwest::Client, url: &str, referer: &str) -> Option<Vec<u8>> {
+    let resp = client
+        .get(url)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header("Referer", referer)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let bytes = resp.bytes().await.ok()?;
+    if bytes.len() < 100 {
+        return None;
+    }
+    Some(bytes.to_vec())
 }
 
 /// Download a cover image to the local covers directory.
@@ -140,43 +186,36 @@ async fn download_cover(url: &str, covers_dir: &Path) -> String {
         return local_path.to_string_lossy().to_string();
     }
 
-    // Pick Referer based on the image CDN origin
-    let referer = if url.contains("xhscdn") || url.contains("xiaohongshu") {
+    let is_xhs = url.contains("xhscdn") || url.contains("xiaohongshu");
+    let referer = if is_xhs {
         "https://www.xiaohongshu.com/"
     } else {
         "https://www.bilibili.com/"
     };
 
-    // Download the image
     let client = reqwest::Client::new();
-    let resp = match client
-        .get(url)
-        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .header("Referer", referer)
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(_) => return url.to_string(), // fallback to remote URL
+
+    // Try the original URL first
+    let bytes = if let Some(b) = try_download(&client, url, referer).await {
+        b
+    } else if is_xhs {
+        // XHS CDN signature may have expired — try without the signature prefix
+        if let Some(unsigned_url) = strip_xhs_cdn_signature(url) {
+            if let Some(b) = try_download(&client, &unsigned_url, referer).await {
+                b
+            } else {
+                return String::new();
+            }
+        } else {
+            return String::new();
+        }
+    } else {
+        return String::new();
     };
-
-    if !resp.status().is_success() {
-        return url.to_string();
-    }
-
-    let bytes = match resp.bytes().await {
-        Ok(b) => b,
-        Err(_) => return url.to_string(),
-    };
-
-    // Sanity check: skip empty or suspiciously small responses
-    if bytes.len() < 100 {
-        return url.to_string();
-    }
 
     match fs::write(&local_path, &bytes) {
         Ok(_) => local_path.to_string_lossy().to_string(),
-        Err(_) => url.to_string(),
+        Err(_) => String::new(),
     }
 }
 
@@ -324,11 +363,18 @@ async fn save_favorite_list(
     };
 
     // Upsert entry
+    let preview_covers: Vec<String> = local_items
+        .iter()
+        .map(|it| it.cover.clone())
+        .filter(|c| !c.is_empty())
+        .take(10)
+        .collect();
     let entry = FavoriteIndexEntry {
         media_id: media_id.clone(),
         title,
         count: local_items.len(),
         saved_at: now,
+        preview_covers,
     };
     if let Some(existing) = index.lists.iter_mut().find(|e| e.media_id == media_id) {
         *existing = entry;
@@ -354,27 +400,8 @@ async fn load_favorite_list(
         return Err("List not found".to_string());
     }
     let raw = fs::read_to_string(&list_path).map_err(|e| format!("Read error: {}", e))?;
-    let mut list: SavedFavoriteList =
+    let list: SavedFavoriteList =
         serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
-
-    // Auto-repair: download any covers that are still remote URLs
-    let covers = covers_dir(&app)?;
-    let mut dirty = false;
-    for item in &mut list.items {
-        if !item.cover.is_empty() && !item.cover.starts_with('/') {
-            let local = download_cover(&item.cover, &covers).await;
-            if local.starts_with('/') {
-                item.cover = local;
-                dirty = true;
-            }
-        }
-    }
-    // Persist repaired data back to JSON
-    if dirty {
-        if let Ok(json) = serde_json::to_string_pretty(&list) {
-            let _ = fs::write(&list_path, json);
-        }
-    }
 
     Ok(list)
 }
@@ -387,8 +414,32 @@ async fn list_saved_favorites(app: tauri::AppHandle) -> Result<Vec<FavoriteIndex
         return Ok(vec![]);
     }
     let raw = fs::read_to_string(&index_path).map_err(|e| format!("Read error: {}", e))?;
-    let index: FavoriteIndex =
+    let mut index: FavoriteIndex =
         serde_json::from_str(&raw).unwrap_or(FavoriteIndex { lists: vec![] });
+
+    // Backfill preview_covers for entries that lack them
+    let mut dirty = false;
+    for entry in &mut index.lists {
+        if entry.preview_covers.is_empty() {
+            let list_path = dir.join(format!("{}.json", entry.media_id));
+            if let Ok(raw) = fs::read_to_string(&list_path) {
+                if let Ok(list) = serde_json::from_str::<SavedFavoriteList>(&raw) {
+                    entry.preview_covers = list.items.iter()
+                        .map(|it| it.cover.clone())
+                        .filter(|c| !c.is_empty())
+                        .take(10)
+                        .collect();
+                    dirty = true;
+                }
+            }
+        }
+    }
+    if dirty {
+        if let Ok(json) = serde_json::to_string_pretty(&index) {
+            let _ = fs::write(&index_path, json);
+        }
+    }
+
     Ok(index.lists)
 }
 
@@ -484,11 +535,18 @@ async fn merge_favorite_lists(
         FavoriteIndex { lists: vec![] }
     };
 
+    let preview_covers: Vec<String> = merged_items
+        .iter()
+        .map(|it| it.cover.clone())
+        .filter(|c| !c.is_empty())
+        .take(10)
+        .collect();
     index.lists.push(FavoriteIndexEntry {
         media_id: new_media_id.clone(),
         title: new_title,
         count: merged_items.len(),
         saved_at: now_str,
+        preview_covers,
     });
 
     let index_json = serde_json::to_string_pretty(&index)

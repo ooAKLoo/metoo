@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronRight, Trash2, Merge, Check } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -31,7 +31,27 @@ function CollectionCard({
   isSelected: boolean;
   onToggleSelect: () => void;
 }) {
-  const previewCovers = covers.slice(0, 5);
+  // 跳过加载失败的封面，从后面补上
+  const [failedSet, setFailedSet] = useState<Set<string>>(() => new Set());
+  const prevCoversRef = useRef(covers);
+  if (prevCoversRef.current !== covers) {
+    prevCoversRef.current = covers;
+    if (failedSet.size > 0) setFailedSet(new Set());
+  }
+
+  const previewCovers = useMemo(() => {
+    const valid = covers.filter((c) => !failedSet.has(c));
+    return valid.slice(0, 5);
+  }, [covers, failedSet]);
+
+  const handleImgError = useCallback((url: string) => {
+    setFailedSet((prev) => {
+      if (prev.has(url)) return prev;
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+  }, []);
 
   return (
     <motion.div
@@ -102,6 +122,7 @@ function CollectionCard({
                     crossOrigin="anonymous"
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    onError={() => handleImgError(previewCovers[0])}
                   />
                 )}
               </div>
@@ -118,6 +139,7 @@ function CollectionCard({
                           crossOrigin="anonymous"
                           className="w-full h-full object-cover"
                           loading="lazy"
+                          onError={() => handleImgError(previewCovers[i])}
                         />
                       )}
                     </div>
@@ -135,7 +157,7 @@ function CollectionCard({
 export function CollectionTabs() {
   const {
     savedLists, loadSavedLists, loadList, deleteList, mergeLists,
-    mediaId: activeId, items, listPreviews,
+    mediaId: activeId,
     mergeMode, setMergeMode,
   } = useFavoriteStore();
 
@@ -161,7 +183,6 @@ export function CollectionTabs() {
     setPendingDelete(null);
   }, [pendingDelete, deleteList]);
 
-  const activeCovers = useMemo(() => items.map((it) => it.cover).filter(Boolean), [items]);
 
   const toggleSelect = useCallback((mediaId: string) => {
     setSelectedIds((prev) => {
@@ -194,13 +215,12 @@ export function CollectionTabs() {
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide -mx-1 px-1 space-y-1">
         {savedLists.map((entry) => {
           const isActive = activeId === entry.media_id;
-          const preview = listPreviews[entry.media_id];
           return (
             <CollectionCard
               key={entry.media_id}
               entry={entry}
               isActive={isActive}
-              covers={isActive ? activeCovers : (preview?.covers ?? [])}
+              covers={entry.preview_covers ?? []}
               onSelect={() => { if (!isActive) loadList(entry.media_id); }}
               onDelete={() => setPendingDelete(entry)}
               mergeMode={mergeMode}

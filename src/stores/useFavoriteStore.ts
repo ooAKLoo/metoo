@@ -37,6 +37,7 @@ export interface SavedListEntry {
   title: string;
   count: number;
   saved_at: string;
+  preview_covers: string[];
 }
 
 interface SavedFavoriteList {
@@ -56,11 +57,6 @@ interface SavedFavoriteList {
 type FetchStatus = "idle" | "fetching" | "done" | "error";
 type InputMode = "bilibili" | "xhs-paste";
 
-interface ListPreview {
-  covers: string[];
-  titles: string[];
-}
-
 interface FavoriteState {
   url: string;
   inputMode: InputMode;
@@ -71,7 +67,6 @@ interface FavoriteState {
   error: string | null;
   progress: { current: number; total: number };
   savedLists: SavedListEntry[];
-  listPreviews: Record<string, ListPreview>;
   mergeMode: boolean;
 
   setUrl: (url: string) => void;
@@ -97,7 +92,6 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   error: null,
   progress: { current: 0, total: 0 },
   savedLists: [],
-  listPreviews: {},
   mergeMode: false,
 
   setUrl: (url) => set({ url }),
@@ -187,6 +181,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   },
 
   importFromXhsHtml: async (html: string) => {
+    set({ status: "fetching", error: null });
     try {
       const { board, notes } = parseXhsHtml(html);
 
@@ -214,7 +209,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         mediaId,
         listTitle,
         items,
-        status: "done",
+        status: "fetching",
         error: null,
         url: "",
         progress: { current: items.length, total: board.noteCount },
@@ -232,6 +227,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         await get().loadList(mediaId);
       } catch (e) {
         console.warn("Failed to persist XHS:", e);
+        set({ status: "done" });
       }
     } catch (err) {
       set({ error: `解析失败: ${err}`, status: "error" });
@@ -253,25 +249,6 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     try {
       const lists = await invoke<SavedListEntry[]>("list_saved_favorites");
       set({ savedLists: lists });
-
-      // Load preview covers for all lists
-      const previews: Record<string, ListPreview> = {};
-      await Promise.all(
-        lists.map(async (entry) => {
-          try {
-            const saved = await invoke<SavedFavoriteList>("load_favorite_list", {
-              mediaId: entry.media_id,
-            });
-            previews[entry.media_id] = {
-              covers: saved.items.slice(0, 5).map((it) => it.cover).filter(Boolean),
-              titles: saved.items.slice(0, 5).map((it) => it.title),
-            };
-          } catch {
-            // skip
-          }
-        }),
-      );
-      set({ listPreviews: previews });
     } catch {
       set({ savedLists: [] });
     }

@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Map as MapIcon, LayoutGrid, Shapes, ArrowLeft, Download, Loader2, Check } from "lucide-react";
 import { MapView } from "./MapView";
@@ -12,8 +12,9 @@ import { useMapStore, type ChartView } from "../stores/useMapStore";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { savePosterToDownloads } from "../lib/poster-export";
 import { getPosterModule, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
-import { MujiPosterDevPanel } from "./poster-modules/MujiPosterDevPanel";
+import { MujiPosterDevPanel, DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
 import { KEYBOARD_THEMES } from "./poster-modules/KeyboardPoster";
+import { MUJI_TEMPLATES, getDefaultTemplateIdx } from "./poster-modules/MujiPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
@@ -29,13 +30,26 @@ export function RightPanel() {
   const activePosterModule = useMapStore((s) => s.activePosterModule);
   const posterRatio = useMapStore((s) => s.posterRatio);
   const setPosterRatio = useMapStore((s) => s.setPosterRatio);
-  const mujiConfig = useMapStore((s) => s.mujiConfig);
+  const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const setMujiConfig = useMapStore((s) => s.setMujiConfig);
   const keyboardThemeIdx = useMapStore((s) => s.keyboardThemeIdx);
   const setKeyboardThemeIdx = useMapStore((s) => s.setKeyboardThemeIdx);
   const popBoardMode = useMapStore((s) => s.popBoardMode);
   const setPopBoardMode = useMapStore((s) => s.setPopBoardMode);
+  const mujiTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
+  const setMujiTemplateIdx = useMapStore((s) => s.setMujiTemplateIdx);
   const status = useFavoriteStore((s) => s.status);
+  const favItems = useFavoriteStore((s) => s.items);
+
+  const effectiveMujiIdx = useMemo(
+    () => mujiTemplateIdx < 0 ? getDefaultTemplateIdx(favItems) : mujiTemplateIdx % MUJI_TEMPLATES.length,
+    [mujiTemplateIdx, favItems],
+  );
+  const currentMujiTemplate = MUJI_TEMPLATES[effectiveMujiIdx];
+  const currentMujiDefault = currentMujiTemplate.defaultConfig
+    ? { ...DEFAULT_CONFIG, ...currentMujiTemplate.defaultConfig }
+    : DEFAULT_CONFIG;
+  const currentMujiConfig = mujiConfigs[currentMujiTemplate.id] ?? currentMujiDefault;
 
   const posterRef = useRef<HTMLDivElement>(null);
   const [dlState, setDlState] = useState<"idle" | "loading" | "done">("idle");
@@ -65,7 +79,7 @@ export function RightPanel() {
 
   return (
     <div className="flex-1 min-w-0 pr-3 pb-3">
-      <div className="h-full relative">
+      <div className="h-full relative overflow-hidden">
         {/* Concave top-left notch */}
         <div
           className="absolute top-0 left-0 z-10"
@@ -325,6 +339,36 @@ export function RightPanel() {
                       </div>
                     )}
 
+                    {activePosterModule === "muji" && (
+                      <div className="flex items-center gap-0.5">
+                        {MUJI_TEMPLATES.map((t, i) => {
+                          const isActive = effectiveMujiIdx === i;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => setMujiTemplateIdx(i)}
+                              className="relative px-2 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer z-[1]"
+                            >
+                              {isActive && (
+                                <motion.div
+                                  layoutId="poster-style-indicator"
+                                  className="absolute inset-0 bg-neutral-800 rounded-lg"
+                                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                                />
+                              )}
+                              <span
+                                className={`relative z-[1] transition-colors duration-200 ${
+                                  isActive ? "text-white" : "text-neutral-500"
+                                }`}
+                              >
+                                {t.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {activePosterModule === "pop-board" && (() => {
                       const POP_MODES = [
                         { id: "cells" as const, label: "格子图" },
@@ -366,7 +410,11 @@ export function RightPanel() {
                 {/* Muji dev panel — floating over poster area */}
                 {activePosterModule === "muji" && (
                   <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
-                    <MujiPosterDevPanel config={mujiConfig} onChange={setMujiConfig} />
+                    <MujiPosterDevPanel
+                      config={currentMujiConfig}
+                      onChange={(c) => setMujiConfig(currentMujiTemplate.id, c)}
+                      templateLabel={currentMujiTemplate.label}
+                    />
                   </div>
                 )}
               </div>
