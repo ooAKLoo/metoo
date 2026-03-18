@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { coverSrc } from "../map-shared";
+import { useMapStore } from "../../stores/useMapStore";
 
 /* ── Dimensions ── */
 const N = 7; // 7×7 grid → 24 edge cells
@@ -161,9 +162,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
   const ref = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
-  const [mode, setMode] = useState<"cells" | "center">("cells");
+  const mode = useMapStore((s) => s.popBoardMode);
   const [slots, setSlots] = useState<ScatterSlot[]>(DEFAULT_SCATTER);
-  const [copied, setCopied] = useState(false);
 
   /* Drag state (kept in ref to avoid re-renders during move) */
   const dragRef = useRef<{
@@ -273,19 +273,6 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
     dragRef.current = null;
   }, []);
 
-  /* ── Copy layout ── */
-  const copyLayout = useCallback(() => {
-    const lines = slots
-      .slice(0, centerCovers.length)
-      .map(
-        (s) =>
-          `  { x: ${s.x}, y: ${s.y}, rot: ${s.rot}, w: ${s.w} },`,
-      );
-    const code = `[\n${lines.join("\n")}\n]`;
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [slots, centerCovers.length]);
 
   return (
     <div
@@ -812,27 +799,6 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
       </div>
 
       {/* ── Bottom toolbar ── */}
-      <div
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto"
-        style={{ zIndex: 10 }}
-        data-devPanel
-      >
-        <button
-          onClick={() => setMode((m) => (m === "cells" ? "center" : "cells"))}
-          className="bg-white/90 backdrop-blur rounded-full px-3 py-1.5 shadow-sm text-xs font-medium text-neutral-600 hover:bg-white cursor-pointer transition-colors"
-        >
-          {mode === "cells" ? "📸 照片墙" : "🎲 格子图"}
-        </button>
-
-        {mode === "center" && centerCovers.length > 0 && (
-          <button
-            onClick={copyLayout}
-            className="bg-white/90 backdrop-blur rounded-full px-3 py-1.5 shadow-sm text-xs font-medium text-neutral-600 hover:bg-white cursor-pointer transition-colors"
-          >
-            {copied ? "✅ 已复制" : "📋 复制布局"}
-          </button>
-        )}
-      </div>
     </div>
   );
 }

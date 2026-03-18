@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { useMapStore } from "../../stores/useMapStore";
 
 /* ── Base design dimensions (for proportional scaling) ── */
 const BASE_W = 1100;
@@ -40,7 +41,7 @@ interface ThemePreset {
   accentColor: string;
 }
 
-const THEMES: ThemePreset[] = [
+export const KEYBOARD_THEMES: ThemePreset[] = [
   {
     id: "flat-pop",
     label: "Pop",
@@ -278,8 +279,8 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
-  const [themeIdx, setThemeIdx] = useState(0);
-  const theme = THEMES[themeIdx % THEMES.length];
+  const themeIdx = useMapStore((s) => s.keyboardThemeIdx);
+  const theme = KEYBOARD_THEMES[themeIdx % KEYBOARD_THEMES.length];
 
   const measure = useCallback(() => {
     const el = containerRef.current;
@@ -309,10 +310,6 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
       })),
     );
   }, [cityCount, totalItems, theme]);
-
-  const cycleTheme = useCallback(() => {
-    setThemeIdx((i) => (i + 1) % THEMES.length);
-  }, []);
 
   return (
     <div
@@ -414,22 +411,6 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
                 )}
               </div>
             </div>
-          </div>
-
-          {/* ── Theme switcher (interactive, excluded from export) ── */}
-          <div
-            data-dev-panel
-            onClick={cycleTheme}
-            style={{
-              position: "absolute", top: 16, right: 16, zIndex: 10,
-              padding: "5px 14px", borderRadius: 20,
-              backgroundColor: theme.tagBg, color: theme.tagColor,
-              fontSize: 11, fontWeight: 600, letterSpacing: "0.08em",
-              cursor: "pointer", pointerEvents: "auto",
-              userSelect: "none",
-            }}
-          >
-            {theme.label} ›
           </div>
 
           {/* ── Brand mark ── */}

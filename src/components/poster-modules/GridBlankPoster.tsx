@@ -13,7 +13,7 @@ const COLS = 15;
 const ROWS = 10;
 const SW = 1.2;
 const STROKE = "#333";
-const TOTAL = COLS * ROWS;
+
 
 /* ── Cell content types ── */
 type IconType = "doodle" | "pixel" | "elevation" | "character";
@@ -80,8 +80,16 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
 
   /* Scale grid dimensions proportionally to poster width */
   const ratio = W / BASE_W;
-  const CELL = Math.round(BASE_CELL * ratio);
   const GAP = Math.round(BASE_GAP * ratio);
+
+  /* Widescreen edge-bleed: stretch square cells → rectangles to fill ~92% of poster */
+  const isWide = W / H >= 16 / 9 - 0.01;
+  const cellW = isWide
+    ? Math.floor((W * 0.92 - (COLS - 1) * GAP) / COLS)
+    : Math.round(BASE_CELL * ratio);
+  const cellH = isWide
+    ? Math.floor((H * 0.92 - (ROWS - 1) * GAP) / ROWS)
+    : cellW; /* square for non-widescreen */
 
   const measure = useCallback(() => {
     const el = ref.current;
@@ -128,7 +136,7 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
     const map = new Map<number, FilledCell>();
 
     // Shuffle all indices
-    const indices = Array.from({ length: TOTAL }, (_, i) => i);
+    const indices = Array.from({ length: COLS * ROWS }, (_, i) => i);
     for (let i = indices.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [indices[i], indices[j]] = [indices[j], indices[i]];
@@ -167,7 +175,7 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
     });
 
     // 3) Doodle cells — 3/4 of remaining, 1/4 stays empty for breathing
-    const remaining = TOTAL - cursor;
+    const remaining = COLS * ROWS - cursor;
     const doodleCount = Math.round(remaining * 0.75);
     const doodleSlots = take(doodleCount);
     doodleSlots.forEach((idx) => {
@@ -181,8 +189,8 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
     return map;
   }, [dataSeed, stats, covers]);
 
-  const gridW = COLS * CELL + (COLS - 1) * GAP;
-  const gridH = ROWS * CELL + (ROWS - 1) * GAP;
+  const gridW = COLS * cellW + (COLS - 1) * GAP;
+  const gridH = ROWS * cellH + (ROWS - 1) * GAP;
   const ox = (W - gridW) / 2;
   const oy = (H - gridH) / 2;
 
@@ -216,10 +224,10 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
               Array.from({ length: COLS }, (_, col) => (
                 <rect
                   key={`${row}-${col}`}
-                  x={ox + col * (CELL + GAP)}
-                  y={oy + row * (CELL + GAP)}
-                  width={CELL}
-                  height={CELL}
+                  x={ox + col * (cellW + GAP)}
+                  y={oy + row * (cellH + GAP)}
+                  width={cellW}
+                  height={cellH}
                   fill="none"
                   stroke={STROKE}
                   strokeWidth={SW}
@@ -233,15 +241,15 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
             if (cell.kind === "empty") return null;
             const row = Math.floor(idx / COLS);
             const col = idx % COLS;
-            const cx = ox + col * (CELL + GAP);
-            const cy = oy + row * (CELL + GAP);
+            const cx = ox + col * (cellW + GAP);
+            const cy = oy + row * (cellH + GAP);
 
             const base: React.CSSProperties = {
               position: "absolute",
               left: cx,
               top: cy,
-              width: CELL,
-              height: CELL,
+              width: cellW,
+              height: cellH,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -311,7 +319,7 @@ function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }
                 <CellIcon
                   type={cell.iconType}
                   seed={cell.seed}
-                  size={CELL * 0.7}
+                  size={Math.min(cellW, cellH) * 0.7}
                 />
               </div>
             );
