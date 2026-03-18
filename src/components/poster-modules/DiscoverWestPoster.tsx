@@ -291,34 +291,8 @@ function DiscoverWestPoster({ items, cityEntries }: PosterModuleProps) {
                 </div>
               </div>
 
-              {/* Footer info */}
-              <div className="flex items-start gap-5 mt-auto mb-8 font-sans">
-                <div
-                  className="w-14 h-14 border border-gray-600 rounded-full flex flex-col items-center justify-center leading-tight text-center relative shrink-0"
-                  style={{ fontSize: 8 }}
-                >
-                  <div className="font-bold">途</div>
-                  <div className="flex gap-1">
-                    <span className="w-1 h-1 bg-black rounded-full" />
-                    <span className="w-1 h-1 bg-black rounded-full" />
-                    <span className="w-1 h-1 bg-black rounded-full" />
-                  </div>
-                  <div className="scale-75">METOO</div>
-                </div>
-                <div
-                  className="text-gray-600"
-                  style={{ fontSize: 10, lineHeight: 1.6, letterSpacing: "0.05em" }}
-                >
-                  <p className="font-bold text-gray-800">
-                    觅途 · 旅行收藏可视化
-                  </p>
-                  <p>{totalCities} 座城市 · {totalItems} 个收藏</p>
-                  {topCity && <p>最多收藏: {topCity.name} ({topCity.count})</p>}
-                  <div className="h-3" />
-                  <p>Design: 觅途 METOO</p>
-                  <p>Data: Bilibili / 小红书收藏夹</p>
-                </div>
-              </div>
+              {/* Spacer — keep left column bottom breathing */}
+              <div className="mt-auto mb-8" />
             </div>
 
             {/* Right cover grid */}

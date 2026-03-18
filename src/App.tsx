@@ -78,12 +78,10 @@ export default function App() {
 
           {/* Right panel — preview card */}
           <div className="flex-1 min-w-0 pr-3 pb-3">
-            <div className={`h-full relative transition-colors duration-500 ease-out
-                            ${inPosterMode ? "bg-neutral-100 rounded-2xl" : ""}`}>
-            {/* Concave top-left notch — hidden in poster mode */}
+            <div className="h-full relative">
+            {/* Concave top-left notch */}
             <div
-              className={`absolute top-0 left-0 z-10 transition-opacity duration-300
-                         ${inPosterMode ? "opacity-0 pointer-events-none" : ""}`}
+              className="absolute top-0 left-0 z-10"
               style={{ width: 160, height: 52 }}
             >
               {/* SVG shape background */}
@@ -185,15 +183,9 @@ export default function App() {
               ) : null}
             </AnimatePresence>
 
-            {/* Content card — scales down in poster mode, map stays as background */}
+            {/* Content card */}
             <div
-              ref={inPosterMode ? posterRef : undefined}
-              className={`h-full relative overflow-hidden
-                         transition-all duration-500 ease-out origin-center
-                         ${inPosterMode
-                           ? "bg-white scale-[0.88] rounded-3xl shadow-2xl"
-                           : "bg-neutral-100 rounded-2xl rounded-tl-none"
-                         }`}
+              className="h-full relative overflow-hidden bg-neutral-100 rounded-2xl rounded-tl-none"
             >
               <AnimatePresence mode="wait">
                 {chartView === "map" && !hideBackground && (
@@ -234,19 +226,23 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-              {/* Poster text overlay — on top of map, transparent bg */}
+              {/* Poster preview — white card inside content area */}
               <AnimatePresence>
                 {inPosterMode && (
-                  <motion.div
-                    key="poster-overlay"
-                    className="absolute inset-0 z-10 pointer-events-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    <PosterPreview />
-                  </motion.div>
+                  <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
+                    <div className="shrink-0 h-[52px]" />
+                    <motion.div
+                      key="poster-card"
+                      ref={posterRef}
+                      className="flex-1 min-h-0 mx-3 mb-3 bg-white rounded-2xl shadow-sm relative overflow-hidden origin-center"
+                      initial={{ opacity: 0, scale: 0.92 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.92 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                    >
+                      <PosterPreview />
+                    </motion.div>
+                  </div>
                 )}
               </AnimatePresence>
 

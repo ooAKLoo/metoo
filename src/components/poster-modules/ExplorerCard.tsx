@@ -121,25 +121,6 @@ function ExplorerCard({ items, cityEntries }: PosterModuleProps) {
         }}
         className="relative flex items-center justify-center"
       >
-        {/* Background: split */}
-        <div className="absolute inset-0 flex">
-          <div className="w-[45%] h-full" style={{ backgroundColor: theme.bg }} />
-          <div className="w-[55%] h-full" style={{ backgroundColor: theme.navy }} />
-        </div>
-
-        {/* Decorative dots (background) */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.06]" viewBox="0 0 800 1100">
-          {Array.from({ length: 40 }, (_, i) => (
-            <circle
-              key={i}
-              cx={80 + (i % 8) * 90}
-              cy={80 + Math.floor(i / 8) * 200}
-              r={4}
-              fill="white"
-            />
-          ))}
-        </svg>
-
         {/* Card */}
         <div
           className="bg-white flex flex-col relative z-10"
@@ -149,7 +130,7 @@ function ExplorerCard({ items, cityEntries }: PosterModuleProps) {
             borderRadius: 20,
             padding: "20px 22px",
             boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5), 0 0 20px rgba(0,0,0,0.1)",
-            transform: "rotate(-8deg) scale(1.05)",
+            transform: "none",
           }}
         >
           {/* Header */}
@@ -363,7 +344,7 @@ function ExplorerCard({ items, cityEntries }: PosterModuleProps) {
 
         {/* Bottom watermark */}
         <div
-          className="absolute bottom-8 left-0 right-0 text-center text-white/30"
+          className="absolute bottom-8 left-0 right-0 text-center text-gray-300"
           style={{ fontSize: 14, letterSpacing: "0.2em" }}
         >
           METOO · 足迹探索卡

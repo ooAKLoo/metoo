@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useMapStore } from "../stores/useMapStore";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { posterModules } from "../lib/poster-modules";
+import { getPosterDoodleIcon } from "../lib/poster-doodle-icons";
 
 export function PosterModuleBar() {
   const chartView = useMapStore((s) => s.chartView);
@@ -44,7 +45,16 @@ export function PosterModuleBar() {
                              : "bg-neutral-50 hover:bg-neutral-100 text-neutral-600"
                            }`}
               >
-                <span className="text-lg leading-none">{mod.thumbnail}</span>
+                {getPosterDoodleIcon(mod.id) ? (
+                  <svg
+                    viewBox="0 0 40 40"
+                    className="w-5 h-5"
+                    style={{ overflow: "visible" }}
+                    dangerouslySetInnerHTML={{ __html: getPosterDoodleIcon(mod.id)! }}
+                  />
+                ) : (
+                  <span className="text-lg leading-none">{mod.thumbnail}</span>
+                )}
                 <span className="text-[9px] mt-0.5 font-medium tracking-wide whitespace-nowrap">
                   {mod.name}
                 </span>

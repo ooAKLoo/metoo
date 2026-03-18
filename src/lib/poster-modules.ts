@@ -66,15 +66,7 @@ export const posterModules: PosterModule[] = [
     component: lazy(() => import("../components/poster-modules/ExplorerCard")),
     opaqueBackground: true,
   },
-  {
-    id: "bento-grid",
-    name: "便当 · 城市拼图",
-    thumbnail: "⬜",
-    description: "Bento Grid 不等分网格，城市封面拼贴",
-    component: lazy(() => import("../components/poster-modules/BentoGridPoster")),
-    opaqueBackground: true,
-  },
-  {
+{
     id: "grid-mosaic",
     name: "城市 · 拼贴",
     thumbnail: "🧩",
@@ -106,6 +98,14 @@ export const posterModules: PosterModule[] = [
     component: lazy(
       () => import("../components/poster-modules/PopBoardPoster"),
     ),
+    opaqueBackground: true,
+  },
+  {
+    id: "keyboard",
+    name: "键盘 · 桌面",
+    thumbnail: "⌨",
+    description: "波普键盘透视，桌面视角极简明信片",
+    component: lazy(() => import("../components/poster-modules/KeyboardPoster")),
     opaqueBackground: true,
   },
 ];
