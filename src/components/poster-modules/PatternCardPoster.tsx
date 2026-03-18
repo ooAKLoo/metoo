@@ -106,18 +106,11 @@ export function PatternCardPoster({
     <div
       ref={containerRef}
       className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-      style={
-        isBrutal
-          ? {
-              backgroundColor: "#A6A9F7",
-              backgroundImage: "linear-gradient(#8cb1db44 1px, transparent 1px), linear-gradient(90deg, #8cb1db44 1px, transparent 1px)",
-              backgroundSize: "50px 50px",
-            }
-          : { backgroundColor: "#f5f5f5" }
-      }
+      style={{}}
     >
       <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
         <div
+          data-poster-export
           className="relative flex flex-col"
           style={{
             width: POSTER_W,

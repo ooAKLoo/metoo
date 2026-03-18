@@ -124,6 +124,7 @@ function DotMapPoster({ items, cityEntries }: PosterModuleProps) {
     >
       <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
         <div
+          data-poster-export
           className="relative flex flex-col"
           style={{
             width: POSTER_W,

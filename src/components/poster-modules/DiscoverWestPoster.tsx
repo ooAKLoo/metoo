@@ -218,14 +218,10 @@ function DiscoverWestPoster({ items, cityEntries }: PosterModuleProps) {
     <div
       ref={containerRef}
       className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-      style={{
-        backgroundColor: "#f1f5f9",
-        backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)",
-        backgroundSize: "20px 20px",
-      }}
     >
       <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
         <div
+          data-poster-export
           className="bg-white relative flex flex-col"
           style={{
             width: POSTER_W,

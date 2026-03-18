@@ -1,9 +1,8 @@
-import { toPng } from "html-to-image";
+import { domToBlob } from "modern-screenshot";
 import { invoke } from "@tauri-apps/api/core";
 
 export async function exportPoster(element: HTMLElement, scale = 3): Promise<Blob> {
-  // html-to-image can't capture <canvas> (ECharts).
-  // Workaround: temporarily replace each canvas with an <img> snapshot.
+  // Snapshot <canvas> elements (ECharts etc.) as static <img>
   const canvases = element.querySelectorAll("canvas");
   const swaps: { canvas: HTMLCanvasElement; img: HTMLImageElement }[] = [];
 
@@ -25,27 +24,21 @@ export async function exportPoster(element: HTMLElement, scale = 3): Promise<Blo
   });
 
   try {
-    const dataUrl = await toPng(element, {
-      pixelRatio: scale,
-      quality: 1.0,
-      cacheBust: true,
-      fontEmbedCSS: "",
+    // Use offsetWidth/offsetHeight (layout size, unaffected by parent transforms)
+    // to override modern-screenshot's getBoundingClientRect which includes
+    // the parent's scale(fitScale) and returns a smaller viewport.
+    const blob = await domToBlob(element, {
+      scale,
+      width: element.offsetWidth,
+      height: element.offsetHeight,
+      debug: true,
       filter: (node: Node) => {
-        // Keep our temp data-url images, skip all other <img> (remote covers etc.)
-        if (node instanceof HTMLImageElement) {
-          return node.src.startsWith("data:");
-        }
-        // Skip the dev control panel
-        if (node instanceof HTMLElement && node.dataset.devPanel) {
-          return false;
-        }
+        if (node instanceof HTMLElement && node.dataset.devPanel) return false;
         return true;
       },
     });
-    const res = await fetch(dataUrl);
-    return res.blob();
+    return blob;
   } finally {
-    // Restore original canvases
     swaps.forEach(({ canvas, img }) => {
       canvas.style.display = "";
       img.remove();

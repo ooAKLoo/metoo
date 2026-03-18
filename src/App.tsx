@@ -45,7 +45,9 @@ export default function App() {
 
     setDlState("loading");
     try {
-      await savePosterToDownloads(posterRef.current, mod.name);
+      const card = posterRef.current.querySelector("[data-poster-export]") as HTMLElement;
+      const target = card || posterRef.current;
+      await savePosterToDownloads(target, mod.name);
       setDlState("done");
       setTimeout(() => setDlState("idle"), 2000);
     } catch (err) {
@@ -76,7 +78,8 @@ export default function App() {
 
           {/* Right panel — preview card */}
           <div className="flex-1 min-w-0 pr-3 pb-3">
-            <div className="h-full relative">
+            <div className={`h-full relative transition-colors duration-500 ease-out
+                            ${inPosterMode ? "bg-neutral-100 rounded-2xl" : ""}`}>
             {/* Concave top-left notch — hidden in poster mode */}
             <div
               className={`absolute top-0 left-0 z-10 transition-opacity duration-300
@@ -185,11 +188,11 @@ export default function App() {
             {/* Content card — scales down in poster mode, map stays as background */}
             <div
               ref={inPosterMode ? posterRef : undefined}
-              className={`h-full bg-neutral-100 relative overflow-hidden
+              className={`h-full relative overflow-hidden
                          transition-all duration-500 ease-out origin-center
                          ${inPosterMode
-                           ? "scale-[0.88] rounded-3xl shadow-2xl"
-                           : "rounded-2xl rounded-tl-none"
+                           ? "bg-white scale-[0.88] rounded-3xl shadow-2xl"
+                           : "bg-neutral-100 rounded-2xl rounded-tl-none"
                          }`}
             >
               <AnimatePresence mode="wait">

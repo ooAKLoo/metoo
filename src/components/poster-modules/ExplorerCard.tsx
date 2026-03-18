@@ -111,12 +111,12 @@ function ExplorerCard({ items, cityEntries }: PosterModuleProps) {
       ref={containerRef}
       className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
     >
+      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
       <div
+        data-poster-export
         style={{
           width: POSTER_W,
           height: POSTER_H,
-          transform: `scale(${fitScale})`,
-          transformOrigin: "center",
           fontFamily: '"Noto Sans SC", "PingFang SC", system-ui, sans-serif',
         }}
         className="relative flex items-center justify-center"
@@ -368,6 +368,7 @@ function ExplorerCard({ items, cityEntries }: PosterModuleProps) {
         >
           METOO · 足迹探索卡
         </div>
+      </div>
       </div>
     </div>
   );

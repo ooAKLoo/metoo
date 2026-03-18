@@ -66,6 +66,48 @@ export const posterModules: PosterModule[] = [
     component: lazy(() => import("../components/poster-modules/ExplorerCard")),
     opaqueBackground: true,
   },
+  {
+    id: "bento-grid",
+    name: "便当 · 城市拼图",
+    thumbnail: "⬜",
+    description: "Bento Grid 不等分网格，城市封面拼贴",
+    component: lazy(() => import("../components/poster-modules/BentoGridPoster")),
+    opaqueBackground: true,
+  },
+  {
+    id: "grid-mosaic",
+    name: "城市 · 拼贴",
+    thumbnail: "🧩",
+    description: "城市首字 + 封面图交错拼贴，数据驱动的网格海报",
+    component: lazy(() => import("../components/poster-modules/GridMosaicPoster")),
+    opaqueBackground: true,
+  },
+  {
+    id: "data-postcard",
+    name: "足迹 · 数据报告",
+    thumbnail: "◧",
+    description: "四宫格数据可视化明信片，极简现代风",
+    component: lazy(() => import("../components/poster-modules/DataPostcardPoster")),
+    opaqueBackground: true,
+  },
+  {
+    id: "grid-blank",
+    name: "方格 · 留白",
+    thumbnail: "▦",
+    description: "10×15 纯方格模板，极简网格",
+    component: lazy(() => import("../components/poster-modules/GridBlankPoster")),
+    opaqueBackground: true,
+  },
+  {
+    id: "pop-board",
+    name: "波普 · 棋盘",
+    thumbnail: "🎲",
+    description: "Neo-Brutalism 棋盘格，波普风旅行地图",
+    component: lazy(
+      () => import("../components/poster-modules/PopBoardPoster"),
+    ),
+    opaqueBackground: true,
+  },
 ];
 
 export function getPosterModule(id: string): PosterModule | undefined {
