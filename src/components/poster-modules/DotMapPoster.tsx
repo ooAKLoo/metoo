@@ -23,17 +23,13 @@ const DOT_R = 2;
 const SPACING = 9;
 const FUZZINESS = 0.15;
 
-/* ── Poster intrinsic size (A4-ish) ── */
-const POSTER_W = 800;
-const POSTER_H = 1100;
-
 /* ── Deterministic random ── */
 const rand = (seed: number, offset: number) => {
   const x = Math.sin(seed + offset) * 10000;
   return x - Math.floor(x);
 };
 
-function DotMapPoster({ items, cityEntries }: PosterModuleProps) {
+function DotMapPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight: POSTER_H }: PosterModuleProps) {
   /* ── Scale-to-fit container ── */
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
@@ -45,7 +41,7 @@ function DotMapPoster({ items, cityEntries }: PosterModuleProps) {
     const sx = (el.clientWidth - pad) / POSTER_W;
     const sy = (el.clientHeight - pad) / POSTER_H;
     setFitScale(Math.min(sx, sy, 1));
-  }, []);
+  }, [POSTER_W, POSTER_H]);
 
   useEffect(() => {
     measure();

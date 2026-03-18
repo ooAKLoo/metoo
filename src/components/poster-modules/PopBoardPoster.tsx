@@ -3,7 +3,6 @@ import type { PosterModuleProps } from "../../lib/poster-modules";
 import { coverSrc } from "../map-shared";
 
 /* ── Dimensions ── */
-const SIZE = 800;
 const N = 7; // 7×7 grid → 24 edge cells
 const GAP = 3;
 const PAD = 4;
@@ -158,7 +157,7 @@ const DEFAULT_SCATTER: ScatterSlot[] = [
 ];
 
 /* ── Component ── */
-function PopBoardPoster({ cityEntries }: PosterModuleProps) {
+function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: PosterModuleProps) {
   const ref = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -181,12 +180,12 @@ function PopBoardPoster({ cityEntries }: PosterModuleProps) {
     const pad = 48;
     setScale(
       Math.min(
-        (el.clientWidth - pad) / SIZE,
-        (el.clientHeight - pad) / SIZE,
+        (el.clientWidth - pad) / PW,
+        (el.clientHeight - pad) / PH,
         1,
       ),
     );
-  }, []);
+  }, [PW, PH]);
 
   useEffect(() => {
     measure();
@@ -297,8 +296,8 @@ function PopBoardPoster({ cityEntries }: PosterModuleProps) {
         <div
           data-poster-export
           style={{
-            width: SIZE,
-            height: SIZE,
+            width: PW,
+            height: PH,
             backgroundColor: "#000",
             padding: PAD,
             boxSizing: "border-box",

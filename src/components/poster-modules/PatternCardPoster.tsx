@@ -2,10 +2,6 @@ import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { coverSrc } from "../map-shared";
 
-/* ── Poster intrinsic size (A4-ish) ── */
-const POSTER_W = 800;
-const POSTER_H = 1100;
-
 /* ── Color palette ── */
 const CITY_COLORS = [
   "#4361EE", "#E63946", "#2A9D8F", "#E9C46A", "#6A0572", "#264653",
@@ -32,6 +28,8 @@ interface CityCell {
 export function PatternCardPoster({
   items,
   cityEntries,
+  posterWidth: POSTER_W,
+  posterHeight: POSTER_H,
   cardStyle,
 }: PosterModuleProps & { cardStyle: PatternStyle }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +42,7 @@ export function PatternCardPoster({
     const sx = (el.clientWidth - pad) / POSTER_W;
     const sy = (el.clientHeight - pad) / POSTER_H;
     setFitScale(Math.min(sx, sy, 1));
-  }, []);
+  }, [POSTER_W, POSTER_H]);
 
   useEffect(() => {
     measure();

@@ -6,14 +6,8 @@ import { ElevationPersonSVG } from "../poster-generators/ElevationPeople";
 import { CharacterSVG, POSE_CATEGORIES, BODY_TYPES } from "../poster-generators/CharacterGenerator";
 import { mulberry32, DOODLE_ENTRIES } from "../poster-generators/DoodleGallery";
 
-/* ── Poster intrinsic size ── */
-const POSTER_W = 800;
-const POSTER_H = 1100;
-
-/* ── Grid dimensions ── */
-const CELL = 138;
-const GAP = 14;
-const GRID_W = CELL * 4 + GAP * 3;
+/* ── Grid dimensions (base at 800×1100, scales proportionally) ── */
+const BASE_W = 800;
 const BORDER_W = 3;
 const SHADOW = 6;
 
@@ -117,9 +111,15 @@ function GeneratedIcon({ index, size, color, seed }: { index: number; size: numb
 
 /* ── Main Component ── */
 
-function GridMosaicPoster({ items, cityEntries }: PosterModuleProps) {
+function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight: POSTER_H }: PosterModuleProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
+
+  /* Scale grid dimensions proportionally to poster width */
+  const ratio = POSTER_W / BASE_W;
+  const CELL = Math.round(138 * ratio);
+  const GAP = Math.round(14 * ratio);
+  const GRID_W = CELL * 4 + GAP * 3;
 
   const measure = useCallback(() => {
     const el = containerRef.current;
@@ -128,7 +128,7 @@ function GridMosaicPoster({ items, cityEntries }: PosterModuleProps) {
     const sx = (el.clientWidth - pad) / POSTER_W;
     const sy = (el.clientHeight - pad) / POSTER_H;
     setFitScale(Math.min(sx, sy, 1));
-  }, []);
+  }, [POSTER_W, POSTER_H]);
 
   useEffect(() => {
     measure();

@@ -2,14 +2,10 @@ import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 
 /* ── Poster & panel dimensions ── */
-const W = 800;
-const H = 1100;
 const PAD = 40;
 const GAP = 12;
 const HDR = 64;
 const FTR = 28;
-const PW = (W - PAD * 2 - GAP) / 2; // 354
-const PH = (H - PAD * 2 - HDR - FTR - GAP) / 2; // 458
 
 /* ── Earth-tone palette ── */
 const EARTH = ["#D4A853", "#2D4A3E", "#C67F6B", "#7A3B4E", "#8B9E78", "#B8926A"];
@@ -37,11 +33,11 @@ function spline(pts: [number, number][]): string {
 }
 
 /* ── Shared SVG shell ── */
-function Panel({ children }: { children: React.ReactNode }) {
+function Panel({ children, pw, ph }: { children: React.ReactNode; pw: number; ph: number }) {
   return (
     <svg
       width="100%" height="100%"
-      viewBox={`0 0 ${PW} ${PH}`}
+      viewBox={`0 0 ${pw} ${ph}`}
       style={{ fontFamily: FT, display: "block" }}
     >
       {children}
@@ -62,9 +58,9 @@ function SectionLabel({ text }: { text: string }) {
    Panel A — City Pill Bar Chart
    ════════════════════════════════════════════════════ */
 
-function PanelPills({ cities }: { cities: { name: string; count: number }[] }) {
+function PanelPills({ cities, pw: PW, ph: PH }: { cities: { name: string; count: number }[]; pw: number; ph: number }) {
   const top = cities.slice(0, 8);
-  if (!top.length) return <EmptyPanel label="CITIES" />;
+  if (!top.length) return <EmptyPanel label="CITIES" pw={PW} ph={PH} />;
 
   const maxC = Math.max(...top.map((c) => c.count));
   const pad = 16;
@@ -82,7 +78,7 @@ function PanelPills({ cities }: { cities: { name: string; count: number }[] }) {
   });
 
   return (
-    <Panel>
+    <Panel pw={PW} ph={PH}>
       <SectionLabel text="CITIES" />
 
       {/* Trend line behind bars */}
@@ -186,7 +182,7 @@ function detectTheme(items: { title: string; intro: string }[]): "food" | "sight
    Panel B — Sub-category Heatmap Grid (equal blocks)
    ════════════════════════════════════════════════════ */
 
-function PanelTopics({ items }: { items: PosterModuleProps["items"] }) {
+function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["items"]; pw: number; ph: number }) {
   const { blocks, label } = useMemo(() => {
     const counts = SUBCATS.map(() => 0);
     for (const item of items) {
@@ -212,7 +208,7 @@ function PanelTopics({ items }: { items: PosterModuleProps["items"] }) {
     return { blocks: matched, label: THEME_COPY[dom]?.section ?? "TOPICS" };
   }, [items]);
 
-  if (!blocks.length) return <EmptyPanel label="TOPICS" />;
+  if (!blocks.length) return <EmptyPanel label="TOPICS" pw={PW} ph={PH} />;
 
   const pad = 16;
   const gap = 6;
@@ -234,7 +230,7 @@ function PanelTopics({ items }: { items: PosterModuleProps["items"] }) {
   const oy = 48 + (aH - gridH) / 2;
 
   return (
-    <Panel>
+    <Panel pw={PW} ph={PH}>
       <SectionLabel text={label} />
       {blocks.map((b, i) => {
         const col = i % cols;
@@ -276,7 +272,7 @@ function PanelTopics({ items }: { items: PosterModuleProps["items"] }) {
    Panel C — Waffle Dot Grid
    ════════════════════════════════════════════════════ */
 
-function PanelWaffle({ cities, total }: { cities: { name: string; count: number }[]; total: number }) {
+function PanelWaffle({ cities, total, pw: PW, ph: PH }: { cities: { name: string; count: number }[]; total: number; pw: number; ph: number }) {
   const dots = useMemo(() => {
     const out: string[] = [];
     for (const [idx, city] of cities.entries()) {
@@ -289,7 +285,7 @@ function PanelWaffle({ cities, total }: { cities: { name: string; count: number 
     return out;
   }, [cities, total]);
 
-  if (!dots.length) return <EmptyPanel label="ITEMS" />;
+  if (!dots.length) return <EmptyPanel label="ITEMS" pw={PW} ph={PH} />;
 
   const pad = 16;
   const aW = PW - pad * 2;
@@ -305,7 +301,7 @@ function PanelWaffle({ cities, total }: { cities: { name: string; count: number 
   const oy = 48 + (aH - gH) / 2;
 
   return (
-    <Panel>
+    <Panel pw={PW} ph={PH}>
       <SectionLabel text="ITEMS" />
       {dots.map((color, i) => (
         <circle
@@ -338,10 +334,14 @@ function PanelStats({
   cityCount,
   totalItems,
   topCity,
+  pw: PW,
+  ph: PH,
 }: {
   cityCount: number;
   totalItems: number;
   topCity: string;
+  pw: number;
+  ph: number;
 }) {
   const cx = PW / 2;
   const secH = (PH - 48) / 3;
@@ -353,7 +353,7 @@ function PanelStats({
   ];
 
   return (
-    <Panel>
+    <Panel pw={PW} ph={PH}>
       <SectionLabel text="OVERVIEW" />
       {rows.map((r, i) => {
         const baseY = 48 + secH * i + secH / 2;
@@ -389,9 +389,9 @@ function PanelStats({
 }
 
 /* ── Empty fallback ── */
-function EmptyPanel({ label }: { label: string }) {
+function EmptyPanel({ label, pw: PW, ph: PH }: { label: string; pw: number; ph: number }) {
   return (
-    <Panel>
+    <Panel pw={PW} ph={PH}>
       <SectionLabel text={label} />
       <text
         x={PW / 2} y={PH / 2}
@@ -407,16 +407,20 @@ function EmptyPanel({ label }: { label: string }) {
    Main Component
    ════════════════════════════════════════════════════ */
 
-function DataPostcardPoster({ items, cityEntries }: PosterModuleProps) {
+function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: H }: PosterModuleProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
+
+  /* Panel SVG viewBox dimensions — derived from poster size */
+  const PW = (W - PAD * 2 - GAP) / 2;
+  const PH = (H - PAD * 2 - HDR - FTR - GAP) / 2;
 
   const measure = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const p = 48;
     setFitScale(Math.min((el.clientWidth - p) / W, (el.clientHeight - p) / H, 1));
-  }, []);
+  }, [W, H]);
 
   useEffect(() => {
     measure();
@@ -491,15 +495,15 @@ function DataPostcardPoster({ items, cityEntries }: PosterModuleProps) {
           >
             {/* A: City Pills */}
             <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
-              <PanelPills cities={cities} />
+              <PanelPills cities={cities} pw={PW} ph={PH} />
             </div>
             {/* B: Content Topics */}
             <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
-              <PanelTopics items={items} />
+              <PanelTopics items={items} pw={PW} ph={PH} />
             </div>
             {/* C: Waffle Grid */}
             <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
-              <PanelWaffle cities={cities} total={items.length} />
+              <PanelWaffle cities={cities} total={items.length} pw={PW} ph={PH} />
             </div>
             {/* D: Key Stats */}
             <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
@@ -507,6 +511,8 @@ function DataPostcardPoster({ items, cityEntries }: PosterModuleProps) {
                 cityCount={cityEntries.length}
                 totalItems={items.length}
                 topCity={cityEntries[0]?.name ?? ""}
+                pw={PW}
+                ph={PH}
               />
             </div>
           </div>

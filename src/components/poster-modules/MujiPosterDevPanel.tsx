@@ -71,26 +71,22 @@ export function MujiPosterDevPanel({
   config: MujiPosterConfig;
   onChange: (c: MujiPosterConfig) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const set = <K extends keyof MujiPosterConfig>(k: K, v: MujiPosterConfig[K]) =>
     onChange({ ...config, [k]: v });
 
   return (
-    <div
-      className="absolute top-2 left-2 z-50 pointer-events-auto"
-      style={{ fontSize: 0 }}
-      data-dev-panel
-    >
+    <div data-dev-panel>
       <button
         onClick={() => setOpen(!open)}
-        className="w-6 h-6 rounded-md bg-black/70 text-white text-[10px]
-                   flex items-center justify-center hover:bg-black/90"
+        className="w-full py-1.5 text-[10px] font-medium text-neutral-500 hover:text-neutral-700
+                   bg-white/80 backdrop-blur rounded-lg transition-colors"
       >
-        {open ? "×" : "⚙"}
+        {open ? "收起调参面板 ▴" : "调参面板 ▾"}
       </button>
 
       {open && (
-        <div className="mt-1 w-56 max-h-[70vh] overflow-y-auto bg-black/80 backdrop-blur-md rounded-lg p-3 space-y-1.5">
+        <div className="mt-1 bg-black/80 backdrop-blur-md rounded-lg p-3 space-y-1.5">
           <p className="text-[9px] text-neutral-500 uppercase tracking-widest mb-2">Main Text</p>
           <S label="字号" value={config.mainSize} min={3} max={12} step={0.5} onChange={(v) => set("mainSize", v)} />
           <S label="字间距" value={config.mainSpacing} min={0} max={0.6} step={0.01} onChange={(v) => set("mainSpacing", v)} />

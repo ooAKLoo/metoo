@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import type { PosterRatio } from "../lib/poster-modules";
+import { DEFAULT_CONFIG, type MujiPosterConfig } from "../components/poster-modules/MujiPosterDevPanel";
 
 type ViewMode = "all" | "city";
 export type MapLevel = "world" | "china" | `country:${string}`;
@@ -19,6 +21,8 @@ interface MapState {
   mapLevel: MapLevel;
   chartView: ChartView;
   activePosterModule: string | null;
+  posterRatio: PosterRatio;
+  mujiConfig: MujiPosterConfig;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -29,6 +33,8 @@ interface MapState {
   setMapLevel: (level: MapLevel) => void;
   setChartView: (view: ChartView) => void;
   setActivePosterModule: (id: string | null) => void;
+  setPosterRatio: (ratio: PosterRatio) => void;
+  setMujiConfig: (config: MujiPosterConfig) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -82,6 +88,8 @@ export const useMapStore = create<MapState>((set, get) => ({
   mapLevel: "world",
   chartView: "map",
   activePosterModule: null,
+  posterRatio: "4:3" as PosterRatio,
+  mujiConfig: DEFAULT_CONFIG,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -106,4 +114,6 @@ export const useMapStore = create<MapState>((set, get) => ({
   setMapLevel: (level) => set({ mapLevel: level }),
   setChartView: (view) => set({ chartView: view }),
   setActivePosterModule: (id) => set({ activePosterModule: id }),
+  setPosterRatio: (ratio) => set({ posterRatio: ratio }),
+  setMujiConfig: (config) => set({ mujiConfig: config }),
 }));

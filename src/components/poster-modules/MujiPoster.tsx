@@ -1,6 +1,27 @@
-import { useState } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
-import { MujiPosterDevPanel, DEFAULT_CONFIG, type MujiPosterConfig } from "./MujiPosterDevPanel";
+import type { MujiPosterConfig } from "./MujiPosterDevPanel";
+import { useMapStore } from "../../stores/useMapStore";
+
+const WIDESCREEN_CONFIG: MujiPosterConfig = {
+  mainSize: 10.5,
+  mainSpacing: 0,
+  mainWeight: 100,
+  mainStroke: 0,
+  topPos: 5,
+  bottomPos: 7,
+  subSize: 4,
+  subSpacing: 0.44,
+  subWeight: 200,
+  subStroke: 1.4,
+  subOpacity: 0.98,
+  subOffsetX: -3,
+  subOffsetY: -5,
+  subStartX: 88,
+  subEndX: 13,
+  subBaseY: 55,
+  subWaveAmp: 1,
+  lightOpacity: 0.8,
+};
 
 const SUB_LABELS = [
   { text: "無印良品", dy: 0 },
@@ -23,16 +44,13 @@ const LIGHT_SPOTS = [
   { w: "40%", h: "40%", top: "30%",  left: "70%",  blur: 50, op: 0.4 },
 ];
 
-/* ── 开发调试开关：设为 false 关闭面板 ── */
-const DEV_PANEL = true;
-
-function MujiPoster(_props: PosterModuleProps) {
-    const [config, setConfig] = useState<MujiPosterConfig>(DEFAULT_CONFIG);
-    const c = config;
+function MujiPoster({ posterWidth, posterHeight }: PosterModuleProps) {
+    const storeConfig = useMapStore((s) => s.mujiConfig);
+    const c = posterWidth / posterHeight >= 1.5 ? WIDESCREEN_CONFIG : storeConfig;
 
     return (
       <div
-        className="absolute inset-0 overflow-hidden pointer-events-none"
+        className="absolute inset-0 overflow-hidden pointer-events-none z-10"
         style={{
           containerType: "size",
           fontFamily: '"Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif',
@@ -123,8 +141,6 @@ function MujiPoster(_props: PosterModuleProps) {
           })}
         </div>
 
-        {/* DEV panel — 删除 MujiPosterDevPanel.tsx 文件并移除下面这行即可 */}
-        {DEV_PANEL && <MujiPosterDevPanel config={config} onChange={setConfig} />}
       </div>
     );
 }

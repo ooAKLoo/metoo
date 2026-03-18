@@ -2,10 +2,27 @@ import { lazy, type ComponentType } from "react";
 import type { FavoriteItem } from "../stores/useFavoriteStore";
 import type { CityEntry } from "../hooks/useCityAggregation";
 
+/* ── Poster aspect-ratio presets ── */
+export type PosterRatio = "1:1" | "3:4" | "4:3" | "16:9";
+
+export const POSTER_RATIOS: Record<
+  PosterRatio,
+  { w: number; h: number; label: string }
+> = {
+  "1:1": { w: 1080, h: 1080, label: "方形" },
+  "3:4": { w: 1080, h: 1440, label: "竖版" },
+  "4:3": { w: 1440, h: 1080, label: "横版" },
+  "16:9": { w: 1920, h: 1080, label: "宽屏" },
+};
+
+export const POSTER_RATIO_OPTIONS: PosterRatio[] = ["1:1", "3:4", "4:3", "16:9"];
+
 export interface PosterModuleProps {
   items: FavoriteItem[];
   selectedCity: string | null;
   cityEntries: CityEntry[];
+  posterWidth: number;
+  posterHeight: number;
 }
 
 export interface PosterModule {
@@ -25,6 +42,7 @@ export const posterModules: PosterModule[] = [
     thumbnail: "🏔",
     description: "极简留白，诗意旅行",
     component: lazy(() => import("../components/poster-modules/MujiPoster")),
+    opaqueBackground: true,
   },
   {
     id: "dotmap",
@@ -56,14 +74,6 @@ export const posterModules: PosterModule[] = [
     thumbnail: "◉",
     description: "几何纹样卡片，Brutalism 风格",
     component: lazy(() => import("../components/poster-modules/PatternCardBrutal")),
-    opaqueBackground: true,
-  },
-  {
-    id: "explorer-card",
-    name: "足迹 · 探索卡",
-    thumbnail: "🃏",
-    description: "球员卡风格，展示你的探索等级和城市足迹",
-    component: lazy(() => import("../components/poster-modules/ExplorerCard")),
     opaqueBackground: true,
   },
 {

@@ -6,10 +6,9 @@ import { PixelSpriteSVG, SPRITE_NAMES } from "../poster-generators/PixelSprites"
 import { ElevationPersonSVG } from "../poster-generators/ElevationPeople";
 import { CharacterSVG, POSE_CATEGORIES, BODY_TYPES } from "../poster-generators/CharacterGenerator";
 
-const W = 1100;
-const H = 800;
-const CELL = 54;
-const GAP = 6;
+const BASE_W = 1100;
+const BASE_CELL = 54;
+const BASE_GAP = 6;
 const COLS = 15;
 const ROWS = 10;
 const SW = 1.2;
@@ -75,16 +74,21 @@ function CellIcon({ type, seed, size }: { type: IconType; seed: number; size: nu
 
 /* ── Main Component ── */
 
-function GridBlankPoster({ items, cityEntries }: PosterModuleProps) {
+function GridBlankPoster({ items, cityEntries, posterWidth: W, posterHeight: H }: PosterModuleProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [s, setS] = useState(1);
+
+  /* Scale grid dimensions proportionally to poster width */
+  const ratio = W / BASE_W;
+  const CELL = Math.round(BASE_CELL * ratio);
+  const GAP = Math.round(BASE_GAP * ratio);
 
   const measure = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const p = 48;
     setS(Math.min((el.clientWidth - p) / W, (el.clientHeight - p) / H, 1));
-  }, []);
+  }, [W, H]);
 
   useEffect(() => {
     measure();
