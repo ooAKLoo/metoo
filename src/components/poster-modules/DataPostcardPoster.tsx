@@ -1,8 +1,10 @@
-import { createContext, useContext, useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { Rect, Text, Line, Group, Circle, Path } from "react-konva";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { useMapStore } from "../../stores/useMapStore";
 
-/* ── Palette context — avoids threading props through every sub-component ── */
+/* ── Palette context ── */
 interface PalCtx { colors: string[]; muted: string; ink: string; line: string; bg: string }
 const PalCtxDefault: PalCtx = { colors: ["#D4A853", "#2D4A3E", "#C67F6B", "#7A3B4E", "#8B9E78", "#B8926A"], muted: "#C8C0B8", ink: "#2D2D2D", line: "#E8E2DA", bg: "#F7F5F2" };
 const PalContext = createContext<PalCtx>(PalCtxDefault);
@@ -14,7 +16,7 @@ const GAP = 12;
 const HDR = 64;
 const FTR = 28;
 
-/* ── 色相推导引擎 — 单色相 → 全套数据配色 ── */
+/* ── Hue-to-palette engine ── */
 import { hslToHex } from "./PopBoardPoster";
 
 export function deriveDataPalette(hue: number): PalCtx {
@@ -43,7 +45,7 @@ export const DATA_HUE_PRESETS = [
   { name: "玫瑰", hue: 340 },
 ];
 
-const FT = '"Noto Sans SC","PingFang SC",system-ui,sans-serif';
+const FT = "'Noto Sans SC','PingFang SC',system-ui,sans-serif";
 
 /* ── Visual style presets ── */
 export interface DataPostcardStylePreset {
@@ -53,11 +55,11 @@ export interface DataPostcardStylePreset {
   panelBorder: number;
   panelShadowOffset: number;
   panelShadowBlur: number;
-  /** 内阴影（黏土/浮雕） */
+  /** inset shadow (clay/emboss) — omitted in Canvas */
   insetShadow: string;
-  /** 海报外框圆角 */
+  /** poster outer corner radius */
   posterRadius: number;
-  /** 噪点纹理 */
+  /** noise texture — omitted in Canvas */
   noiseOverlay: boolean;
 }
 
@@ -95,7 +97,7 @@ export const DATA_POSTCARD_STYLES: DataPostcardStylePreset[] = [
   },
 ];
 
-/* ── Cardinal spline through points ── */
+/* ── Cardinal spline through points → SVG path data ── */
 function spline(pts: [number, number][]): string {
   if (pts.length < 2) return "";
   const k = 0.3;
@@ -112,114 +114,7 @@ function spline(pts: [number, number][]): string {
   return d;
 }
 
-/* ── Shared SVG shell ── */
-function Panel({ children, pw, ph }: { children: React.ReactNode; pw: number; ph: number }) {
-  return (
-    <svg
-      width="100%" height="100%"
-      viewBox={`0 0 ${pw} ${ph}`}
-      style={{ fontFamily: FT, display: "block" }}
-    >
-      {children}
-    </svg>
-  );
-}
-
-function SectionLabel({ text }: { text: string }) {
-  const { muted: MUTED } = usePal();
-  return (
-    <text x={16} y={28} fontSize={9} fontWeight={700} fill={MUTED}
-      letterSpacing="0.15em" fontFamily={FT}>
-      {text}
-    </text>
-  );
-}
-
-/* ════════════════════════════════════════════════════
-   Panel A — City Pill Bar Chart
-   ════════════════════════════════════════════════════ */
-
-function PanelPills({ cities, pw: PW, ph: PH }: { cities: { name: string; count: number }[]; pw: number; ph: number }) {
-  const { colors: EARTH, ink: INK, line: LINE } = usePal();
-  const top = cities.slice(0, 8);
-  if (!top.length) return <EmptyPanel label="CITIES" pw={PW} ph={PH} />;
-
-  const maxC = Math.max(...top.map((c) => c.count));
-  const pad = 16;
-  const y0 = 48;
-  const yBot = PH - 30;
-  const chartH = yBot - y0 - 12;
-  const colW = (PW - pad * 2) / top.length;
-  const pillW = Math.min(22, colW * 0.48);
-
-  // Compute pill positions for trend line
-  const pts: [number, number][] = top.map((city, i) => {
-    const cx = pad + colW * i + colW / 2;
-    const h = Math.max(pillW, (city.count / maxC) * chartH);
-    return [cx, y0 + chartH - h];
-  });
-
-  return (
-    <Panel pw={PW} ph={PH}>
-      <SectionLabel text="CITIES" />
-
-      {/* Trend line behind bars */}
-      <path d={spline(pts)} stroke={LINE} strokeWidth={1.5} fill="none" />
-
-      {top.map((city, i) => {
-        const cx = pad + colW * i + colW / 2;
-        const h = Math.max(pillW, (city.count / maxC) * chartH);
-        const y = y0 + chartH - h;
-        const color = EARTH[i % EARTH.length];
-
-        return (
-          <g key={i}>
-            {city.count <= 2 ? (
-              /* Small dot for tiny values */
-              <>
-                {Array.from({ length: city.count }, (_, j) => (
-                  <circle
-                    key={j}
-                    cx={cx}
-                    cy={yBot - 8 - j * 14}
-                    r={5}
-                    fill={color}
-                  />
-                ))}
-              </>
-            ) : (
-              <>
-                <rect
-                  x={cx - pillW / 2} y={y}
-                  width={pillW} height={h}
-                  rx={pillW / 2} fill={color}
-                />
-                <text
-                  x={cx} y={y - 8}
-                  textAnchor="middle" fontSize={8} fontWeight={700}
-                  fill={INK} fontFamily={FT}
-                >
-                  {city.count}
-                </text>
-              </>
-            )}
-
-            {/* City name label */}
-            <text
-              x={cx} y={PH - pad + 2}
-              textAnchor="middle" fontSize={8} fontWeight={600}
-              fill={INK} fontFamily={FT}
-            >
-              {city.name.slice(0, 2)}
-            </text>
-          </g>
-        );
-      })}
-    </Panel>
-  );
-}
-
-/* ── Sub-category keywords — first match wins ── */
+/* ── Sub-category keywords ── */
 const SUBCATS: { label: string; theme: "food" | "sight" | "other"; kw: string[] }[] = [
   { label: "火锅", theme: "food", kw: ["火锅"] },
   { label: "烧烤", theme: "food", kw: ["烧烤", "撸串", "烤串"] },
@@ -241,7 +136,7 @@ const SUBCATS: { label: string; theme: "food" | "sight" | "other"; kw: string[] 
   { label: "攻略", theme: "other", kw: ["攻略", "行程", "路线", "干货"] },
 ];
 
-/* ── Theme-aware copy — social / shareable wording ── */
+/* ── Theme-aware copy ── */
 const THEME_COPY: Record<string, { section: string; title: string; sub: string }> = {
   food:  { section: "TASTE",  title: "我的美食版图", sub: "TASTE MAP" },
   sight: { section: "SIGHTS", title: "城市漫游手记", sub: "CITY EXPLORER" },
@@ -261,10 +156,150 @@ function detectTheme(items: { title: string; intro: string }[]): "food" | "sight
 }
 
 /* ════════════════════════════════════════════════════
-   Panel B — Sub-category Heatmap Grid (equal blocks)
+   Konva Panel sub-components
    ════════════════════════════════════════════════════ */
 
-function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["items"]; pw: number; ph: number }) {
+/** Section label rendered at top-left of each panel */
+function KSectionLabel({ text, ox, oy }: { text: string; ox: number; oy: number }) {
+  const { muted } = usePal();
+  return (
+    <Text
+      x={ox + 16}
+      y={oy + 18}
+      text={text}
+      fontSize={9}
+      fontStyle="700"
+      fill={muted}
+      letterSpacing={9 * 0.15}
+      fontFamily={FT}
+    />
+  );
+}
+
+/** Empty fallback panel content */
+function KEmptyPanel({ label, ox, oy, pw, ph }: { label: string; ox: number; oy: number; pw: number; ph: number }) {
+  const { muted } = usePal();
+  return (
+    <Group>
+      <KSectionLabel text={label} ox={ox} oy={oy} />
+      <Text
+        x={ox}
+        y={oy + ph / 2 - 5}
+        width={pw}
+        text="暂无数据"
+        fontSize={10}
+        fill={muted}
+        fontFamily={FT}
+        align="center"
+      />
+    </Group>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   Panel A — City Pill Bar Chart
+   ════════════════════════════════════════════════════ */
+
+function KPanelPills({ cities, ox, oy, pw, ph }: { cities: { name: string; count: number }[]; ox: number; oy: number; pw: number; ph: number }) {
+  const { colors: EARTH, ink: INK, line: LINE } = usePal();
+  const top = cities.slice(0, 8);
+  if (!top.length) return <KEmptyPanel label="CITIES" ox={ox} oy={oy} pw={pw} ph={ph} />;
+
+  const maxC = Math.max(...top.map((c) => c.count));
+  const pad = 16;
+  const y0 = 48;
+  const yBot = ph - 30;
+  const chartH = yBot - y0 - 12;
+  const colW = (pw - pad * 2) / top.length;
+  const pillW = Math.min(22, colW * 0.48);
+
+  // Compute pill positions for trend line
+  const pts: [number, number][] = top.map((city, i) => {
+    const cx = pad + colW * i + colW / 2;
+    const h = Math.max(pillW, (city.count / maxC) * chartH);
+    return [ox + cx, oy + y0 + chartH - h];
+  });
+
+  const trendPath = spline(pts);
+
+  return (
+    <Group>
+      <KSectionLabel text="CITIES" ox={ox} oy={oy} />
+
+      {/* Trend line behind bars */}
+      {trendPath && (
+        <Path data={trendPath} stroke={LINE} strokeWidth={1.5} />
+      )}
+
+      {top.map((city, i) => {
+        const cx = pad + colW * i + colW / 2;
+        const h = Math.max(pillW, (city.count / maxC) * chartH);
+        const y = y0 + chartH - h;
+        const color = EARTH[i % EARTH.length];
+
+        return (
+          <Group key={i}>
+            {city.count <= 2 ? (
+              /* Small dots for tiny values */
+              <>
+                {Array.from({ length: city.count }, (_, j) => (
+                  <Circle
+                    key={j}
+                    x={ox + cx}
+                    y={oy + yBot - 8 - j * 14}
+                    radius={5}
+                    fill={color}
+                  />
+                ))}
+              </>
+            ) : (
+              <>
+                <Rect
+                  x={ox + cx - pillW / 2}
+                  y={oy + y}
+                  width={pillW}
+                  height={h}
+                  cornerRadius={pillW / 2}
+                  fill={color}
+                />
+                <Text
+                  x={ox + cx - 20}
+                  y={oy + y - 16}
+                  width={40}
+                  text={String(city.count)}
+                  fontSize={8}
+                  fontStyle="700"
+                  fill={INK}
+                  fontFamily={FT}
+                  align="center"
+                />
+              </>
+            )}
+
+            {/* City name label */}
+            <Text
+              x={ox + cx - 20}
+              y={oy + ph - pad + 2}
+              width={40}
+              text={city.name.slice(0, 2)}
+              fontSize={8}
+              fontStyle="600"
+              fill={INK}
+              fontFamily={FT}
+              align="center"
+            />
+          </Group>
+        );
+      })}
+    </Group>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   Panel B — Sub-category Heatmap Grid
+   ════════════════════════════════════════════════════ */
+
+function KPanelTopics({ items, ox, oy, pw, ph }: { items: PosterModuleProps["items"]; ox: number; oy: number; pw: number; ph: number }) {
   const { colors: EARTH, ink: INK } = usePal();
   const { blocks, label } = useMemo(() => {
     const counts = SUBCATS.map(() => 0);
@@ -282,7 +317,7 @@ function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["item
       .map((s, i) => ({ label: s.label, theme: s.theme, count: counts[i] }))
       .filter((s) => s.count > 0)
       .sort((a, b) => b.count - a.count)
-      .slice(0, 9); // max 3×3
+      .slice(0, 9);
 
     const tc: Record<string, number> = { food: 0, sight: 0, other: 0 };
     for (const m of matched) tc[m.theme] += m.count;
@@ -291,63 +326,75 @@ function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["item
     return { blocks: matched, label: THEME_COPY[dom]?.section ?? "TOPICS" };
   }, [items]);
 
-  if (!blocks.length) return <EmptyPanel label="TOPICS" pw={PW} ph={PH} />;
+  if (!blocks.length) return <KEmptyPanel label="TOPICS" ox={ox} oy={oy} pw={pw} ph={ph} />;
 
   const pad = 16;
   const gap = 6;
-  const aW = PW - pad * 2;
-  const aH = PH - 48 - pad;
+  const aW = pw - pad * 2;
+  const aH = ph - 48 - pad;
   const maxC = blocks[0].count;
 
-  // Equal-size grid: 3 columns, N rows
   const cols = Math.min(3, blocks.length);
   const rows = Math.ceil(blocks.length / cols);
   const cellW = (aW - gap * (cols - 1)) / cols;
   const cellH = (aH - gap * (rows - 1)) / rows;
   const cell = Math.min(cellW, cellH);
 
-  // Center the grid
   const gridW = cell * cols + gap * (cols - 1);
   const gridH = cell * rows + gap * (rows - 1);
-  const ox = pad + (aW - gridW) / 2;
-  const oy = 48 + (aH - gridH) / 2;
+  const gox = pad + (aW - gridW) / 2;
+  const goy = 48 + (aH - gridH) / 2;
 
   return (
-    <Panel pw={PW} ph={PH}>
-      <SectionLabel text={label} />
+    <Group>
+      <KSectionLabel text={label} ox={ox} oy={oy} />
       {blocks.map((b, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
-        const x = ox + col * (cell + gap);
-        const y = oy + row * (cell + gap);
+        const x = gox + col * (cell + gap);
+        const y = goy + row * (cell + gap);
         const ratio = b.count / maxC;
         const opacity = 0.18 + 0.82 * ratio;
         const textFill = ratio > 0.45 ? "#FFFFFF" : INK;
 
         return (
-          <g key={i}>
-            <rect
-              x={x} y={y} width={cell} height={cell}
-              rx={10} fill={EARTH[0]} opacity={opacity}
+          <Group key={i}>
+            <Rect
+              x={ox + x}
+              y={oy + y}
+              width={cell}
+              height={cell}
+              cornerRadius={10}
+              fill={EARTH[0]}
+              opacity={opacity}
             />
-            <text
-              x={x + cell / 2} y={y + cell / 2 - 2}
-              textAnchor="middle" fontSize={11} fontWeight={700}
-              fill={textFill} fontFamily={FT}
-            >
-              {b.label}
-            </text>
-            <text
-              x={x + cell / 2} y={y + cell / 2 + 14}
-              textAnchor="middle" fontSize={10} fontWeight={600}
-              fill={textFill} fontFamily={FT} opacity={0.7}
-            >
-              {b.count}
-            </text>
-          </g>
+            <Text
+              x={ox + x}
+              y={oy + y + cell / 2 - 8}
+              width={cell}
+              text={b.label}
+              fontSize={11}
+              fontStyle="700"
+              fill={textFill}
+              fontFamily={FT}
+              align="center"
+            />
+            <Text
+              x={ox + x}
+              y={oy + y + cell / 2 + 8}
+              width={cell}
+              text={String(b.count)}
+              fontSize={10}
+              fontStyle="600"
+              fill={textFill}
+              fontFamily={FT}
+              align="center"
+              opacity={0.7}
+            />
+          </Group>
         );
       })}
-    </Panel>
+    </Group>
   );
 }
 
@@ -355,7 +402,7 @@ function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["item
    Panel C — Waffle Dot Grid
    ════════════════════════════════════════════════════ */
 
-function PanelWaffle({ cities, total, pw: PW, ph: PH }: { cities: { name: string; count: number }[]; total: number; pw: number; ph: number }) {
+function KPanelWaffle({ cities, total, ox, oy, pw, ph }: { cities: { name: string; count: number }[]; total: number; ox: number; oy: number; pw: number; ph: number }) {
   const { colors: EARTH, muted: MUTED, line: LINE } = usePal();
   const dots = useMemo(() => {
     const out: string[] = [];
@@ -363,17 +410,16 @@ function PanelWaffle({ cities, total, pw: PW, ph: PH }: { cities: { name: string
       const color = idx < EARTH.length ? EARTH[idx] : MUTED;
       for (let j = 0; j < city.count && out.length < 120; j++) out.push(color);
     }
-    // Unmapped items (no city) → light dots
     const rest = Math.min(120 - out.length, Math.max(0, total - out.length));
     for (let j = 0; j < rest; j++) out.push(LINE);
     return out;
   }, [cities, total]);
 
-  if (!dots.length) return <EmptyPanel label="ITEMS" pw={PW} ph={PH} />;
+  if (!dots.length) return <KEmptyPanel label="ITEMS" ox={ox} oy={oy} pw={pw} ph={ph} />;
 
   const pad = 16;
-  const aW = PW - pad * 2;
-  const aH = PH - 60;
+  const aW = pw - pad * 2;
+  const aH = ph - 60;
   const n = dots.length;
   const cols = Math.max(4, Math.round(Math.sqrt(n * (aW / aH))));
   const rows = Math.ceil(n / cols);
@@ -381,32 +427,36 @@ function PanelWaffle({ cities, total, pw: PW, ph: PH }: { cities: { name: string
   const dr = Math.min(cell * 0.36, 8);
   const gW = cols * cell;
   const gH = rows * cell;
-  const ox = pad + (aW - gW) / 2;
-  const oy = 48 + (aH - gH) / 2;
+  const gox = pad + (aW - gW) / 2;
+  const goy = 48 + (aH - gH) / 2;
 
   return (
-    <Panel pw={PW} ph={PH}>
-      <SectionLabel text="ITEMS" />
+    <Group>
+      <KSectionLabel text="ITEMS" ox={ox} oy={oy} />
       {dots.map((color, i) => (
-        <circle
+        <Circle
           key={i}
-          cx={ox + (i % cols) * cell + cell / 2}
-          cy={oy + Math.floor(i / cols) * cell + cell / 2}
-          r={dr}
+          x={ox + gox + (i % cols) * cell + cell / 2}
+          y={oy + goy + Math.floor(i / cols) * cell + cell / 2}
+          radius={dr}
           fill={color}
         />
       ))}
       {/* Overflow indicator */}
       {total > 120 && (
-        <text
-          x={PW - pad} y={PH - pad}
-          textAnchor="end" fontSize={8} fontWeight={600}
-          fill={MUTED} fontFamily={FT}
-        >
-          +{total - 120} more
-        </text>
+        <Text
+          x={ox + pw - pad - 60}
+          y={oy + ph - pad}
+          width={60}
+          text={`+${total - 120} more`}
+          fontSize={8}
+          fontStyle="600"
+          fill={MUTED}
+          fontFamily={FT}
+          align="right"
+        />
       )}
-    </Panel>
+    </Group>
   );
 }
 
@@ -414,78 +464,79 @@ function PanelWaffle({ cities, total, pw: PW, ph: PH }: { cities: { name: string
    Panel D — Key Stats Typography
    ════════════════════════════════════════════════════ */
 
-function PanelStats({
+function KPanelStats({
   cityCount,
   totalItems,
   topCity,
-  pw: PW,
-  ph: PH,
+  ox,
+  oy,
+  pw,
+  ph,
 }: {
   cityCount: number;
   totalItems: number;
   topCity: string;
+  ox: number;
+  oy: number;
   pw: number;
   ph: number;
 }) {
   const { ink: INK, muted: MUTED, line: LINE } = usePal();
-  const cx = PW / 2;
-  const secH = (PH - 48) / 3;
+  const cx = pw / 2;
+  const secH = (ph - 48) / 3;
 
   const rows = [
     { value: String(cityCount), label: "CITIES", size: 52 },
     { value: String(totalItems), label: "SAVES", size: 52 },
-    { value: topCity || "—", label: "TOP CITY", size: topCity.length > 3 ? 24 : 28 },
+    { value: topCity || "\u2014", label: "TOP CITY", size: topCity.length > 3 ? 24 : 28 },
   ];
 
   return (
-    <Panel pw={PW} ph={PH}>
-      <SectionLabel text="OVERVIEW" />
+    <Group>
+      <KSectionLabel text="OVERVIEW" ox={ox} oy={oy} />
       {rows.map((r, i) => {
+        // baseY = vertical center of each section
         const baseY = 48 + secH * i + secH / 2;
+        // Value centered at baseY, label right below with gap
+        const valueY = baseY - r.size / 2;
+        const labelY = baseY + r.size / 2 + 4;
         return (
-          <g key={i}>
-            <text
-              x={cx} y={baseY}
-              textAnchor="middle" fontSize={r.size} fontWeight={900}
-              fill={INK} fontFamily={FT}
-            >
-              {r.value}
-            </text>
-            <text
-              x={cx} y={baseY + r.size * 0.55}
-              textAnchor="middle" fontSize={9} fontWeight={700}
-              fill={MUTED} letterSpacing="0.15em" fontFamily={FT}
-            >
-              {r.label}
-            </text>
+          <Group key={i}>
+            <Text
+              x={ox}
+              y={oy + valueY}
+              width={pw}
+              text={r.value}
+              fontSize={r.size}
+              fontStyle="900"
+              fill={INK}
+              fontFamily={FT}
+              align="center"
+            />
+            <Text
+              x={ox}
+              y={oy + labelY}
+              width={pw}
+              text={r.label}
+              fontSize={9}
+              fontStyle="700"
+              fill={MUTED}
+              letterSpacing={9 * 0.15}
+              fontFamily={FT}
+              align="center"
+            />
             {/* Separator line between sections */}
             {i < 2 && (
-              <line
-                x1={cx - 20} y1={48 + secH * (i + 1)}
-                x2={cx + 20} y2={48 + secH * (i + 1)}
-                stroke={LINE} strokeWidth={1}
+              <Line
+                points={[ox + cx - 20, oy + 48 + secH * (i + 1), ox + cx + 20, oy + 48 + secH * (i + 1)]}
+                stroke={LINE}
+                strokeWidth={1}
               />
             )}
-          </g>
+          </Group>
         );
       })}
-    </Panel>
-  );
-}
-
-/* ── Empty fallback ── */
-function EmptyPanel({ label, pw: PW, ph: PH }: { label: string; pw: number; ph: number }) {
-  const { muted: MUTED } = usePal();
-  return (
-    <Panel pw={PW} ph={PH}>
-      <SectionLabel text={label} />
-      <text
-        x={PW / 2} y={PH / 2}
-        textAnchor="middle" fontSize={10} fill={MUTED} fontFamily={FT}
-      >
-        暂无数据
-      </text>
-    </Panel>
+    </Group>
   );
 }
 
@@ -505,41 +556,23 @@ function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: 
   const MUTED = activePal.muted;
   const PBG = activePal.bg;
 
-  const panelFrame: React.CSSProperties = useMemo(() => {
-    const shadow = sty.panelShadowBlur > 0
-      ? `0 ${sty.panelShadowBlur / 3}px ${sty.panelShadowBlur}px rgba(0,0,0,0.08)`
-      : sty.panelShadowOffset > 0
-        ? `${sty.panelShadowOffset}px ${sty.panelShadowOffset}px 0 ${INK}20`
-        : "none";
-    return {
-      backgroundColor: PBG,
-      borderRadius: sty.panelRadius,
-      overflow: "hidden" as const,
-      border: sty.panelBorder > 0 ? `${sty.panelBorder}px solid ${INK}30` : "none",
-      boxShadow: [shadow, sty.insetShadow].filter(Boolean).join(", ") || "none",
-    };
-  }, [sty, INK, PBG]);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fitScale, setFitScale] = useState(1);
-
-  /* Panel SVG viewBox dimensions — derived from poster size */
+  /* Panel dimensions in poster coordinate space */
   const PW = (W - PAD * 2 - GAP) / 2;
   const PH = (H - PAD * 2 - HDR - FTR - GAP) / 2;
 
-  const measure = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const p = 48;
-    setFitScale(Math.min((el.clientWidth - p) / W, (el.clientHeight - p) / H, 1));
-  }, [W, H]);
+  /* Grid origin — top-left of the 2x2 panel area */
+  const gridX = PAD;
+  const gridY = PAD + HDR;
 
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [measure]);
+  /* Panel positions */
+  const p0x = gridX;
+  const p0y = gridY;
+  const p1x = gridX + PW + GAP;
+  const p1y = gridY;
+  const p2x = gridX;
+  const p2y = gridY + PH + GAP;
+  const p3x = gridX + PW + GAP;
+  const p3y = gridY + PH + GAP;
 
   const cities = useMemo(
     () => cityEntries.map((e) => ({ name: e.name, count: e.count })),
@@ -549,119 +582,191 @@ function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: 
   const theme = useMemo(() => detectTheme(items), [items]);
   const copy = THEME_COPY[theme];
 
+  /* Panel frame Konva props derived from style preset */
+  const panelShadow = useMemo(() => {
+    if (sty.panelShadowBlur > 0) {
+      return {
+        shadowColor: "rgba(0,0,0,0.08)",
+        shadowBlur: sty.panelShadowBlur,
+        shadowOffsetY: sty.panelShadowBlur / 3,
+        shadowOffsetX: 0,
+      };
+    }
+    if (sty.panelShadowOffset > 0) {
+      return {
+        shadowColor: INK + "20",
+        shadowBlur: 0,
+        shadowOffsetX: sty.panelShadowOffset,
+        shadowOffsetY: sty.panelShadowOffset,
+      };
+    }
+    return {};
+  }, [sty, INK]);
+
+  const panelStroke = sty.panelBorder > 0 ? INK + "30" : undefined;
+  const panelStrokeWidth = sty.panelBorder > 0 ? sty.panelBorder : undefined;
+
   return (
     <PalContext.Provider value={palCtx}>
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-    >
-      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          style={{
-            width: W,
-            height: H,
-            backgroundColor: "#FFFFFF",
-            borderRadius: sty.posterRadius,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
-            fontFamily: FT,
-            overflow: "hidden",
-            padding: PAD,
-            display: "flex",
-            flexDirection: "column",
-            position: "relative",
-          }}
+      <KonvaPosterStage width={W} height={H}>
+        {/* Rounded-corner clip for poster */}
+        <Group
+          clipFunc={sty.posterRadius > 0 ? (ctx) => {
+            const r = sty.posterRadius;
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.arcTo(W, 0, W, H, r);
+            ctx.arcTo(W, H, 0, H, r);
+            ctx.arcTo(0, H, 0, 0, r);
+            ctx.arcTo(0, 0, W, 0, r);
+            ctx.closePath();
+          } : undefined}
         >
-          {/* Noise overlay for sketch/vintage styles */}
-          {sty.noiseOverlay && (
-            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", mixBlendMode: "multiply", opacity: 0.1, zIndex: 10 }}>
-              <filter id="dp-noise"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3" /></filter>
-              <rect width="100%" height="100%" filter="url(#dp-noise)" />
-            </svg>
-          )}
-          {/* Header — theme-aware */}
-          <div
-            style={{
-              height: HDR,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-            }}
-          >
-            <div style={{ fontSize: 20, fontWeight: 900, color: INK, letterSpacing: "-0.02em" }}>
-              {copy.title}
-            </div>
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: MUTED,
-                letterSpacing: "0.15em",
-                marginTop: 4,
-              }}
-            >
-              {copy.sub} · {cityEntries.length} CITIES
-            </div>
-          </div>
+          {/* Outer background (white) */}
+          <Rect width={W} height={H} fill="#FFFFFF" />
 
-          {/* 2×2 Grid */}
-          <div
-            style={{
-              flex: 1,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gridTemplateRows: "1fr 1fr",
-              gap: GAP,
-            }}
-          >
-            {/* A: City Pills */}
-            <div style={panelFrame}>
-              <PanelPills cities={cities} pw={PW} ph={PH} />
-            </div>
-            {/* B: Content Topics */}
-            <div style={panelFrame}>
-              <PanelTopics items={items} pw={PW} ph={PH} />
-            </div>
-            {/* C: Waffle Grid */}
-            <div style={panelFrame}>
-              <PanelWaffle cities={cities} total={items.length} pw={PW} ph={PH} />
-            </div>
-            {/* D: Key Stats */}
-            <div style={panelFrame}>
-              <PanelStats
-                cityCount={cityEntries.length}
-                totalItems={items.length}
-                topCity={cityEntries[0]?.name ?? ""}
-                pw={PW}
-                ph={PH}
-              />
-            </div>
-          </div>
+          {/* ── Header (flex-end aligned within HDR area) ── */}
+          <Text
+            x={PAD}
+            y={PAD + HDR - 33}
+            text={copy.title}
+            fontSize={20}
+            fontStyle="900"
+            fill={INK}
+            letterSpacing={20 * -0.02}
+            fontFamily={FT}
+          />
+          <Text
+            x={PAD}
+            y={PAD + HDR - 9}
+            text={`${copy.sub} \u00B7 ${cityEntries.length} CITIES`}
+            fontSize={9}
+            fontStyle="700"
+            fill={MUTED}
+            letterSpacing={9 * 0.15}
+            fontFamily={FT}
+          />
 
-          {/* Footer */}
-          <div
-            style={{
-              height: FTR,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+          {/* ── Panel A (top-left): Cities ── */}
+          <Rect
+            x={p0x} y={p0y} width={PW} height={PH}
+            fill={PBG}
+            cornerRadius={sty.panelRadius}
+            stroke={panelStroke}
+            strokeWidth={panelStrokeWidth}
+            {...panelShadow}
+          />
+          <Group
+            clipFunc={(ctx) => {
+              const r = sty.panelRadius;
+              ctx.beginPath();
+              ctx.moveTo(p0x + r, p0y);
+              ctx.arcTo(p0x + PW, p0y, p0x + PW, p0y + PH, r);
+              ctx.arcTo(p0x + PW, p0y + PH, p0x, p0y + PH, r);
+              ctx.arcTo(p0x, p0y + PH, p0x, p0y, r);
+              ctx.arcTo(p0x, p0y, p0x + PW, p0y, r);
+              ctx.closePath();
             }}
           >
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 800,
-                color: MUTED,
-                letterSpacing: "0.2em",
-                opacity: 0.5,
-              }}
-            >
-              METOO
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
+            <KPanelPills cities={cities} ox={p0x} oy={p0y} pw={PW} ph={PH} />
+          </Group>
+
+          {/* ── Panel B (top-right): Topics ── */}
+          <Rect
+            x={p1x} y={p1y} width={PW} height={PH}
+            fill={PBG}
+            cornerRadius={sty.panelRadius}
+            stroke={panelStroke}
+            strokeWidth={panelStrokeWidth}
+            {...panelShadow}
+          />
+          <Group
+            clipFunc={(ctx) => {
+              const r = sty.panelRadius;
+              ctx.beginPath();
+              ctx.moveTo(p1x + r, p1y);
+              ctx.arcTo(p1x + PW, p1y, p1x + PW, p1y + PH, r);
+              ctx.arcTo(p1x + PW, p1y + PH, p1x, p1y + PH, r);
+              ctx.arcTo(p1x, p1y + PH, p1x, p1y, r);
+              ctx.arcTo(p1x, p1y, p1x + PW, p1y, r);
+              ctx.closePath();
+            }}
+          >
+            <KPanelTopics items={items} ox={p1x} oy={p1y} pw={PW} ph={PH} />
+          </Group>
+
+          {/* ── Panel C (bottom-left): Waffle ── */}
+          <Rect
+            x={p2x} y={p2y} width={PW} height={PH}
+            fill={PBG}
+            cornerRadius={sty.panelRadius}
+            stroke={panelStroke}
+            strokeWidth={panelStrokeWidth}
+            {...panelShadow}
+          />
+          <Group
+            clipFunc={(ctx) => {
+              const r = sty.panelRadius;
+              ctx.beginPath();
+              ctx.moveTo(p2x + r, p2y);
+              ctx.arcTo(p2x + PW, p2y, p2x + PW, p2y + PH, r);
+              ctx.arcTo(p2x + PW, p2y + PH, p2x, p2y + PH, r);
+              ctx.arcTo(p2x, p2y + PH, p2x, p2y, r);
+              ctx.arcTo(p2x, p2y, p2x + PW, p2y, r);
+              ctx.closePath();
+            }}
+          >
+            <KPanelWaffle cities={cities} total={items.length} ox={p2x} oy={p2y} pw={PW} ph={PH} />
+          </Group>
+
+          {/* ── Panel D (bottom-right): Stats ── */}
+          <Rect
+            x={p3x} y={p3y} width={PW} height={PH}
+            fill={PBG}
+            cornerRadius={sty.panelRadius}
+            stroke={panelStroke}
+            strokeWidth={panelStrokeWidth}
+            {...panelShadow}
+          />
+          <Group
+            clipFunc={(ctx) => {
+              const r = sty.panelRadius;
+              ctx.beginPath();
+              ctx.moveTo(p3x + r, p3y);
+              ctx.arcTo(p3x + PW, p3y, p3x + PW, p3y + PH, r);
+              ctx.arcTo(p3x + PW, p3y + PH, p3x, p3y + PH, r);
+              ctx.arcTo(p3x, p3y + PH, p3x, p3y, r);
+              ctx.arcTo(p3x, p3y, p3x + PW, p3y, r);
+              ctx.closePath();
+            }}
+          >
+            <KPanelStats
+              cityCount={cityEntries.length}
+              totalItems={items.length}
+              topCity={cityEntries[0]?.name ?? ""}
+              ox={p3x}
+              oy={p3y}
+              pw={PW}
+              ph={PH}
+            />
+          </Group>
+
+          {/* ── Footer ── */}
+          <Text
+            x={0}
+            y={H - PAD - FTR + (FTR - 10) / 2}
+            width={W}
+            text="METOO"
+            fontSize={10}
+            fontStyle="800"
+            fill={MUTED}
+            letterSpacing={10 * 0.2}
+            fontFamily={FT}
+            align="center"
+            opacity={0.5}
+          />
+        </Group>
+      </KonvaPosterStage>
     </PalContext.Provider>
   );
 }

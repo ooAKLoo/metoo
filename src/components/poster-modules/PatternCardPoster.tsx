@@ -1,5 +1,8 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import { Rect, Text, Group, Circle, Path, Image as KImage, Shape } from "react-konva";
+import useImage from "use-image";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { useMapStore } from "../../stores/useMapStore";
 
@@ -9,11 +12,6 @@ const CITY_COLORS = [
   "#F765A3", "#FFB703", "#06D6A0", "#118AB2", "#EF476F", "#0B1354",
 ];
 
-const generateSolidShadow = (depth: number, color: string) => {
-  if (depth === 0) return "none";
-  return Array.from({ length: depth }, (_, i) => `${i + 1}px ${i + 1}px 0 ${color}`).join(", ");
-};
-
 export type PatternStyle = "flat" | "brutalism";
 
 export const PATTERN_STYLES: { id: PatternStyle; label: string }[] = [
@@ -21,12 +19,122 @@ export const PATTERN_STYLES: { id: PatternStyle; label: string }[] = [
   { id: "brutalism", label: "粗犷" },
 ];
 
+/* ── Fonts ── */
+const FONT_UI = "ui-sans-serif, system-ui, sans-serif";
+const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
+const FONT_MONO = "'SF Mono', 'Menlo', monospace";
+
+/* ── Text measurement ── */
+const _mCtx = document.createElement("canvas").getContext("2d")!;
+function measureText(text: string, fs: number, fw: string, ff: string): number {
+  _mCtx.font = `${fw} ${fs}px ${ff}`;
+  return _mCtx.measureText(text).width;
+}
+
 /* ── City cell data ── */
 interface CityCell {
   name: string;
   count: number;
-  cover: string; // already through coverSrc()
+  cover: string;
   color: string;
+}
+
+/* ── Star SVG path scaled to a given diameter ── */
+function starPath(d: number): string {
+  const s = d / 100;
+  return [
+    `M ${50 * s} ${10 * s}`,
+    `Q ${50 * s} ${50 * s} ${90 * s} ${50 * s}`,
+    `Q ${50 * s} ${50 * s} ${50 * s} ${90 * s}`,
+    `Q ${50 * s} ${50 * s} ${10 * s} ${50 * s}`,
+    `Q ${50 * s} ${50 * s} ${50 * s} ${10 * s}`,
+    "Z",
+  ].join(" ");
+}
+
+/* ── Single circle cell with image loading ── */
+function CityCircleCell({
+  cell,
+  cx,
+  cy,
+  radius,
+  isBrutal,
+  borderWidth,
+}: {
+  cell: CityCell;
+  cx: number;
+  cy: number;
+  radius: number;
+  isBrutal: boolean;
+  borderWidth: number;
+}) {
+  const [img] = useImage(cell.cover, "anonymous");
+  const d = radius * 2;
+
+  return (
+    <Group x={cx - radius} y={cy - radius}>
+      {/* Brutalism shadow offset rect (circle approximation) */}
+      {isBrutal && (
+        <Circle
+          x={radius + 3}
+          y={radius + 3}
+          radius={radius}
+          fill="#000"
+        />
+      )}
+
+      {/* Circle clip group */}
+      <Group
+        clipFunc={(ctx) => {
+          ctx.arc(radius, radius, radius, 0, Math.PI * 2);
+        }}
+      >
+        {/* Background color fill */}
+        <Rect width={d} height={d} fill={cell.color} />
+
+        {/* Cover image or fallback character */}
+        {img ? (
+          <KImage
+            image={img}
+            width={d}
+            height={d}
+            // cover-fit: crop from center
+          />
+        ) : cell.name ? (
+          <Text
+            x={0}
+            y={0}
+            width={d}
+            height={d}
+            text={cell.name[0]}
+            fontSize={radius * 0.7}
+            fontStyle="700"
+            fill="#fff"
+            fontFamily={FONT_CN}
+            align="center"
+            verticalAlign="middle"
+          />
+        ) : null}
+
+        {/* Star overlay */}
+        <Path
+          data={starPath(d)}
+          fill={cell.cover ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}
+        />
+      </Group>
+
+      {/* Brutalism border ring */}
+      {isBrutal && (
+        <Circle
+          x={radius}
+          y={radius}
+          radius={radius}
+          stroke="#000"
+          strokeWidth={borderWidth}
+        />
+      )}
+    </Group>
+  );
 }
 
 /* ── Main Component ── */
@@ -34,40 +142,30 @@ interface CityCell {
 export default function PatternCardPoster({
   items,
   cityEntries,
-  posterWidth: POSTER_W,
-  posterHeight: POSTER_H,
+  posterWidth: W,
+  posterHeight: H,
 }: PosterModuleProps) {
   const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
   const cardStyle = PATTERN_STYLES[patternStyleIdx % PATTERN_STYLES.length].id;
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fitScale, setFitScale] = useState(1);
-
-  const measure = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const pad = 48;
-    const sx = (el.clientWidth - pad) / POSTER_W;
-    const sy = (el.clientHeight - pad) / POSTER_H;
-    setFitScale(Math.min(sx, sy, 1));
-  }, [POSTER_W, POSTER_H]);
-
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [measure]);
+  const isBrutal = cardStyle === "brutalism";
 
   const totalCities = cityEntries.length;
   const totalItems = items.length;
   const topCity = cityEntries[0];
+
+  const borderWidth = 4;
+  const brRadius = 16;
+  const accentColor = CITY_COLORS[1];
+  const primaryColor = CITY_COLORS[0];
+
+  const title = topCity ? `${topCity.name} \u00B7 ${totalCities}\u57CE` : "\u89C5\u9014 \u00B7 \u65C5\u884C";
 
   /* ── Grid layout from city count ── */
   const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(totalCities || 4))));
   const rows = Math.min(5, Math.max(2, Math.ceil((totalCities || 4) / cols)));
   const cellCount = cols * rows;
 
-  /* ── Build city cells: one city per cell, with cover + color ── */
+  /* ── Build city cells ── */
   const cells: CityCell[] = useMemo(() => {
     const out: CityCell[] = [];
     for (let i = 0; i < cellCount; i++) {
@@ -82,270 +180,400 @@ export default function PatternCardPoster({
     return out;
   }, [cityEntries, cellCount]);
 
-  /* ── Accent dots at intersections ── */
-  const accentColor = CITY_COLORS[1];
-  const primaryColor = CITY_COLORS[0];
-
-  const isBrutal = cardStyle === "brutalism";
-  const borderWidth = 4;
-  const brRadius = 16;
-
-  const title = topCity ? `${topCity.name} · ${totalCities}城` : "觅途 · 旅行";
-
-  const solidShadow = useMemo(() => generateSolidShadow(12, "#000"), []);
-  const puffyHighlight = `inset 2px 4px 6px rgba(255,255,255,0.4), ${solidShadow}`;
-
-  /* ── Cell size for HTML grid — fit both W and H ── */
+  /* ── Layout constants ── */
   const GRID_GAP = isBrutal ? 16 : 12;
   const GRID_PAD = 32;
   const HEADER_H = 72;
-  const FOOTER_H = 120;
+  const FOOTER_STATS_H = 120;
   const LABEL_H = 28;
-  const availW = POSTER_W - GRID_PAD * 2;
-  const availH = POSTER_H - HEADER_H - FOOTER_H - GRID_PAD * 2;
+  const FOOTER_STRIP_H = isBrutal ? 24 : 4;
+
+  /* ── Compute cell size to fit both W and H ── */
+  const availW = W - GRID_PAD * 2;
+  const availH = H - HEADER_H - FOOTER_STATS_H - FOOTER_STRIP_H - GRID_PAD * 2;
   const maxByW = (availW - (cols - 1) * GRID_GAP) / cols;
   const maxByH = (availH - (rows - 1) * GRID_GAP - rows * LABEL_H) / rows;
   const cellW = Math.min(maxByW, maxByH);
+  const radius = cellW / 2;
 
-  /* ── Shared city grid content ── */
-  const cityGrid = (
-    <div
-      style={{
-        flex: 1,
-        minHeight: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: GRID_PAD,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${cols}, ${cellW}px)`,
-          gap: GRID_GAP,
-        }}
-      >
-        {cells.map((cell, i) => (
-          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            {/* Circle: cover image or color fallback */}
-            <div
-              style={{
-                width: cellW,
-                height: cellW,
-                borderRadius: "50%",
-                overflow: "hidden",
-                position: "relative",
-                backgroundColor: cell.color,
-                ...(isBrutal
-                  ? { border: `${borderWidth}px solid #000`, boxShadow: `3px 3px 0 #000` }
-                  : {}),
-              }}
-            >
-              {cell.cover ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    backgroundImage: `url(${cell.cover})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                  }}
-                />
-              ) : cell.name ? (
-                /* No cover — show first character */
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#fff",
-                    fontSize: cellW * 0.35,
-                    fontWeight: 700,
-                    textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                  }}
-                >
-                  {cell.name[0]}
-                </div>
-              ) : null}
-              {/* Star overlay */}
-              <svg
-                viewBox="0 0 100 100"
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-              >
-                <path
-                  d="M 50 10 Q 50 50 90 50 Q 50 50 50 90 Q 50 50 10 50 Q 50 50 50 10 Z"
-                  fill={cell.cover ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}
-                />
-              </svg>
-            </div>
+  /* ── Grid origin (centered) ── */
+  const gridTotalW = cols * cellW + (cols - 1) * GRID_GAP;
+  const gridTotalH = rows * (cellW + LABEL_H) + (rows - 1) * GRID_GAP;
+  const gridOriginX = (W - gridTotalW) / 2;
+  const gridOriginY = HEADER_H + (H - HEADER_H - FOOTER_STATS_H - FOOTER_STRIP_H - gridTotalH) / 2;
 
-            {/* City name + count */}
-            {cell.name ? (
-              <div style={{ textAlign: "center", lineHeight: 1.2 }}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: isBrutal ? 800 : 500,
-                    color: isBrutal ? "#000" : "#1a1a1a",
-                    letterSpacing: "0.02em",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: cellW,
-                  }}
-                >
-                  {cell.name}
-                </div>
-                <div style={{ fontSize: 10, color: "#a3a3a3", marginTop: 2 }}>
-                  {cell.count} 收藏
-                </div>
-              </div>
-            ) : (
-              <div style={{ height: 28 }} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  /* ── Stats section layout ── */
+  const statsY = H - FOOTER_STATS_H - FOOTER_STRIP_H;
+
+  /* ── City ranking layout (horizontal flow) ── */
+  const rankingEntries = useMemo(() => {
+    const top8 = cityEntries.slice(0, 8);
+    const gap = 16;
+    const fs = 11;
+    let ox = 0;
+    return top8.map((city, i) => {
+      const label = `${i + 1}. ${city.name}`;
+      const countLabel = `(${city.count})`;
+      const fw = i === 0 ? "700" : "400";
+      // For brutalism first item, add padding
+      const extraPad = isBrutal && i === 0 ? 16 : 0;
+      const textW = measureText(label + countLabel, fs, fw, FONT_CN) + 4 + extraPad;
+      const x = ox;
+      ox += textW + gap;
+      return { city, label, countLabel, x, w: textW, idx: i };
+    });
+  }, [cityEntries, isBrutal]);
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-      style={{}}
-    >
-      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          className="relative flex flex-col"
-          style={{
-            width: POSTER_W,
-            height: POSTER_H,
-            backgroundColor: "#FDFDFD",
-            fontFamily: 'system-ui, -apple-system, "Noto Sans SC", sans-serif',
-            ...(isBrutal
-              ? { border: `${borderWidth}px solid #000`, borderRadius: brRadius, boxShadow: puffyHighlight }
-              : { borderRadius: 2, boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25), 0 8px 20px -8px rgba(0,0,0,0.1)" }),
-            overflow: "hidden",
-          }}
-        >
-          {/* ── Header + City Grid ── */}
-          {isBrutal ? (
-            <>
-              <div style={{ display: "flex", borderBottom: `${borderWidth}px solid #000`, height: 72 }}>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 28 }}>
-                  <span style={{ fontSize: 28, fontWeight: 900, color: "#000" }}>{title}</span>
-                </div>
-                <div
-                  style={{
-                    width: 72,
-                    borderLeft: `${borderWidth}px solid #000`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                    backgroundColor: accentColor,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: brRadius / 2,
-                      backgroundColor: primaryColor,
-                      border: "3px solid #000",
-                      boxShadow: generateSolidShadow(4, "#000"),
-                    }}
+    <KonvaPosterStage width={W} height={H}>
+      {/* Rounded-corner clip */}
+      <Group
+        clipFunc={(ctx) => {
+          const r = isBrutal ? brRadius : 2;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(W, 0, W, H, r);
+          ctx.arcTo(W, H, 0, H, r);
+          ctx.arcTo(0, H, 0, 0, r);
+          ctx.arcTo(0, 0, W, 0, r);
+          ctx.closePath();
+        }}
+      >
+        {/* Background */}
+        <Rect width={W} height={H} fill="#FDFDFD" />
+
+        {/* ── Brutalism outer border shadow ── */}
+        {isBrutal && (
+          <>
+            {/* Inset highlight is not easily replicated; skip the inset part.
+                The solid shadow is approximated by the outer clip + border below. */}
+          </>
+        )}
+
+        {/* ══════════ HEADER ══════════ */}
+        {isBrutal ? (
+          <Group>
+            {/* Header background */}
+            <Rect x={0} y={0} width={W} height={HEADER_H} fill="#FDFDFD" />
+            {/* Header bottom border */}
+            <Rect x={0} y={HEADER_H - borderWidth} width={W} height={borderWidth} fill="#000" />
+
+            {/* Title text */}
+            <Text
+              x={28}
+              y={0}
+              width={W - 28 - 72 - borderWidth}
+              height={HEADER_H - borderWidth}
+              text={title}
+              fontSize={28}
+              fontStyle="900"
+              fill="#000"
+              fontFamily={FONT_CN}
+              verticalAlign="middle"
+            />
+
+            {/* Right accent box */}
+            <Rect
+              x={W - 72}
+              y={0}
+              width={72}
+              height={HEADER_H - borderWidth}
+              fill={accentColor}
+            />
+            {/* Left border of accent box */}
+            <Rect
+              x={W - 72 - borderWidth}
+              y={0}
+              width={borderWidth}
+              height={HEADER_H - borderWidth}
+              fill="#000"
+            />
+
+            {/* Small square icon in accent box */}
+            {/* Shadow offset */}
+            <Rect
+              x={W - 72 / 2 - 16 + 4}
+              y={(HEADER_H - borderWidth) / 2 - 16 + 4}
+              width={32}
+              height={32}
+              cornerRadius={brRadius / 2}
+              fill="#000"
+            />
+            {/* Icon square */}
+            <Rect
+              x={W - 72 / 2 - 16}
+              y={(HEADER_H - borderWidth) / 2 - 16}
+              width={32}
+              height={32}
+              cornerRadius={brRadius / 2}
+              fill={primaryColor}
+              stroke="#000"
+              strokeWidth={3}
+            />
+          </Group>
+        ) : (
+          /* ── Flat theme: full border wrapping header + grid ── */
+          (() => {
+            const boxX = 32;
+            const boxY = 20;
+            const boxW = W - 64;
+            const boxH = statsY - 12 - boxY;
+            const hdrH = 60;
+            return (
+              <Group>
+                {/* Full outer border around header + grid area */}
+                <Rect
+                  x={boxX}
+                  y={boxY}
+                  width={boxW}
+                  height={boxH}
+                  stroke="#1a1a1a"
+                  strokeWidth={1.5}
+                />
+                {/* Header bottom divider */}
+                <Rect
+                  x={boxX}
+                  y={boxY + hdrH}
+                  width={boxW}
+                  height={1.5}
+                  fill="#1a1a1a"
+                />
+                {/* Title text */}
+                <Text
+                  x={boxX + 20}
+                  y={boxY}
+                  width={boxW - 20 - 60 - 1.5}
+                  height={hdrH}
+                  text={title}
+                  fontSize={22}
+                  fontStyle="500"
+                  fill="#1a1a1a"
+                  fontFamily={FONT_MONO}
+                  letterSpacing={-0.44}
+                  verticalAlign="middle"
+                />
+                {/* Right icon box border */}
+                <Rect
+                  x={boxX + boxW - 60}
+                  y={boxY}
+                  width={60}
+                  height={hdrH}
+                  stroke="#1a1a1a"
+                  strokeWidth={1.5}
+                />
+                {/* Circle icon */}
+                <Circle
+                  x={boxX + boxW - 30}
+                  y={boxY + hdrH / 2}
+                  radius={12}
+                  fill={primaryColor}
+                />
+              </Group>
+            );
+          })()
+        )}
+
+        {/* ══════════ CITY GRID ══════════ */}
+        {cells.map((cell, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const cx = gridOriginX + col * (cellW + GRID_GAP) + radius;
+          const cy = gridOriginY + row * (cellW + LABEL_H + GRID_GAP) + radius;
+
+          return (
+            <Group key={i}>
+              <CityCircleCell
+                cell={cell}
+                cx={cx}
+                cy={cy}
+                radius={radius}
+                isBrutal={isBrutal}
+                borderWidth={borderWidth}
+              />
+
+              {/* City name + count label below circle */}
+              {cell.name ? (
+                <Group>
+                  <Text
+                    x={cx - cellW / 2}
+                    y={cy + radius + 8}
+                    width={cellW}
+                    text={cell.name}
+                    fontSize={13}
+                    fontStyle={isBrutal ? "800" : "500"}
+                    fill={isBrutal ? "#000" : "#1a1a1a"}
+                    fontFamily={FONT_CN}
+                    letterSpacing={0.26}
+                    align="center"
+                    ellipsis={true}
+                    wrap="none"
                   />
-                </div>
-              </div>
-              {cityGrid}
-            </>
-          ) : (
-            <div style={{ padding: "20px 32px 12px", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <div style={{ border: "1.5px solid #1a1a1a", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ display: "flex", borderBottom: "1.5px solid #1a1a1a", height: 60 }}>
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 20 }}>
-                    <span style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em", color: "#1a1a1a" }}>
-                      {title}
-                    </span>
-                  </div>
-                  <div style={{ width: 60, borderLeft: "1.5px solid #1a1a1a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", backgroundColor: primaryColor }} />
-                  </div>
-                </div>
-                {cityGrid}
-              </div>
-            </div>
-          )}
+                  <Text
+                    x={cx - cellW / 2}
+                    y={cy + radius + 8 + 16}
+                    width={cellW}
+                    text={`${cell.count} \u6536\u85CF`}
+                    fontSize={10}
+                    fill="#a3a3a3"
+                    fontFamily={FONT_CN}
+                    align="center"
+                  />
+                </Group>
+              ) : null}
+            </Group>
+          );
+        })}
 
-          {/* ── Stats section ── */}
-          <div style={{ padding: "0 32px 12px" }}>
-            {/* Top cities ranked list */}
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "6px 16px",
-                marginBottom: 12,
-                paddingBottom: 12,
-                borderBottom: isBrutal ? "3px solid #000" : "1px solid #e5e5e5",
-              }}
-            >
-              {cityEntries.slice(0, 8).map((city, i) => (
-                <span
-                  key={city.name}
-                  style={{
-                    fontSize: 11,
-                    fontWeight: i === 0 ? 700 : 400,
-                    color: i === 0 ? "#000" : "#737373",
-                    ...(isBrutal && i === 0 ? { backgroundColor: CITY_COLORS[0], color: "#fff", padding: "2px 8px", borderRadius: 4 } : {}),
-                  }}
-                >
-                  {i + 1}. {city.name}
-                  <span style={{ color: "#a3a3a3", marginLeft: 2 }}>({city.count})</span>
-                </span>
-              ))}
-            </div>
+        {/* ══════════ STATS SECTION ══════════ */}
+        <Group x={32} y={statsY}>
+          {/* City ranking list (horizontal flow) */}
+          {rankingEntries.map((entry) => {
+            const isFirst = entry.idx === 0;
+            if (isBrutal && isFirst) {
+              // Highlighted first city with background
+              const bgW = measureText(entry.label + entry.countLabel, 11, "700", FONT_CN) + 20;
+              return (
+                <Group key={entry.city.name} x={entry.x} y={0}>
+                  <Rect
+                    width={bgW}
+                    height={18}
+                    fill={CITY_COLORS[0]}
+                    cornerRadius={4}
+                    y={-2}
+                  />
+                  <Text
+                    x={8}
+                    y={0}
+                    text={`${entry.label}${entry.countLabel}`}
+                    fontSize={11}
+                    fontStyle="700"
+                    fill="#fff"
+                    fontFamily={FONT_CN}
+                  />
+                </Group>
+              );
+            }
+            return (
+              <Group key={entry.city.name} x={entry.x} y={0}>
+                <Text
+                  text={entry.label}
+                  fontSize={11}
+                  fontStyle={isFirst ? "700" : "400"}
+                  fill={isFirst ? "#000" : "#737373"}
+                  fontFamily={FONT_CN}
+                />
+                <Text
+                  x={measureText(entry.label, 11, isFirst ? "700" : "400", FONT_CN) + 2}
+                  text={entry.countLabel}
+                  fontSize={11}
+                  fill="#a3a3a3"
+                  fontFamily={FONT_CN}
+                />
+              </Group>
+            );
+          })}
 
-            {/* Stats bar */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                fontSize: 12,
-                color: "#737373",
-                fontWeight: 500,
-                paddingBottom: 8,
-              }}
-            >
-              <span>
-                {totalItems} 个收藏 · {totalCities} 座城市
-              </span>
-              <span style={{ letterSpacing: "0.05em" }}>觅途 METOO</span>
-            </div>
-          </div>
+          {/* Divider line below ranking */}
+          <Rect
+            x={0}
+            y={24}
+            width={W - 64}
+            height={isBrutal ? 3 : 1}
+            fill={isBrutal ? "#000" : "#e5e5e5"}
+          />
 
-          {/* ── Footer strip ── */}
-          {isBrutal ? (
-            <div
-              style={{
-                borderTop: `${borderWidth}px solid #000`,
-                height: 24,
-                background: `repeating-linear-gradient(-45deg, ${primaryColor}, ${primaryColor} 8px, ${accentColor} 8px, ${accentColor} 16px)`,
+          {/* Stats bar */}
+          <Text
+            x={0}
+            y={38}
+            text={`${totalItems} \u4E2A\u6536\u85CF \u00B7 ${totalCities} \u5EA7\u57CE\u5E02`}
+            fontSize={12}
+            fontStyle="500"
+            fill="#737373"
+            fontFamily={FONT_CN}
+          />
+          <Text
+            x={0}
+            y={38}
+            width={W - 64}
+            text={"\u89C5\u9014 METOO"}
+            fontSize={12}
+            fontStyle="500"
+            fill="#737373"
+            letterSpacing={0.6}
+            fontFamily={FONT_UI}
+            align="right"
+          />
+        </Group>
+
+        {/* ══════════ FOOTER STRIP ══════════ */}
+        {isBrutal ? (
+          <Group>
+            {/* Top border of footer strip */}
+            <Rect
+              x={0}
+              y={H - FOOTER_STRIP_H - borderWidth}
+              width={W}
+              height={borderWidth}
+              fill="#000"
+            />
+            {/* Diagonal stripes via Shape sceneFunc */}
+            <Shape
+              x={0}
+              y={H - FOOTER_STRIP_H}
+              sceneFunc={(ctx, shape) => {
+                const w = W;
+                const h = FOOTER_STRIP_H;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(0, 0, w, h);
+                ctx.clip();
+
+                // Draw repeating diagonal stripes
+                const stripeW = 8;
+                const totalStripes = Math.ceil((w + h) / stripeW) * 2;
+                for (let i = 0; i < totalStripes; i++) {
+                  const x0 = i * stripeW - h;
+                  ctx.fillStyle = i % 2 === 0 ? primaryColor : accentColor;
+                  ctx.beginPath();
+                  ctx.moveTo(x0, h);
+                  ctx.lineTo(x0 + stripeW, h);
+                  ctx.lineTo(x0 + stripeW + h, 0);
+                  ctx.lineTo(x0 + h, 0);
+                  ctx.closePath();
+                  ctx.fill();
+                }
+
+                ctx.restore();
+                ctx.fillStrokeShape(shape);
               }}
             />
-          ) : (
-            <div style={{ height: 4, backgroundColor: primaryColor, opacity: 0.15 }} />
-          )}
-        </div>
-      </div>
-    </div>
+          </Group>
+        ) : (
+          <Rect
+            x={0}
+            y={H - FOOTER_STRIP_H}
+            width={W}
+            height={FOOTER_STRIP_H}
+            fill={primaryColor}
+            opacity={0.15}
+          />
+        )}
+
+        {/* ── Brutalism outer border ── */}
+        {isBrutal && (
+          <Rect
+            x={0}
+            y={0}
+            width={W}
+            height={H}
+            stroke="#000"
+            strokeWidth={borderWidth}
+            cornerRadius={brRadius}
+            listening={false}
+          />
+        )}
+      </Group>
+    </KonvaPosterStage>
   );
 }

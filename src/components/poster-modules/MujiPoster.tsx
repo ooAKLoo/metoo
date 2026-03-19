@@ -1,11 +1,13 @@
 import { useMemo } from "react";
+import { Text, Group } from "react-konva";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { DEFAULT_CONFIG, type MujiPosterConfig } from "./MujiPosterDevPanel";
 import type { FavoriteItem } from "../../stores/useFavoriteStore";
 import type { CityEntry } from "../../hooks/useCityAggregation";
 import { useMapStore } from "../../stores/useMapStore";
 
-/* ── 色相推导 — 单色相 → 文字色 + 光斑色调 ── */
+/* ── Colour derivation — single hue → text colour + spot tint ── */
 import { hslToHex } from "./PopBoardPoster";
 
 export function deriveMujiColors(hue: number): { textColor: string; spotTint: string } {
@@ -45,29 +47,23 @@ const WIDESCREEN_CONFIG: MujiPosterConfig = {
   lightOpacity: 0.8,
 };
 
-const LIGHT_SPOTS = [
-  { w: "80%", h: "60%", top: "-10%", left: "-20%", blur: 80, op: 0.8 },
-  { w: "50%", h: "50%", top: "10%",  left: "40%",  blur: 60, op: 0.6 },
-  { w: "60%", h: "70%", top: "50%",  left: "-10%", blur: 90, op: 0.7 },
-  { w: "70%", h: "60%", top: "60%",  left: "50%",  blur: 70, op: 0.5 },
-  { w: "40%", h: "40%", top: "30%",  left: "70%",  blur: 50, op: 0.4 },
-];
-
 const WAVE_DY = [0, 2, 4, 6, 0, 3, 5, 7, 7, 7];
 
 /* ── Food category keywords ── */
-const FOOD_CATS: { label: string; kw: string[] }[] = [
-  { label: "火锅店", kw: ["火锅"] },
-  { label: "烧烤店", kw: ["烧烤", "撸串", "烤串"] },
-  { label: "咖啡馆", kw: ["咖啡"] },
-  { label: "奶茶店", kw: ["奶茶", "果茶", "茶饮"] },
-  { label: "甜品店", kw: ["甜品", "蛋糕", "甜点", "冰淇淋", "面包", "烘焙"] },
-  { label: "面馆", kw: ["面馆", "米线", "螺蛳粉", "拉面", "米粉", "面条"] },
-  { label: "小吃摊", kw: ["小吃", "夜市", "街头"] },
-  { label: "日料店", kw: ["日料", "寿司", "刺身", "居酒屋"] },
-  { label: "西餐厅", kw: ["西餐", "牛排", "披萨", "意面", "汉堡"] },
-  { label: "海鲜馆", kw: ["海鲜", "生蚝", "龙虾", "螃蟹"] },
-  { label: "茶楼", kw: ["早茶", "点心", "茶楼", "粤菜"] },
+// shop: 店铺名 (火锅店/烧烤店…) — used in place-oriented templates (诗意, 觅·于途)
+// food: 食品类别名 (火锅/烧烤…) — used in food-oriented templates (吃·在吃)
+const FOOD_CATS: { shop: string; food: string; kw: string[] }[] = [
+  { shop: "火锅店", food: "火锅", kw: ["火锅"] },
+  { shop: "烧烤店", food: "烧烤", kw: ["烧烤", "撸串", "烤串"] },
+  { shop: "咖啡馆", food: "咖啡", kw: ["咖啡"] },
+  { shop: "奶茶店", food: "奶茶", kw: ["奶茶", "果茶", "茶饮"] },
+  { shop: "甜品店", food: "甜品", kw: ["甜品", "蛋糕", "甜点", "冰淇淋", "面包", "烘焙"] },
+  { shop: "面馆", food: "面食", kw: ["面馆", "米线", "螺蛳粉", "拉面", "米粉", "面条"] },
+  { shop: "小吃摊", food: "小吃", kw: ["小吃", "夜市", "街头"] },
+  { shop: "日料店", food: "日料", kw: ["日料", "寿司", "刺身", "居酒屋"] },
+  { shop: "西餐厅", food: "西餐", kw: ["西餐", "牛排", "披萨", "意面", "汉堡"] },
+  { shop: "海鲜馆", food: "海鲜", kw: ["海鲜", "生蚝", "龙虾", "螃蟹"] },
+  { shop: "茶楼", food: "茶点", kw: ["早茶", "点心", "茶楼", "粤菜"] },
 ];
 
 const SIGHT_KW = [
@@ -75,7 +71,8 @@ const SIGHT_KW = [
   "展览", "打卡", "拍照", "景点", "风景", "旅行", "旅游",
 ];
 
-function getTopFoodLabels(items: FavoriteItem[]): string[] {
+/** @param mode "shop" → 火锅店/烧烤店 (地点); "food" → 火锅/烧烤 (食品类别) */
+function getTopFoodLabels(items: FavoriteItem[], mode: "shop" | "food" = "shop"): string[] {
   const counts = FOOD_CATS.map(() => 0);
   for (const item of items) {
     const text = item.title + item.intro;
@@ -84,13 +81,15 @@ function getTopFoodLabels(items: FavoriteItem[]): string[] {
     }
   }
   const labels = FOOD_CATS
-    .map((cat, i) => ({ label: cat.label, count: counts[i] }))
+    .map((cat, i) => ({ label: cat[mode], count: counts[i] }))
     .filter((c) => c.count > 0)
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
     .map((c) => c.label);
   if (labels.length < 3) {
-    const fallbacks = ["美味", "烟火气", "人间味", "好滋味", "觅食"];
+    const fallbacks = mode === "food"
+      ? ["美味", "烟火气", "人间味", "好滋味", "觅食"]
+      : ["美味", "烟火气", "人间味", "好滋味", "觅食"];
     for (const fb of fallbacks) {
       if (labels.length >= 10) break;
       if (!labels.includes(fb)) labels.push(fb);
@@ -120,11 +119,8 @@ interface MujiTemplateData {
   label: string;
   topText: string;
   bottomText: string;
-  /** true = sublabels 在同一水平线上，不做波浪起伏 */
   flatSubs?: boolean;
-  /** true = sublabels 放在底部而非中间（主文字在上，sublabels 在下） */
   subBottom?: boolean;
-  /** 模板专属默认参数，覆盖全局 DEFAULT_CONFIG */
   defaultConfig?: Partial<MujiPosterConfig>;
   getSubLabels: (items: FavoriteItem[], cityEntries: CityEntry[]) => string[];
 }
@@ -160,7 +156,7 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
     flatSubs: true,
     subBottom: true,
     defaultConfig: { mainSpacing: 0.16, topPos: 22, subOffsetX: -4, subOffsetY: -20 },
-    getSubLabels: (items) => getTopFoodLabels(items),
+    getSubLabels: (items) => getTopFoodLabels(items, "food"),
   },
   {
     id: "eat-at",
@@ -217,7 +213,91 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
   },
 ];
 
+/* ── Font families ── */
+const FONT_CN = "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif";
+
+/* ── CJK punctuation that needs repositioning in vertical text ── */
+const CJK_PUNCT = new Set("，。、！？：；）」』】");
+
+/* ── Vertical text helper (each character as a separate Konva Text node) ── */
+function VerticalText({
+  text,
+  x,
+  y,
+  fontSize,
+  fontWeight,
+  fill,
+  letterSpacing = 0,
+  stroke,
+  strokeWidth,
+  opacity,
+}: {
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  fontWeight: string;
+  fill: string;
+  letterSpacing?: number;
+  stroke?: string;
+  strokeWidth?: number;
+  opacity?: number;
+}) {
+  // CJK vertical stacking: 1em per character (no line-height multiplier)
+  const charH = fontSize + letterSpacing;
+  return (
+    <Group x={x} y={y} opacity={opacity}>
+      {[...text].map((ch, i) => {
+        const isPunct = CJK_PUNCT.has(ch);
+        return isPunct ? (
+          // Punctuation: no centering logic, raw position at right side of column
+          <Text
+            key={i}
+            x={fontSize * 0.55}
+            y={i * charH - fontSize * 0.35}
+            text={ch}
+            fontSize={fontSize}
+            fontStyle={fontWeight}
+            fill={fill}
+            fontFamily={FONT_CN}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+          />
+        ) : (
+          // Regular CJK character: centered in column
+          <Text
+            key={i}
+            y={i * charH}
+            text={ch}
+            fontSize={fontSize}
+            fontStyle={fontWeight}
+            fill={fill}
+            width={fontSize * 1.5}
+            offsetX={fontSize * 0.25}
+            align="center"
+            fontFamily={FONT_CN}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+          />
+        );
+      })}
+    </Group>
+  );
+}
+
+/** Compute the total pixel height of a vertical text run. */
+function verticalTextHeight(text: string, fontSize: number, letterSpacing: number): number {
+  const charH = fontSize + letterSpacing;
+  return text.length * charH;
+}
+
+/* ── Component ── */
+
 function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
+  const W = posterWidth;
+  const H = posterHeight;
+  const cqmin = Math.min(W, H);
+
   const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const rawTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
   const mujiHue = useMapStore((s) => s.mujiHue);
@@ -227,12 +307,12 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
   const templateIdx = rawTemplateIdx < 0 ? autoIdx : rawTemplateIdx % MUJI_TEMPLATES.length;
   const template = MUJI_TEMPLATES[templateIdx];
 
-  // 回退链: store 自定义 → 模板专属默认 → 全局默认
+  // Fallback chain: store custom -> template-specific default -> global default
   const templateDefault = template.defaultConfig
     ? { ...DEFAULT_CONFIG, ...template.defaultConfig }
     : DEFAULT_CONFIG;
   const storeConfig = mujiConfigs[template.id] ?? templateDefault;
-  const c = posterWidth / posterHeight >= 1.5 ? WIDESCREEN_CONFIG : storeConfig;
+  const c = W / H >= 1.5 ? WIDESCREEN_CONFIG : storeConfig;
 
   const subLabels = useMemo(
     () =>
@@ -243,110 +323,125 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
     [template, items, cityEntries],
   );
 
+  /* ── Convert cqmin-based config values to absolute pixels ── */
+  const mainFontSize = c.mainSize * cqmin / 100;
+  const mainLetterSpacing = c.mainSpacing * mainFontSize; // em -> px
+  const mainStrokeWidth = c.mainStroke > 0 ? c.mainStroke : undefined;
+  const mainStroke = mainStrokeWidth ? colorPreset.textColor : undefined;
+  // Konva fontStyle = "normal {weight}" — explicit "normal" prefix ensures
+  // WebKit Canvas parses the font-weight correctly (bare "100" can fail)
+  const mainFontWeight = `normal ${c.mainWeight}`;
+
+  const subFontSize = c.subSize * cqmin / 100;
+  const subLetterSpacing = c.subSpacing * subFontSize; // em -> px
+  const subStrokeWidth = c.subStroke > 0 ? c.subStroke : undefined;
+  const subStroke = subStrokeWidth ? colorPreset.textColor : undefined;
+  const subFontWeight = `normal ${c.subWeight}`;
+
+  /* ── Top text position: centered horizontally, top-aligned ── */
+  // CSS: left: 50%, transform: translateX(-50%), top: topPos%
+  // In Konva: x = W/2 - fontSize/2 (center the single-column vertical text)
+  const topTextX = W / 2 - mainFontSize / 2;
+  const topTextY = H * c.topPos / 100;
+
+  /* ── Bottom text position: centered horizontally, bottom-aligned ── */
+  // CSS: left: 50%, transform: translateX(-50%), bottom: bottomPos%
+  // bottom: X% means the bottom edge of the element is at (100-X)% from top
+  // So: elementTop = H - H*bottomPos/100 - elementHeight
+  const bottomTextHeight = template.bottomText
+    ? verticalTextHeight(template.bottomText, mainFontSize, mainLetterSpacing)
+    : 0;
+  const bottomTextX = W / 2 - mainFontSize / 2;
+  const bottomTextY = template.bottomText
+    ? H - H * c.bottomPos / 100 - bottomTextHeight
+    : 0;
+
+  /* ── Sub-text positions ── */
+  // CSS used: right: rightPct%, vertical-rl
+  // For subBottom: bottom positioning with translateY(50%)
+  // For normal: top positioning with translateY(-50%)
+  const subPositions = useMemo(() => {
+    const count = subLabels.length;
+    return subLabels.map(({ text, dy }, i) => {
+      const t = count > 1 ? i / (count - 1) : 0.5;
+      const rightPct = c.subStartX - (c.subStartX - c.subEndX) * t + c.subOffsetX;
+
+      // right: rightPct% → x = W - W * rightPct / 100 - textWidth
+      // textWidth for vertical text is ~fontSize
+      const x = W - W * rightPct / 100 - subFontSize;
+
+      const textH = verticalTextHeight(text, subFontSize, subLetterSpacing);
+
+      let y: number;
+      if (template.subBottom) {
+        // CSS: bottom: bottomPos - subOffsetY + dy*waveAmp %, transform: translateY(50%)
+        // bottom: X% → element's bottom edge is at H * (100 - X) / 100
+        // translateY(50%) shifts down by half the element height
+        const bottomPct = c.bottomPos - c.subOffsetY + dy * c.subWaveAmp;
+        const bottomEdgeFromTop = H - H * bottomPct / 100;
+        // translateY(50%) in CSS means element center is at the anchor point
+        y = bottomEdgeFromTop - textH / 2;
+      } else {
+        // CSS: top: subBaseY + dy*waveAmp + subOffsetY %, transform: translateY(-50%)
+        const topPct = c.subBaseY + dy * c.subWaveAmp + c.subOffsetY;
+        const topFromTop = H * topPct / 100;
+        // translateY(-50%) centers the element vertically at the anchor
+        y = topFromTop - textH / 2;
+      }
+
+      return { text, x, y };
+    });
+  }, [subLabels, W, H, c, subFontSize, subLetterSpacing, template.subBottom]);
+
   return (
-    <div
-      className="absolute inset-0 overflow-hidden pointer-events-none z-10"
-      style={{
-        containerType: "size",
-        fontFamily: '"Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif',
-        color: colorPreset.textColor,
-      }}
-    >
-      {/* Light spots */}
-      <div className="absolute inset-0 overflow-hidden" style={{ opacity: c.lightOpacity }}>
-        {LIGHT_SPOTS.map((s, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full"
-            style={{
-              width: s.w, height: s.h,
-              top: s.top, left: s.left,
-              filter: `blur(${s.blur}px)`,
-              opacity: s.op,
-              backgroundColor: colorPreset.spotTint,
-            }}
-          />
-        ))}
-      </div>
+    <KonvaPosterStage width={W} height={H} transparent>
+      {/* Transparent overlay — no background, renders above MapView */}
 
-      {/* Text content */}
-      <div className="absolute inset-0">
-        {/* Top text */}
-        <div
-          className="absolute"
-          style={{
-            writingMode: "vertical-rl",
-            textOrientation: "mixed",
-            fontSize: `${c.mainSize}cqmin`,
-            fontWeight: c.mainWeight,
-            letterSpacing: `${c.mainSpacing}em`,
-            left: "50%",
-            transform: "translateX(-50%)",
-            top: `${c.topPos}%`,
-            WebkitTextStroke: c.mainStroke > 0 ? `${c.mainStroke}px currentColor` : undefined,
-            paintOrder: "stroke fill",
-          }}
-        >
-          {template.topText}
-        </div>
+      {/* Top text (vertical) */}
+      <VerticalText
+        text={template.topText}
+        x={topTextX}
+        y={topTextY}
+        fontSize={mainFontSize}
+        fontWeight={mainFontWeight}
+        fill={colorPreset.textColor}
+        letterSpacing={mainLetterSpacing}
+        stroke={mainStroke}
+        strokeWidth={mainStrokeWidth}
+      />
 
-        {/* Bottom text */}
-        {template.bottomText && (
-          <div
-            className="absolute"
-            style={{
-              writingMode: "vertical-rl",
-              textOrientation: "mixed",
-              fontSize: `${c.mainSize}cqmin`,
-              fontWeight: c.mainWeight,
-              letterSpacing: `${c.mainSpacing}em`,
-              left: "50%",
-              transform: "translateX(-50%)",
-              bottom: `${c.bottomPos}%`,
-              WebkitTextStroke: c.mainStroke > 0 ? `${c.mainStroke}px currentColor` : undefined,
-              paintOrder: "stroke fill",
-            }}
-          >
-            {template.bottomText}
-          </div>
-        )}
+      {/* Bottom text (vertical) */}
+      {template.bottomText && (
+        <VerticalText
+          text={template.bottomText}
+          x={bottomTextX}
+          y={bottomTextY}
+          fontSize={mainFontSize}
+          fontWeight={mainFontWeight}
+          fill={colorPreset.textColor}
+          letterSpacing={mainLetterSpacing}
+          stroke={mainStroke}
+          strokeWidth={mainStrokeWidth}
+        />
+      )}
 
-        {/* Sub-texts — dynamic */}
-        {subLabels.map(({ text, dy }, i) => {
-          const count = subLabels.length;
-          const t = count > 1 ? i / (count - 1) : 0.5;
-          const rightPct = c.subStartX - (c.subStartX - c.subEndX) * t + c.subOffsetX;
-
-          // subBottom: 用 bottom 定位，sublabels 在海报底部
-          // subBottom: bottom 定位，subOffsetY 取反（正值=下移=bottom 减小）
-          const posStyle = template.subBottom
-            ? { bottom: `${c.bottomPos - c.subOffsetY + dy * c.subWaveAmp}%` }
-            : { top: `${c.subBaseY + dy * c.subWaveAmp + c.subOffsetY}%` };
-
-          return (
-            <div
-              key={i}
-              className="absolute"
-              style={{
-                writingMode: "vertical-rl",
-                textOrientation: "mixed",
-                fontSize: `${c.subSize}cqmin`,
-                fontWeight: c.subWeight,
-                letterSpacing: `${c.subSpacing}em`,
-                right: `${rightPct}%`,
-                ...posStyle,
-                transform: template.subBottom ? "translateY(50%)" : "translateY(-50%)",
-                opacity: c.subOpacity,
-                WebkitTextStroke: c.subStroke > 0 ? `${c.subStroke}px currentColor` : undefined,
-                paintOrder: "stroke fill",
-              }}
-            >
-              {text}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {/* Sub-texts (vertical, scattered) */}
+      {subPositions.map(({ text, x, y }, i) => (
+        <VerticalText
+          key={i}
+          text={text}
+          x={x}
+          y={y}
+          fontSize={subFontSize}
+          fontWeight={subFontWeight}
+          fill={colorPreset.textColor}
+          letterSpacing={subLetterSpacing}
+          stroke={subStroke}
+          strokeWidth={subStrokeWidth}
+          opacity={c.subOpacity}
+        />
+      ))}
+    </KonvaPosterStage>
   );
 }
 

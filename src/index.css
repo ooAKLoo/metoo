@@ -116,3 +116,8 @@ input[type="range"].hue-slider::-moz-range-thumb {
     color: var(--text-secondary);
   }
 }
+
+/* Hide avatar count badges & city labels inside MUJI poster map background */
+.muji-map-bg [data-no-export] {
+  display: none !important;
+}

@@ -1,14 +1,24 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import { Rect, Text, Line, Group, Shape } from "react-konva";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { useMapStore } from "../../stores/useMapStore";
 
 /* ── Base design dimensions (for proportional scaling) ── */
 const BASE_W = 1100;
 const BASE_KB_W = 920;
 
-/* ── Keyboard layout (shared, 60-column grid) ── */
-interface KeyDef { l: string; w: number; type?: "mod" | "accent" | "cmd" | "space" }
+/* ══════════════════════════════════════════════════════
+   Keyboard Layouts
+   ══════════════════════════════════════════════════════ */
 
+interface KeyDef {
+  l: string;
+  w: number;
+  type?: "mod" | "accent" | "cmd" | "space";
+}
+
+/* 5-row layout (desktop & isometric) */
 const KB: KeyDef[][] = [
   [{ l: "esc", w: 4, type: "mod" },{ l: "1", w: 4 },{ l: "2", w: 4 },{ l: "3", w: 4 },{ l: "4", w: 4 },{ l: "5", w: 4 },{ l: "6", w: 4 },{ l: "7", w: 4 },{ l: "8", w: 4 },{ l: "9", w: 4 },{ l: "0", w: 4 },{ l: "-", w: 4 },{ l: "=", w: 4 },{ l: "delete", w: 8, type: "mod" }],
   [{ l: "tab", w: 6, type: "mod" },{ l: "Q", w: 4 },{ l: "W", w: 4 },{ l: "E", w: 4 },{ l: "R", w: 4 },{ l: "T", w: 4 },{ l: "Y", w: 4 },{ l: "U", w: 4 },{ l: "I", w: 4 },{ l: "O", w: 4 },{ l: "P", w: 4 },{ l: "[", w: 4 },{ l: "]", w: 4 },{ l: "\\", w: 6, type: "mod" }],
@@ -17,7 +27,20 @@ const KB: KeyDef[][] = [
   [{ l: "ctrl", w: 5, type: "mod" },{ l: "opt", w: 5, type: "mod" },{ l: "\u2318", w: 6, type: "cmd" },{ l: "", w: 23, type: "space" },{ l: "\u2318", w: 6, type: "cmd" },{ l: "opt", w: 5, type: "mod" },{ l: "fn", w: 5, type: "mod" },{ l: "ctrl", w: 5, type: "mod" }],
 ];
 
-/* ── Palette types ── */
+/* 6-row layout (3D perspective — includes F-key row) */
+const KB_PERSP: KeyDef[][] = [
+  [{l:"esc",w:4,type:"mod"},{l:"F1",w:4},{l:"F2",w:4},{l:"F3",w:4},{l:"F4",w:4},{l:"F5",w:4},{l:"F6",w:4},{l:"F7",w:4},{l:"F8",w:4},{l:"F9",w:4},{l:"F10",w:4},{l:"F11",w:4},{l:"F12",w:4},{l:"del",w:8,type:"mod"}],
+  [{l:"`",w:4},{l:"1",w:4},{l:"2",w:4},{l:"3",w:4},{l:"4",w:4},{l:"5",w:4},{l:"6",w:4},{l:"7",w:4},{l:"8",w:4},{l:"9",w:4},{l:"0",w:4},{l:"-",w:4},{l:"=",w:4},{l:"⌫",w:8,type:"mod"}],
+  [{l:"tab",w:6,type:"mod"},{l:"Q",w:4},{l:"W",w:4},{l:"E",w:4},{l:"R",w:4},{l:"T",w:4},{l:"Y",w:4},{l:"U",w:4},{l:"I",w:4},{l:"O",w:4},{l:"P",w:4},{l:"[",w:4},{l:"]",w:4},{l:"\\",w:6,type:"mod"}],
+  [{l:"caps",w:7,type:"mod"},{l:"A",w:4},{l:"S",w:4},{l:"D",w:4},{l:"F",w:4},{l:"G",w:4},{l:"H",w:4},{l:"J",w:4},{l:"K",w:4},{l:"L",w:4},{l:";",w:4},{l:"'",w:4},{l:"return",w:9,type:"mod"}],
+  [{l:"shift",w:9,type:"mod"},{l:"Z",w:4},{l:"X",w:4},{l:"C",w:4,type:"accent"},{l:"V",w:4,type:"accent"},{l:"B",w:4},{l:"N",w:4},{l:"M",w:4},{l:",",w:4},{l:".",w:4},{l:"/",w:4},{l:"shift",w:11,type:"mod"}],
+  [{l:"ctrl",w:4,type:"mod"},{l:"opt",w:4,type:"mod"},{l:"alt",w:5,type:"mod"},{l:"⌘",w:5,type:"cmd"},{l:"",w:20,type:"space"},{l:"⌘",w:5,type:"cmd"},{l:"alt",w:5,type:"mod"},{l:"◀",w:4,type:"mod"},{l:"▲▼",w:4,type:"mod"},{l:"▶",w:4,type:"mod"}],
+];
+
+/* ══════════════════════════════════════════════════════
+   Color Palettes & Style Definitions
+   ══════════════════════════════════════════════════════ */
+
 interface Palette {
   surface: string;
   shadow: string;
@@ -25,11 +48,9 @@ interface Palette {
   bases: string[];
 }
 
-/* ── Theme presets ── */
 interface ThemePreset {
   id: string;
   label: string;
-  /** "flat" = box-shadow extrusion, "rounded" = 3D front+top */
   style: "flat" | "rounded";
   posterBg: string;
   textColor: string;
@@ -43,122 +64,70 @@ interface ThemePreset {
 
 export const KEYBOARD_THEMES: ThemePreset[] = [
   {
-    id: "flat-pop",
-    label: "Pop",
-    style: "flat",
-    posterBg: "#FAFAF8",
-    textColor: "#1a1a1a",
-    subtitleColor: "#999",
-    tagBg: "#F0EFEC",
-    tagColor: "#555",
-    kbContainerBg: "rgba(255,255,255,0.6)",
-    palette: {
-      surface: "#f3ead8",
-      shadow: "#181818",
-      caps: ["#f47ea5", "#f56c2d", "#2465e3", "#f4d03f"],
-      bases: ["#e92f2f", "#f4d03f", "#2465e3"],
-    },
+    id: "flat-pop", label: "Pop", style: "flat",
+    posterBg: "#FAFAF8", textColor: "#1a1a1a", subtitleColor: "#999",
+    tagBg: "#F0EFEC", tagColor: "#555", kbContainerBg: "rgba(255,255,255,0.6)",
+    palette: { surface: "#f3ead8", shadow: "#181818", caps: ["#f47ea5", "#f56c2d", "#2465e3", "#f4d03f"], bases: ["#e92f2f", "#f4d03f", "#2465e3"] },
     accentColor: "#f56c2d",
   },
   {
-    id: "flat-cyber",
-    label: "Cyber",
-    style: "flat",
-    posterBg: "#0f0f13",
-    textColor: "#f0f0f0",
-    subtitleColor: "#666",
-    tagBg: "rgba(255,255,255,0.08)",
-    tagColor: "#aaa",
-    kbContainerBg: "rgba(255,255,255,0.04)",
-    palette: {
-      surface: "#2d2d3d",
-      shadow: "#000000",
-      caps: ["#00ff9f", "#00b8ff", "#ff007f", "#ffe600"],
-      bases: ["#7000ff", "#ff007f", "#00b8ff"],
-    },
+    id: "flat-cyber", label: "Cyber", style: "flat",
+    posterBg: "#0f0f13", textColor: "#f0f0f0", subtitleColor: "#666",
+    tagBg: "rgba(255,255,255,0.08)", tagColor: "#aaa", kbContainerBg: "rgba(255,255,255,0.04)",
+    palette: { surface: "#2d2d3d", shadow: "#000000", caps: ["#00ff9f", "#00b8ff", "#ff007f", "#ffe600"], bases: ["#7000ff", "#ff007f", "#00b8ff"] },
     accentColor: "#00ff9f",
   },
   {
-    id: "flat-pastel",
-    label: "Pastel",
-    style: "flat",
-    posterBg: "#F5F0F8",
-    textColor: "#2a2a3a",
-    subtitleColor: "#999",
-    tagBg: "#EDE8F2",
-    tagColor: "#666",
-    kbContainerBg: "rgba(255,255,255,0.7)",
-    palette: {
-      surface: "#ffffff",
-      shadow: "#a2a8b3",
-      caps: ["#ffb3ba", "#ffdfba", "#ffffba", "#baffc9", "#bae1ff"],
-      bases: ["#ffb3ba", "#bae1ff", "#ffdfba"],
-    },
+    id: "flat-pastel", label: "Pastel", style: "flat",
+    posterBg: "#F5F0F8", textColor: "#2a2a3a", subtitleColor: "#999",
+    tagBg: "#EDE8F2", tagColor: "#666", kbContainerBg: "rgba(255,255,255,0.7)",
+    palette: { surface: "#ffffff", shadow: "#a2a8b3", caps: ["#ffb3ba", "#ffdfba", "#ffffba", "#baffc9", "#bae1ff"], bases: ["#ffb3ba", "#bae1ff", "#ffdfba"] },
     accentColor: "#ffb3ba",
   },
   {
-    id: "round-pop",
-    label: "Retro Pop",
-    style: "rounded",
-    posterBg: "#1a4fd6",
-    textColor: "#ffffff",
-    subtitleColor: "rgba(255,255,255,0.5)",
-    tagBg: "rgba(255,255,255,0.15)",
-    tagColor: "rgba(255,255,255,0.8)",
-    kbContainerBg: "rgba(255,255,255,0.08)",
-    palette: {
-      surface: "#faf3e0",
-      shadow: "#1a1a2e",
-      caps: ["#f26522", "#f5a0b8", "#2a5cc7", "#f7c948", "#2d936c", "#e63946"],
-      bases: ["#e63946", "#f7c948", "#2a5cc7"],
-    },
+    id: "round-pop", label: "Retro Pop", style: "rounded",
+    posterBg: "#1a4fd6", textColor: "#ffffff", subtitleColor: "rgba(255,255,255,0.5)",
+    tagBg: "rgba(255,255,255,0.15)", tagColor: "rgba(255,255,255,0.8)", kbContainerBg: "rgba(255,255,255,0.08)",
+    palette: { surface: "#faf3e0", shadow: "#1a1a2e", caps: ["#f26522", "#f5a0b8", "#2a5cc7", "#f7c948", "#2d936c", "#e63946"], bases: ["#e63946", "#f7c948", "#2a5cc7"] },
     accentColor: "#f7c948",
   },
   {
-    id: "round-mono",
-    label: "Mono",
-    style: "rounded",
-    posterBg: "#1a1a1a",
-    textColor: "#e8e8e8",
-    subtitleColor: "#666",
-    tagBg: "rgba(255,255,255,0.08)",
-    tagColor: "#888",
-    kbContainerBg: "rgba(255,255,255,0.04)",
-    palette: {
-      surface: "#ddd",
-      shadow: "#222",
-      caps: ["#555", "#999", "#bbb", "#666", "#777"],
-      bases: ["#333", "#555", "#444"],
-    },
+    id: "round-mono", label: "Mono", style: "rounded",
+    posterBg: "#1a1a1a", textColor: "#e8e8e8", subtitleColor: "#666",
+    tagBg: "rgba(255,255,255,0.08)", tagColor: "#888", kbContainerBg: "rgba(255,255,255,0.04)",
+    palette: { surface: "#ddd", shadow: "#222", caps: ["#555", "#999", "#bbb", "#666", "#777"], bases: ["#333", "#555", "#444"] },
     accentColor: "#999",
   },
   {
-    id: "round-pastel",
-    label: "Soft",
-    style: "rounded",
-    posterBg: "#e8d8f0",
-    textColor: "#2a2040",
-    subtitleColor: "#8a7a9a",
-    tagBg: "rgba(255,255,255,0.5)",
-    tagColor: "#5a4a6a",
-    kbContainerBg: "rgba(255,255,255,0.3)",
-    palette: {
-      surface: "#fff",
-      shadow: "#6c5b7b",
-      caps: ["#ffb3a7", "#ffd1dc", "#a8d8ea", "#fff5ba", "#b5ead7", "#ff9a9e"],
-      bases: ["#ffb3a7", "#a8d8ea", "#ffd1dc"],
-    },
+    id: "round-pastel", label: "Soft", style: "rounded",
+    posterBg: "#e8d8f0", textColor: "#2a2040", subtitleColor: "#8a7a9a",
+    tagBg: "rgba(255,255,255,0.5)", tagColor: "#5a4a6a", kbContainerBg: "rgba(255,255,255,0.3)",
+    palette: { surface: "#fff", shadow: "#6c5b7b", caps: ["#ffb3a7", "#ffd1dc", "#a8d8ea", "#fff5ba", "#b5ead7", "#ff9a9e"], bases: ["#ffb3a7", "#a8d8ea", "#ffd1dc"] },
     accentColor: "#a8d8ea",
   },
 ];
 
-/* ── Helpers ── */
+/* ── Style definitions (rendering approach) ── */
+export const KEYBOARD_STYLES = [
+  { id: "desktop", label: "桌面" },
+  { id: "persp3d", label: "3D透视" },
+  { id: "isometric", label: "等距" },
+];
+
+/* ══════════════════════════════════════════════════════
+   Shared Helpers
+   ══════════════════════════════════════════════════════ */
+
 function seededRng(seed: number) {
   let s = seed;
-  return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
 }
 
 function hexDarken(hex: string, factor: number) {
+  if (!hex.startsWith("#")) return hex;
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -166,41 +135,143 @@ function hexDarken(hex: string, factor: number) {
 }
 
 function luminance(hex: string) {
-  return parseInt(hex.slice(1, 3), 16) * 0.299 +
+  if (!hex.startsWith("#")) return 128;
+  return (
+    parseInt(hex.slice(1, 3), 16) * 0.299 +
     parseInt(hex.slice(3, 5), 16) * 0.587 +
-    parseInt(hex.slice(5, 7), 16) * 0.114;
+    parseInt(hex.slice(5, 7), 16) * 0.114
+  );
 }
 
-/* ── Perspective projection (replaces CSS 3D transforms) ──
- *
- * Equivalent to: perspective(1200px) rotateX(42deg) scale(0.72)
- * with transform-origin at center-bottom of the keyboard.
- *
- * By computing the projection in JS and rendering as SVG polygons,
- * the keyboard looks identical in both browser preview and
- * modern-screenshot export (which cannot handle CSS 3D transforms).
- */
-const PERSP_D = 1200;
-const ROT_RAD = 42 * Math.PI / 180;
-const COS_R = Math.cos(ROT_RAD);
-const SIN_R = Math.sin(ROT_RAD);
-const KB_SCALE = 0.72;
-const BOTTOM_OFFSET = 30; // keyboard extends 30px below poster bottom
+const _mCtx = document.createElement("canvas").getContext("2d")!;
+function measureText(text: string, fontSize: number, fontWeight: string, fontFamily: string): number {
+  _mCtx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  return _mCtx.measureText(text).width;
+}
 
-/* ── SVG key data ── */
-interface SvgKey {
-  layers: { p: string; f: string }[];
+const FONT_UI = "ui-sans-serif, system-ui, sans-serif";
+const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
+
+/* ══════════════════════════════════════════════════════
+   Shared: Top Typography Layout
+   ══════════════════════════════════════════════════════ */
+
+function useTypographyLayout(
+  H: number,
+  topCity: string,
+  topCities: string[],
+  sectionBottomRatio: number,
+) {
+  return useMemo(() => {
+    const padLeft = 64;
+    const sectionBottom = H * sectionBottomRatio - 24;
+    const titleFS = topCity.length > 3 ? 64 : 80;
+    const titleH = titleFS * 1.1;
+    const subtitleFS = 13;
+    const subtitleH = subtitleFS;
+    const accentH = 3;
+    const tagFS = 12;
+    const tagPadX = 12;
+    const tagPadY = 4;
+    const tagGap = 10;
+    const tagH = tagFS + tagPadY * 2;
+    const hasTags = topCities.length > 1;
+
+    const tags = hasTags
+      ? (() => {
+          let ox = 0;
+          return topCities.slice(1).map((name) => {
+            const tw = measureText(name, tagFS, "600", FONT_CN);
+            const w = tw + tagPadX * 2;
+            const x = ox;
+            ox += w + tagGap;
+            return { name, x, w, h: tagH };
+          });
+        })()
+      : [];
+
+    const accentY = sectionBottom - accentH;
+    const tagsY = accentY - 20 - (hasTags ? tagH : 0);
+    const titleY = tagsY - (hasTags ? 16 : 0) - titleH;
+    const subtitleY = titleY - 12 - subtitleH;
+
+    return { padLeft, subtitleY, subtitleFS, titleY, titleFS, tags, tagsY, accentY, accentH };
+  }, [H, topCity, topCities, sectionBottomRatio]);
+}
+
+/* ══════════════════════════════════════════════════════
+   Shared: Typography + Brand JSX
+   ══════════════════════════════════════════════════════ */
+
+function TypographySection({
+  layout,
+  cityCount,
+  totalItems,
+  topCity,
+  theme,
+  W,
+  H,
+}: {
+  layout: ReturnType<typeof useTypographyLayout>;
+  cityCount: number;
+  totalItems: number;
+  topCity: string;
+  theme: ThemePreset;
+  W: number;
+  H: number;
+}) {
+  return (
+    <>
+      <Text
+        x={layout.padLeft} y={layout.subtitleY}
+        text={`${cityCount} cities \u00B7 ${totalItems} saved`}
+        fontSize={layout.subtitleFS} fontStyle="600" fill={theme.subtitleColor}
+        letterSpacing={layout.subtitleFS * 0.15} fontFamily={FONT_UI}
+      />
+      <Text
+        x={layout.padLeft} y={layout.titleY}
+        text={topCity || "旅行足迹"}
+        fontSize={layout.titleFS} fontStyle="800" fill={theme.textColor}
+        letterSpacing={layout.titleFS * -0.02} fontFamily={FONT_CN}
+      />
+      {layout.tags.map((tag) => (
+        <Group key={tag.name} x={layout.padLeft + tag.x} y={layout.tagsY}>
+          <Rect width={tag.w} height={tag.h} fill={theme.tagBg} cornerRadius={20} />
+          <Text x={12} y={4} text={tag.name} fontSize={12} fontStyle="600"
+            fill={theme.tagColor} letterSpacing={0.6} fontFamily={FONT_CN} />
+        </Group>
+      ))}
+      <Rect x={layout.padLeft} y={layout.accentY} width={48} height={layout.accentH}
+        fill={theme.accentColor} cornerRadius={2} />
+      <Text x={layout.padLeft} y={H - 26} text="METOO"
+        fontSize={10} fontStyle="600" fill={theme.subtitleColor}
+        letterSpacing={10 * 0.2} fontFamily={FONT_UI} />
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   STYLE 0 — Desktop (existing perspective, flat/rounded)
+   ══════════════════════════════════════════════════════ */
+
+const DESKTOP_PERSP_D = 1200;
+const DESKTOP_ROT_RAD = (42 * Math.PI) / 180;
+const DESKTOP_COS_R = Math.cos(DESKTOP_ROT_RAD);
+const DESKTOP_SIN_R = Math.sin(DESKTOP_ROT_RAD);
+const DESKTOP_KB_SCALE = 0.72;
+const DESKTOP_BOTTOM_OFFSET = 30;
+
+interface KonvaKey {
+  layers: { pts: number[]; fill: string }[];
   label: string;
-  lx: number; ly: number;
+  lx: number;
+  ly: number;
   fs: number;
   tc: string;
-  ta: "middle" | "start";
-  db: "central" | "auto";
+  centered: boolean;
 }
 
-/* ── Main Component ── */
-
-function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
+function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
   const W = posterWidth;
   const H = posterHeight;
 
@@ -209,24 +280,8 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
   const kbGap = Math.round(8 * kbRatio);
   const kH = Math.round(48 * kbRatio);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fitScale, setFitScale] = useState(1);
   const themeIdx = useMapStore((s) => s.keyboardThemeIdx);
   const theme = KEYBOARD_THEMES[themeIdx % KEYBOARD_THEMES.length];
-
-  const measure = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const pad = 48;
-    setFitScale(Math.min((el.clientWidth - pad) / W, (el.clientHeight - pad) / H, 1));
-  }, [W, H]);
-
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [measure]);
 
   const cityCount = cityEntries.length;
   const totalItems = items.length;
@@ -243,37 +298,29 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
     );
   }, [cityCount, totalItems, theme]);
 
-  /* ── Compute projected keyboard as SVG geometry ── */
-  const kbSvg = useMemo(() => {
+  const kbData = useMemo(() => {
     const pad = Math.round(20 * kbRatio);
     const contentW = kbW - 2 * pad;
     const colW = (contentW - 59 * kbGap) / 60;
     const totalH = 2 * pad + 5 * kH + 4 * kbGap;
 
-    /** Project a point from flat keyboard space → poster space */
     const proj = (kx: number, ky: number): [number, number] => {
-      const rx = (kx - kbW / 2) * KB_SCALE;
-      const ry = (ky - totalH) * KB_SCALE;
-      const yr = ry * COS_R;
-      const zr = ry * SIN_R;
-      const w = 1 - zr / PERSP_D;
-      return [rx / w + W / 2, yr / w + H + BOTTOM_OFFSET];
+      const rx = (kx - kbW / 2) * DESKTOP_KB_SCALE;
+      const ry = (ky - totalH) * DESKTOP_KB_SCALE;
+      const yr = ry * DESKTOP_COS_R;
+      const zr = ry * DESKTOP_SIN_R;
+      const w = 1 - zr / DESKTOP_PERSP_D;
+      return [rx / w + W / 2, yr / w + H + DESKTOP_BOTTOM_OFFSET];
     };
 
-    /** Corners → SVG polygon points string */
-    const pts = (cs: [number, number][]) =>
-      cs.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-
-    /** Perspective scale factor at a given keyboard y */
+    const flat = (cs: [number, number][]) => cs.flatMap(([x, y]) => [x, y]);
     const pScale = (ky: number) => {
-      const zr = (ky - totalH) * KB_SCALE * SIN_R;
-      return KB_SCALE / (1 - zr / PERSP_D);
+      const zr = (ky - totalH) * DESKTOP_KB_SCALE * DESKTOP_SIN_R;
+      return DESKTOP_KB_SCALE / (1 - zr / DESKTOP_PERSP_D);
     };
 
-    // Background quad
-    const bg = pts([proj(0, 0), proj(kbW, 0), proj(kbW, totalH), proj(0, totalH)]);
-
-    const keys: SvgKey[] = [];
+    const bg = flat([proj(0, 0), proj(kbW, 0), proj(kbW, totalH), proj(0, totalH)]);
+    const keys: KonvaKey[] = [];
 
     for (let ri = 0; ri < KB.length; ri++) {
       let col = 0;
@@ -286,70 +333,47 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
         col += kd.w;
 
         const big = (kd.w === 4 && kd.l.length === 1 && !kd.type) || kd.type === "accent";
-        const layers: { p: string; f: string }[] = [];
+        const layers: { pts: number[]; fill: string }[] = [];
 
         if (theme.style === "flat") {
-          /* ── Flat style: layered extrusion ──
-           * Draw back to front: shadow(14px) → base(8px) → surface → cap-shadow(4px) → cap
-           * Each layer covers its predecessor, leaving only the edge band visible.
-           */
-          // Shadow extrusion (offset -14, +14 in flat keyboard space)
-          layers.push({ p: pts([proj(kx-14,ky+14), proj(kx+kw-14,ky+14), proj(kx+kw-14,ky+kH+14), proj(kx-14,ky+kH+14)]), f: theme.palette.shadow });
-          // Base extrusion (offset -8, +8)
-          layers.push({ p: pts([proj(kx-8,ky+8), proj(kx+kw-8,ky+8), proj(kx+kw-8,ky+kH+8), proj(kx-8,ky+kH+8)]), f: cc.base });
-          // Surface
-          layers.push({ p: pts([proj(kx,ky), proj(kx+kw,ky), proj(kx+kw,ky+kH), proj(kx,ky+kH)]), f: theme.palette.surface });
-          // Cap shadow (4px offset from cap edges)
-          layers.push({ p: pts([proj(kx+3,ky+7), proj(kx+kw-7,ky+7), proj(kx+kw-7,ky+kH-3), proj(kx+3,ky+kH-3)]), f: theme.palette.shadow });
-          // Cap face
-          const capC: [number, number][] = [proj(kx+7,ky+3), proj(kx+kw-3,ky+3), proj(kx+kw-3,ky+kH-7), proj(kx+7,ky+kH-7)];
-          layers.push({ p: pts(capC), f: cc.cap });
+          layers.push({ pts: flat([proj(kx - 14, ky + 14), proj(kx + kw - 14, ky + 14), proj(kx + kw - 14, ky + kH + 14), proj(kx - 14, ky + kH + 14)]), fill: theme.palette.shadow });
+          layers.push({ pts: flat([proj(kx - 8, ky + 8), proj(kx + kw - 8, ky + 8), proj(kx + kw - 8, ky + kH + 8), proj(kx - 8, ky + kH + 8)]), fill: cc.base });
+          layers.push({ pts: flat([proj(kx, ky), proj(kx + kw, ky), proj(kx + kw, ky + kH), proj(kx, ky + kH)]), fill: theme.palette.surface });
+          layers.push({ pts: flat([proj(kx + 3, ky + 7), proj(kx + kw - 7, ky + 7), proj(kx + kw - 7, ky + kH - 3), proj(kx + 3, ky + kH - 3)]), fill: theme.palette.shadow });
+          const capC: [number, number][] = [proj(kx + 7, ky + 3), proj(kx + kw - 3, ky + 3), proj(kx + kw - 3, ky + kH - 7), proj(kx + 7, ky + kH - 7)];
+          layers.push({ pts: flat(capC), fill: cc.cap });
 
           const s = pScale(ky + kH / 2);
           const fs = (big ? 22 : 8) * s;
           const tc = theme.palette.shadow;
-          let lx: number, ly: number;
-          let ta: "middle" | "start", db: "central" | "auto";
 
           if (big) {
-            lx = capC.reduce((a, p) => a + p[0], 0) / 4;
-            ly = capC.reduce((a, p) => a + p[1], 0) / 4;
-            ta = "middle"; db = "central";
+            const cx = capC.reduce((a, p) => a + p[0], 0) / 4;
+            const cy = capC.reduce((a, p) => a + p[1], 0) / 4;
+            keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
           } else {
-            [lx, ly] = proj(kx + 12, ky + kH - 10);
-            ta = "start"; db = "auto";
+            const [lx, ly] = proj(kx + 12, ky + kH - 10);
+            keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
           }
-
-          keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx, ly, fs, tc, ta, db });
         } else {
-          /* ── Rounded style: shadow → front face → top face ── */
           const depth = 7;
-
-          // Drop shadow
-          layers.push({ p: pts([proj(kx+3,ky+kH-depth-2), proj(kx+kw+3,ky+kH-depth-2), proj(kx+kw+3,ky+kH+2), proj(kx-3,ky+kH+2)]), f: "rgba(0,0,0,0.35)" });
-          // Front face
-          const fc = hexDarken(cc.cap, 0.72);
-          layers.push({ p: pts([proj(kx,ky+kH-depth-5), proj(kx+kw,ky+kH-depth-5), proj(kx+kw,ky+kH), proj(kx,ky+kH)]), f: fc });
-          // Top face
-          const topC: [number, number][] = [proj(kx,ky), proj(kx+kw,ky), proj(kx+kw,ky+kH-depth), proj(kx,ky+kH-depth)];
-          layers.push({ p: pts(topC), f: cc.cap });
+          layers.push({ pts: flat([proj(kx + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH + 2), proj(kx - 3, ky + kH + 2)]), fill: "rgba(0,0,0,0.35)" });
+          layers.push({ pts: flat([proj(kx, ky + kH - depth - 5), proj(kx + kw, ky + kH - depth - 5), proj(kx + kw, ky + kH), proj(kx, ky + kH)]), fill: hexDarken(cc.cap, 0.72) });
+          const topC: [number, number][] = [proj(kx, ky), proj(kx + kw, ky), proj(kx + kw, ky + kH - depth), proj(kx, ky + kH - depth)];
+          layers.push({ pts: flat(topC), fill: cc.cap });
 
           const tc = luminance(cc.cap) < 128 ? "#faf3e0" : "#1a1a2e";
           const s = pScale(ky + (kH - depth) / 2);
           const fs = (big ? 20 : 8) * s;
-          let lx: number, ly: number;
-          let ta: "middle" | "start", db: "central" | "auto";
 
           if (big) {
-            lx = topC.reduce((a, p) => a + p[0], 0) / 4;
-            ly = topC.reduce((a, p) => a + p[1], 0) / 4;
-            ta = "middle"; db = "central";
+            const cx = topC.reduce((a, p) => a + p[0], 0) / 4;
+            const cy = topC.reduce((a, p) => a + p[1], 0) / 4;
+            keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
           } else {
-            [lx, ly] = proj(kx + 5, ky + kH - depth - 3);
-            ta = "start"; db = "auto";
+            const [lx, ly] = proj(kx + 5, ky + kH - depth - 3);
+            keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
           }
-
-          keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx, ly, fs, tc, ta, db });
         }
       }
     }
@@ -357,107 +381,358 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
     return { bg, keys };
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
 
+  const layout = useTypographyLayout(H, topCity, topCities, 0.52);
+
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-    >
-      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          style={{
-            width: W,
-            height: H,
-            backgroundColor: theme.posterBg,
-            borderRadius: 24,
-            overflow: "hidden",
-            position: "relative",
-            fontFamily: '"Noto Sans SC","PingFang SC",system-ui,sans-serif',
-            transition: "background-color 0.4s ease",
-          }}
-        >
-          {/* ── Top: typography ── */}
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: "52%",
-            display: "flex", flexDirection: "column", justifyContent: "flex-end",
-            padding: "48px 64px 24px", zIndex: 2,
-          }}>
-            <div style={{
-              fontSize: 13, fontWeight: 600, color: theme.subtitleColor,
-              letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 12,
-              fontFamily: "ui-sans-serif, system-ui, sans-serif",
-            }}>
-              {cityCount} cities · {totalItems} saved
-            </div>
-
-            <h1 style={{
-              fontSize: topCity.length > 3 ? 64 : 80,
-              fontWeight: 800, color: theme.textColor,
-              lineHeight: 1.1, letterSpacing: "-0.02em", margin: 0,
-            }}>
-              {topCity || "旅行足迹"}
-            </h1>
-
-            {topCities.length > 1 && (
-              <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                {topCities.slice(1).map((name) => (
-                  <span key={name} style={{
-                    fontSize: 12, fontWeight: 600, color: theme.tagColor,
-                    padding: "4px 12px", backgroundColor: theme.tagBg,
-                    borderRadius: 20, letterSpacing: "0.05em",
-                  }}>
-                    {name}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div style={{
-              width: 48, height: 3, backgroundColor: theme.accentColor,
-              borderRadius: 2, marginTop: 20,
-            }} />
-          </div>
-
-          {/* ── Keyboard: SVG with pre-computed perspective geometry ── */}
-          <svg
-            style={{ position: "absolute", inset: 0, zIndex: 1 }}
-            viewBox={`0 0 ${W} ${H}`}
-          >
-            {/* Container background */}
-            <polygon points={kbSvg.bg} fill={theme.kbContainerBg} />
-            {/* Keys (drawn top-row first for correct painter's-algorithm overlap) */}
-            {kbSvg.keys.map((k, i) => (
-              <g key={i}>
-                {k.layers.map((l, li) => (
-                  <polygon key={li} points={l.p} fill={l.f} />
-                ))}
-                {k.label && (
-                  <text
-                    x={k.lx} y={k.ly}
-                    fill={k.tc} fontSize={k.fs}
-                    fontWeight={700} letterSpacing="0.05em"
-                    fontFamily="ui-sans-serif, system-ui, sans-serif"
-                    textAnchor={k.ta} dominantBaseline={k.db}
-                  >
-                    {k.label}
-                  </text>
-                )}
-              </g>
+    <KonvaPosterStage width={W} height={H}>
+      <Group clipFunc={(ctx) => {
+        const r = 24;
+        ctx.beginPath(); ctx.moveTo(r, 0);
+        ctx.arcTo(W, 0, W, H, r); ctx.arcTo(W, H, 0, H, r);
+        ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
+      }}>
+        <Rect width={W} height={H} fill={theme.posterBg} />
+        <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
+          topCity={topCity} theme={theme} W={W} H={H} />
+        <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
+        {kbData.keys.map((k, i) => (
+          <Group key={i}>
+            {k.layers.map((l, li) => (
+              <Line key={li} points={l.pts} closed fill={l.fill} />
             ))}
-          </svg>
-
-          {/* ── Brand mark ── */}
-          <div style={{
-            position: "absolute", bottom: 16, left: 64,
-            fontSize: 10, fontWeight: 600, color: theme.subtitleColor,
-            letterSpacing: "0.2em", zIndex: 3,
-          }}>
-            METOO
-          </div>
-        </div>
-      </div>
-    </div>
+            {k.label && (
+              <Text
+                x={k.centered ? k.lx - 50 : k.lx}
+                y={k.centered ? k.ly - k.fs * 0.45 : k.ly - k.fs * 0.85}
+                text={k.label} fontSize={k.fs} fontStyle="700" fill={k.tc}
+                letterSpacing={k.fs * 0.05} fontFamily={FONT_UI}
+                width={k.centered ? 100 : undefined} align={k.centered ? "center" : "left"} />
+            )}
+          </Group>
+        ))}
+      </Group>
+    </KonvaPosterStage>
   );
+}
+
+/* ══════════════════════════════════════════════════════
+   STYLE 1 — 3D Perspective (F-key row, rounded quads)
+   ══════════════════════════════════════════════════════ */
+
+const PERSP3D_D = 1400;
+const PERSP3D_ROT_RAD = (32 * Math.PI) / 180;
+const PERSP3D_COS_R = Math.cos(PERSP3D_ROT_RAD);
+const PERSP3D_SIN_R = Math.sin(PERSP3D_ROT_RAD);
+const PERSP3D_KB_SCALE = 0.62;
+const PERSP3D_BOTTOM_OFFSET = 25;
+
+function drawRoundedQuad(
+  ctx: { beginPath(): void; moveTo(x: number, y: number): void; arcTo(x1: number, y1: number, x2: number, y2: number, r: number): void; closePath(): void },
+  c: [number, number][],
+  radii: [number, number, number, number],
+) {
+  const midX = (c[0][0] + c[1][0]) / 2;
+  const midY = (c[0][1] + c[1][1]) / 2;
+  ctx.beginPath(); ctx.moveTo(midX, midY);
+  for (let i = 0; i < 4; i++) {
+    const ni = (i + 1) % 4;
+    const nn = (i + 2) % 4;
+    ctx.arcTo(c[ni][0], c[ni][1], c[nn][0], c[nn][1], radii[ni]);
+  }
+  ctx.closePath();
+}
+
+interface Persp3DKeyLayer { corners: [number, number][]; radii: [number, number, number, number]; fill: string; }
+interface Persp3DKey { layers: Persp3DKeyLayer[]; label: string; lx: number; ly: number; fs: number; tc: string; centered: boolean; }
+
+function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
+  const W = posterWidth;
+  const H = posterHeight;
+
+  const kbW = Math.round(W * (BASE_KB_W / BASE_W));
+  const kbRatio = kbW / BASE_KB_W;
+  const kbGap = Math.round(8 * kbRatio);
+  const kH = Math.round(42 * kbRatio);
+
+  const themeIdx = useMapStore((s) => s.keyboardThemeIdx);
+  const theme = KEYBOARD_THEMES[themeIdx % KEYBOARD_THEMES.length];
+
+  const cityCount = cityEntries.length;
+  const totalItems = items.length;
+  const topCity = cityEntries[0]?.name ?? "";
+  const topCities = cityEntries.slice(0, 4).map((c) => c.name);
+
+  const keyColors = useMemo(() => {
+    const rng = seededRng(cityCount * 31 + totalItems + 42);
+    return KB_PERSP.map((row) =>
+      row.map(() => theme.palette.caps[Math.floor(rng() * theme.palette.caps.length)]),
+    );
+  }, [cityCount, totalItems, theme]);
+
+  const kbData = useMemo(() => {
+    const pad = Math.round(20 * kbRatio);
+    const contentW = kbW - 2 * pad;
+    const colW = (contentW - 59 * kbGap) / 60;
+    const rowCount = KB_PERSP.length;
+    const totalH = 2 * pad + rowCount * kH + (rowCount - 1) * kbGap;
+
+    const proj = (kx: number, ky: number): [number, number] => {
+      const rx = (kx - kbW / 2) * PERSP3D_KB_SCALE;
+      const ry = (ky - totalH) * PERSP3D_KB_SCALE;
+      const yr = ry * PERSP3D_COS_R;
+      const zr = ry * PERSP3D_SIN_R;
+      const w = 1 - zr / PERSP3D_D;
+      return [rx / w + W / 2, yr / w + H + PERSP3D_BOTTOM_OFFSET];
+    };
+
+    const flat = (cs: [number, number][]) => cs.flatMap(([x, y]) => [x, y]);
+    const pScale = (ky: number) => {
+      const zr = (ky - totalH) * PERSP3D_KB_SCALE * PERSP3D_SIN_R;
+      return PERSP3D_KB_SCALE / (1 - zr / PERSP3D_D);
+    };
+
+    const bgPts = flat([proj(0, 0), proj(kbW, 0), proj(kbW, totalH), proj(0, totalH)]);
+    const keys: Persp3DKey[] = [];
+    const depth = 7;
+    const BASE_RADIUS = 7;
+
+    for (let ri = 0; ri < KB_PERSP.length; ri++) {
+      let col = 0;
+      for (let ki = 0; ki < KB_PERSP[ri].length; ki++) {
+        const kd = KB_PERSP[ri][ki];
+        const capColor = keyColors[ri][ki];
+        const kx = pad + col * (colW + kbGap);
+        const ky = pad + ri * (kH + kbGap);
+        const kw = kd.w * colW + (kd.w - 1) * kbGap;
+        col += kd.w;
+
+        const big = (kd.w === 4 && kd.l.length === 1 && !kd.type) || kd.type === "accent";
+        const s = pScale(ky + kH / 2);
+        const r = BASE_RADIUS * s;
+        const layers: Persp3DKeyLayer[] = [];
+
+        layers.push({
+          corners: [proj(kx + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH + 2), proj(kx - 3, ky + kH + 2)],
+          radii: [0, 0, r, r], fill: "rgba(0,0,0,0.35)",
+        });
+        layers.push({
+          corners: [proj(kx, ky + kH - depth - 5), proj(kx + kw, ky + kH - depth - 5), proj(kx + kw, ky + kH), proj(kx, ky + kH)],
+          radii: [0, 0, r, r], fill: hexDarken(capColor, 0.72),
+        });
+        const topC: [number, number][] = [proj(kx, ky), proj(kx + kw, ky), proj(kx + kw, ky + kH - depth), proj(kx, ky + kH - depth)];
+        layers.push({ corners: topC, radii: [r, r, r, r], fill: capColor });
+
+        const tc = luminance(capColor) < 128 ? "#faf3e0" : "#1a1a2e";
+        const fs = (big ? 20 : 8) * s;
+
+        if (big) {
+          const cx = topC.reduce((a, p) => a + p[0], 0) / 4;
+          const cy = topC.reduce((a, p) => a + p[1], 0) / 4;
+          keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
+        } else {
+          const [lx, ly] = proj(kx + 5, ky + kH - depth - 3);
+          keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
+        }
+      }
+    }
+
+    return { bgPts, keys };
+  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors]);
+
+  const layout = useTypographyLayout(H, topCity, topCities, 0.48);
+
+  return (
+    <KonvaPosterStage width={W} height={H}>
+      <Group clipFunc={(ctx) => {
+        const r = 24;
+        ctx.beginPath(); ctx.moveTo(r, 0);
+        ctx.arcTo(W, 0, W, H, r); ctx.arcTo(W, H, 0, H, r);
+        ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
+      }}>
+        <Rect width={W} height={H} fill={theme.posterBg} />
+        <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
+          topCity={topCity} theme={theme} W={W} H={H} />
+        <Line points={kbData.bgPts} closed fill={theme.kbContainerBg} />
+        {kbData.keys.map((k, i) => (
+          <Group key={i}>
+            {k.layers.map((layer, li) => (
+              <Shape key={li} fill={layer.fill} sceneFunc={(ctx, shape) => {
+                drawRoundedQuad(ctx, layer.corners, layer.radii);
+                ctx.fillStrokeShape(shape);
+              }} />
+            ))}
+            {k.label && (
+              <Text
+                x={k.centered ? k.lx - 50 : k.lx}
+                y={k.centered ? k.ly - k.fs * 0.45 : k.ly - k.fs * 0.85}
+                text={k.label} fontSize={k.fs} fontStyle="700" fill={k.tc}
+                letterSpacing={k.fs * 0.05} fontFamily={FONT_UI}
+                width={k.centered ? 100 : undefined} align={k.centered ? "center" : "left"} />
+            )}
+          </Group>
+        ))}
+      </Group>
+    </KonvaPosterStage>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   STYLE 2 — Isometric Keyboard
+   ══════════════════════════════════════════════════════ */
+
+const ISO_S = 0.85;
+const ISO_R = (-24 * Math.PI) / 180;
+const ISO_K = Math.tan((25 * Math.PI) / 180);
+const ISO_M00 = ISO_S * Math.cos(ISO_R);
+const ISO_M01 = ISO_S * (Math.cos(ISO_R) * ISO_K - Math.sin(ISO_R));
+const ISO_M10 = ISO_S * Math.sin(ISO_R);
+const ISO_M11 = ISO_S * (Math.sin(ISO_R) * ISO_K + Math.cos(ISO_R));
+
+function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
+  const W = posterWidth;
+  const H = posterHeight;
+
+  const kbW = Math.round(W * (BASE_KB_W / BASE_W));
+  const kbRatio = kbW / BASE_KB_W;
+  const kbGap = Math.round(10 * kbRatio);
+  const kH = Math.round(52 * kbRatio);
+
+  const themeIdx = useMapStore((s) => s.keyboardThemeIdx);
+  const theme = KEYBOARD_THEMES[themeIdx % KEYBOARD_THEMES.length];
+
+  const cityCount = cityEntries.length;
+  const totalItems = items.length;
+  const topCity = cityEntries[0]?.name ?? "";
+  const topCities = cityEntries.slice(0, 4).map((c) => c.name);
+
+  const keyColors = useMemo(() => {
+    const rng = seededRng(cityCount * 31 + totalItems + 42);
+    return KB.map((row) =>
+      row.map(() => ({
+        cap: theme.palette.caps[Math.floor(rng() * theme.palette.caps.length)],
+        base: theme.palette.bases[Math.floor(rng() * theme.palette.bases.length)],
+      })),
+    );
+  }, [cityCount, totalItems, theme]);
+
+  const kbData = useMemo(() => {
+    const pad = Math.round(20 * kbRatio);
+    const contentW = kbW - 2 * pad;
+    const colW = (contentW - 59 * kbGap) / 60;
+    const rowCount = KB.length;
+    const totalH = 2 * pad + rowCount * kH + (rowCount - 1) * kbGap;
+
+    const kcx = kbW / 2;
+    const kcy = totalH / 2;
+    const pcx = W / 2;
+    const pcy = H * 0.58;
+
+    const proj = (kx: number, ky: number): [number, number] => {
+      const dx = kx - kcx;
+      const dy = ky - kcy;
+      return [ISO_M00 * dx + ISO_M01 * dy + pcx, ISO_M10 * dx + ISO_M11 * dy + pcy];
+    };
+
+    const flat = (cs: [number, number][]) => cs.flatMap(([x, y]) => [x, y]);
+
+    const bg = flat([proj(-pad, -pad), proj(kbW + pad, -pad), proj(kbW + pad, totalH + pad), proj(-pad, totalH + pad)]);
+    const keys: KonvaKey[] = [];
+
+    for (let ri = 0; ri < KB.length; ri++) {
+      let col = 0;
+      for (let ki = 0; ki < KB[ri].length; ki++) {
+        const kd = KB[ri][ki];
+        const cc = keyColors[ri][ki];
+        const kx = pad + col * (colW + kbGap);
+        const ky = pad + ri * (kH + kbGap);
+        const kw = kd.w * colW + (kd.w - 1) * kbGap;
+        col += kd.w;
+
+        const big = (kd.w === 4 && kd.l.length === 1 && !kd.type) || kd.type === "accent";
+        const layers: { pts: number[]; fill: string }[] = [];
+
+        layers.push({ pts: flat([proj(kx - 14, ky + 14), proj(kx + kw - 14, ky + 14), proj(kx + kw - 14, ky + kH + 14), proj(kx - 14, ky + kH + 14)]), fill: theme.palette.shadow });
+        layers.push({ pts: flat([proj(kx - 8, ky + 8), proj(kx + kw - 8, ky + 8), proj(kx + kw - 8, ky + kH + 8), proj(kx - 8, ky + kH + 8)]), fill: cc.base });
+        layers.push({ pts: flat([proj(kx, ky), proj(kx + kw, ky), proj(kx + kw, ky + kH), proj(kx, ky + kH)]), fill: theme.palette.surface });
+        layers.push({ pts: flat([proj(kx + 3, ky + 7), proj(kx + kw - 7, ky + 7), proj(kx + kw - 7, ky + kH - 3), proj(kx + 3, ky + kH - 3)]), fill: theme.palette.shadow });
+        const capC: [number, number][] = [proj(kx + 7, ky + 3), proj(kx + kw - 3, ky + 3), proj(kx + kw - 3, ky + kH - 7), proj(kx + 7, ky + kH - 7)];
+        layers.push({ pts: flat(capC), fill: cc.cap });
+
+        const tc = theme.palette.shadow;
+        const fs = big ? 18 * kbRatio : 7 * kbRatio;
+
+        if (big) {
+          const cx = capC.reduce((a, p) => a + p[0], 0) / 4;
+          const cy = capC.reduce((a, p) => a + p[1], 0) / 4;
+          keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
+        } else {
+          const [lx, ly] = proj(kx + 12, ky + kH - 10);
+          keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
+        }
+      }
+    }
+
+    return { bg, keys };
+  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
+
+  const layout = useTypographyLayout(H, topCity, topCities, 0.28);
+
+  return (
+    <KonvaPosterStage width={W} height={H}>
+      <Group clipFunc={(ctx) => {
+        const r = 24;
+        ctx.beginPath(); ctx.moveTo(r, 0);
+        ctx.arcTo(W, 0, W, H, r); ctx.arcTo(W, H, 0, H, r);
+        ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
+      }}>
+        <Rect width={W} height={H} fill={theme.posterBg} />
+        {/* Noise texture */}
+        <Shape sceneFunc={(ctx, shape) => {
+          ctx.save(); ctx.globalAlpha = 0.08;
+          const step = 3;
+          for (let y = 0; y < H; y += step) {
+            for (let x = 0; x < W; x += step) {
+              const v = Math.random() * 255;
+              ctx.fillStyle = `rgb(${v},${v},${v})`;
+              ctx.fillRect(x, y, step, step);
+            }
+          }
+          ctx.restore(); ctx.fillStrokeShape(shape);
+        }} />
+        <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
+          topCity={topCity} theme={theme} W={W} H={H} />
+        <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
+        {kbData.keys.map((k, i) => (
+          <Group key={i}>
+            {k.layers.map((l, li) => (
+              <Line key={li} points={l.pts} closed fill={l.fill} />
+            ))}
+            {k.label && (
+              <Text
+                x={k.centered ? k.lx - 50 : k.lx}
+                y={k.centered ? k.ly - k.fs * 0.45 : k.ly - k.fs * 0.85}
+                text={k.label} fontSize={k.fs} fontStyle="700" fill={k.tc}
+                letterSpacing={k.fs * 0.05} fontFamily={FONT_UI}
+                width={k.centered ? 100 : undefined} align={k.centered ? "center" : "left"} />
+            )}
+          </Group>
+        ))}
+      </Group>
+    </KonvaPosterStage>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   Main Component — Style Switch
+   ══════════════════════════════════════════════════════ */
+
+function KeyboardPoster(props: PosterModuleProps) {
+  const styleIdx = useMapStore((s) => s.keyboardStyleIdx);
+  switch (styleIdx) {
+    case 1: return <Persp3DContent {...props} />;
+    case 2: return <IsometricContent {...props} />;
+    default: return <DesktopContent {...props} />;
+  }
 }
 
 export default KeyboardPoster;

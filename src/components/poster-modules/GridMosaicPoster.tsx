@@ -1,5 +1,9 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Rect, Text, Line, Group, Circle, Image as KImage } from "react-konva";
+import useImage from "use-image";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { PixelSpriteSVG, SPRITE_NAMES } from "../poster-generators/PixelSprites";
 import { ElevationPersonSVG } from "../poster-generators/ElevationPeople";
@@ -124,8 +128,67 @@ const LAYOUT = [
   ["T6", "I7", "T7", "T8"],
 ] as const;
 
-/* ── Generated icon renderer — uses poster-generators assets ── */
-function GeneratedIcon({ index, size, color, seed }: { index: number; size: number; color: string; seed: number }) {
+const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
+const FONT_UI = "ui-sans-serif, system-ui, sans-serif";
+
+/* ── SVG-to-Konva helper: renders a React SVG element as a KImage ── */
+function SvgIcon({ element, x, y, size }: { element: React.ReactElement; x: number; y: number; size: number }) {
+  const markup = useMemo(() => renderToStaticMarkup(element), [element]);
+  const dataUrl = useMemo(() => "data:image/svg+xml," + encodeURIComponent(markup), [markup]);
+  const [img] = useImage(dataUrl);
+  return img ? <KImage image={img} x={x} y={y} width={size} height={size} /> : null;
+}
+
+/* ── Cover image cell rendered via useImage ── */
+function CoverCell({ src, x, y, size, cornerRadius }: { src: string; x: number; y: number; size: number; cornerRadius: number }) {
+  const [img] = useImage(src, "anonymous");
+  if (!img) return null;
+
+  // Compute cover-fit crop
+  const imgW = img.naturalWidth || img.width;
+  const imgH = img.naturalHeight || img.height;
+  const imgAspect = imgW / imgH;
+  let cropW = imgW;
+  let cropH = imgH;
+  let cropX = 0;
+  let cropY = 0;
+  if (imgAspect > 1) {
+    cropW = imgH;
+    cropX = (imgW - imgH) / 2;
+  } else {
+    cropH = imgW;
+    cropY = (imgH - imgW) / 2;
+  }
+
+  return (
+    <Group
+      x={x}
+      y={y}
+      clipFunc={(ctx) => {
+        const r = cornerRadius;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.arcTo(size, 0, size, size, r);
+        ctx.arcTo(size, size, 0, size, r);
+        ctx.arcTo(0, size, 0, 0, r);
+        ctx.arcTo(0, 0, size, 0, r);
+        ctx.closePath();
+      }}
+    >
+      <KImage
+        image={img}
+        x={0}
+        y={0}
+        width={size}
+        height={size}
+        crop={{ x: cropX, y: cropY, width: cropW, height: cropH }}
+      />
+    </Group>
+  );
+}
+
+/* ── Generated icon renderer — produces a React element for SvgIcon ── */
+function generatedIconElement(index: number, size: number, color: string, seed: number): React.ReactElement {
   const type = ICON_TYPE_CYCLE[index % ICON_TYPE_CYCLE.length];
   const rng = mulberry32(seed + index * 7919);
 
@@ -136,11 +199,7 @@ function GeneratedIcon({ index, size, color, seed }: { index: number; size: numb
 
   if (type === "elevation") {
     const personSeed = Math.floor(rng() * 100000);
-    return (
-      <div style={{ color }}>
-        <ElevationPersonSVG seed={personSeed} size={size} artStyle="line" />
-      </div>
-    );
+    return <ElevationPersonSVG seed={personSeed} size={size} artStyle="line" />;
   }
 
   if (type === "character") {
@@ -156,38 +215,48 @@ function GeneratedIcon({ index, size, color, seed }: { index: number; size: numb
   const doodleRng = mulberry32(Math.floor(rng() * 1000000));
   const svgHtml = DOODLE_ENTRIES[entryIdx].gen(doodleRng);
   return (
-    <svg viewBox="0 0 40 44" width={size} height={size * 1.1} xmlns="http://www.w3.org/2000/svg" style={{ overflow: "visible", color }} dangerouslySetInnerHTML={{ __html: svgHtml }} />
+    <svg viewBox="0 0 40 44" width={size} height={size} xmlns="http://www.w3.org/2000/svg" style={{ overflow: "visible", color }}>
+      <g dangerouslySetInnerHTML={{ __html: svgHtml }} />
+    </svg>
   );
 }
 
-/* ── Cell pattern overlay — renders decorative SVG pattern on top of cell bg ── */
-function CellPatternOverlay({ theme, ink, size }: { theme: MosaicThemeId; ink: string; size: number }) {
+/* ── Cell pattern overlay — stripe / dot in Konva ── */
+function CellPatternOverlay({ theme, ink, x, y, size, cornerRadius }: { theme: MosaicThemeId; ink: string; x: number; y: number; size: number; cornerRadius: number }) {
   if (theme === "solid") return null;
 
   if (theme === "stripe") {
     const gap = Math.round(size * 0.11);
     const sw = Math.max(1.5, size * 0.015);
+    const lineCount = Math.ceil((size * 2) / gap);
     return (
-      <svg
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-        viewBox={`0 0 ${size} ${size}`}
+      <Group
+        x={x}
+        y={y}
+        clipFunc={(ctx) => {
+          const r = cornerRadius;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(size, 0, size, size, r);
+          ctx.arcTo(size, size, 0, size, r);
+          ctx.arcTo(0, size, 0, 0, r);
+          ctx.arcTo(0, 0, size, 0, r);
+          ctx.closePath();
+        }}
       >
-        {Array.from({ length: Math.ceil((size * 2) / gap) }, (_, i) => {
+        {Array.from({ length: lineCount }, (_, i) => {
           const offset = -size + i * gap;
           return (
-            <line
+            <Line
               key={i}
-              x1={offset}
-              y1={size}
-              x2={offset + size}
-              y2={0}
+              points={[offset, size, offset + size, 0]}
               stroke={ink}
               strokeWidth={sw}
               opacity={0.12}
             />
           );
         })}
-      </svg>
+      </Group>
     );
   }
 
@@ -197,18 +266,103 @@ function CellPatternOverlay({ theme, ink, size }: { theme: MosaicThemeId; ink: s
   const cols = Math.ceil(size / gap);
   const rows = Math.ceil(size / gap);
   return (
-    <svg
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-      viewBox={`0 0 ${size} ${size}`}
+    <Group
+      x={x}
+      y={y}
+      clipFunc={(ctx) => {
+        const r = cornerRadius;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.arcTo(size, 0, size, size, r);
+        ctx.arcTo(size, size, 0, size, r);
+        ctx.arcTo(0, size, 0, 0, r);
+        ctx.arcTo(0, 0, size, 0, r);
+        ctx.closePath();
+      }}
     >
       {Array.from({ length: cols * rows }, (_, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
         const cx = gap * 0.5 + col * gap;
         const cy = gap * 0.5 + row * gap;
-        return <circle key={i} cx={cx} cy={cy} r={dotR} fill={ink} opacity={0.1} />;
+        return <Circle key={i} x={cx} y={cy} radius={dotR} fill={ink} opacity={0.1} />;
       })}
-    </svg>
+    </Group>
+  );
+}
+
+/* ── Crosshatch background — small cross marks ── */
+function CrosshatchBackground({ ink }: { ink: string }) {
+  const crosses = useMemo(() => {
+    const items: { x: number; y: number }[] = [];
+    for (let i = 0; i < 180; i++) {
+      const col = i % 18;
+      const row = Math.floor(i / 18);
+      items.push({ x: 30 + col * 44, y: 30 + row * 110 });
+    }
+    return items;
+  }, []);
+
+  return (
+    <Group>
+      {crosses.map((c, i) => (
+        <Group key={i} opacity={0.06}>
+          <Line points={[c.x - 3, c.y, c.x + 3, c.y]} stroke={ink} strokeWidth={1.5} />
+          <Line points={[c.x, c.y - 3, c.x, c.y + 3]} stroke={ink} strokeWidth={1.5} />
+        </Group>
+      ))}
+    </Group>
+  );
+}
+
+/* ── Cell background with rounded corners + optional border + shadow ── */
+function CellBackground({
+  x, y, size, fill, sty, ink,
+}: {
+  x: number; y: number; size: number; fill: string;
+  sty: MosaicStylePreset; ink: string;
+}) {
+  const hasShadow = sty.shadowOffset > 0;
+  const hasBlur = sty.shadowBlur > 0;
+  return (
+    <Group>
+      {/* Drop shadow (offset-based) */}
+      {hasShadow && (
+        <Rect
+          x={x + sty.shadowOffset}
+          y={y + sty.shadowOffset}
+          width={size}
+          height={size}
+          fill={ink}
+          cornerRadius={sty.borderRadius}
+        />
+      )}
+      {/* Blur shadow */}
+      {hasBlur && (
+        <Rect
+          x={x}
+          y={y}
+          width={size}
+          height={size}
+          fill={fill}
+          cornerRadius={sty.borderRadius}
+          shadowColor={ink}
+          shadowBlur={sty.shadowBlur}
+          shadowOpacity={0.25}
+        />
+      )}
+      {/* Main fill */}
+      <Rect
+        x={x}
+        y={y}
+        width={size}
+        height={size}
+        fill={fill}
+        cornerRadius={sty.borderRadius}
+        stroke={sty.borderWidth > 0 ? ink : undefined}
+        strokeWidth={sty.borderWidth > 0 ? sty.borderWidth : undefined}
+      />
+    </Group>
   );
 }
 
@@ -218,30 +372,13 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
   const mosaicThemeIdx = useMapStore((s) => s.mosaicThemeIdx);
   const themeId = MOSAIC_THEMES[mosaicThemeIdx]?.id ?? "solid";
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fitScale, setFitScale] = useState(1);
-
   /* Scale grid dimensions proportionally to poster width */
   const ratio = POSTER_W / BASE_W;
   const CELL = Math.round(138 * ratio);
   const GAP = Math.round(14 * ratio);
   const GRID_W = CELL * 4 + GAP * 3;
-
-  const measure = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const pad = 48;
-    const sx = (el.clientWidth - pad) / POSTER_W;
-    const sy = (el.clientHeight - pad) / POSTER_H;
-    setFitScale(Math.min(sx, sy, 1));
-  }, [POSTER_W, POSTER_H]);
-
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [measure]);
+  const GRID_X = Math.round((POSTER_W - GRID_W) / 2);
+  const GRID_Y = 48;
 
   /* ── Derive grid text from city names ── */
   const gridChars = useMemo(() => {
@@ -286,278 +423,260 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
     ? `收藏了 ${totalItems} 条内容，足迹遍布 ${cityNames}${cityCount > 3 ? ` 等 ${cityCount} 座城市` : ""}`
     : "开始收藏，记录你的城市足迹";
 
-  /* ── Shared cell base style (driven by sty preset) ── */
-  const shadowStr = sty.shadowBlur > 0
-    ? `0 0 ${sty.shadowBlur}px ${pal.ink}40`
-    : sty.shadowOffset > 0
-      ? `${sty.shadowOffset}px ${sty.shadowOffset}px 0 ${pal.ink}`
-      : "none";
-  const cellBase: React.CSSProperties = {
-    width: CELL,
-    height: CELL,
-    borderRadius: sty.borderRadius,
-    border: sty.borderWidth > 0 ? `${sty.borderWidth}px solid ${pal.ink}` : "none",
-    boxShadow: [shadowStr, sty.insetShadow].filter(Boolean).join(", ") || "none",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    position: "relative",
-  };
+  /* ── Precompute icon elements for SvgIcon ── */
+  const iconElements = useMemo(() => {
+    const elements: Record<string, React.ReactElement> = {};
+    for (let ri = 0; ri < LAYOUT.length; ri++) {
+      for (let ci = 0; ci < LAYOUT[ri].length; ci++) {
+        const cell = LAYOUT[ri][ci];
+        if (cell.startsWith("I")) {
+          const iIdx = parseInt(cell.substring(1));
+          elements[cell] = generatedIconElement(iIdx, 70, pal.ink, iconSeed);
+        }
+        // Fallback cover → icon
+        if (cell.startsWith("C")) {
+          const cIdx = parseInt(cell.substring(1));
+          if (!covers[cIdx]) {
+            elements[cell] = generatedIconElement(ri * 2 + ci, 70, pal.ink, iconSeed);
+          }
+        }
+      }
+    }
+    return elements;
+  }, [pal.ink, iconSeed, covers]);
+
+  /* ── Bottom info card layout ── */
+  const INFO_PAD_X = 28;
+  const INFO_PAD_Y = 22;
+  const INFO_H = 110;
+  const INFO_Y = POSTER_H - 32 - 30 - INFO_H; // leave room for brand footer
+  const INFO_X = GRID_X;
+  const INFO_W = GRID_W;
+
+  /* ── Brand footer Y ── */
+  const BRAND_Y = POSTER_H - 32;
+
+  /* ── Text stroke props ── */
+  const textStrokeProps = sty.textStroke
+    ? { stroke: pal.ink, strokeWidth: parseFloat(sty.textStroke) || 1.5 }
+    : {};
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-    >
-      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          style={{
-            width: POSTER_W,
-            height: POSTER_H,
-            backgroundColor: "#FFFFFF",
-            borderRadius: 24,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
-            fontFamily: '"Noto Sans SC", "PingFang SC", system-ui, sans-serif',
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {/* Background cross-hatch pattern (only for styles that use it) */}
-          {sty.crosshatch && (
-            <svg
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-              viewBox={`0 0 ${POSTER_W} ${POSTER_H}`}
-            >
-              {Array.from({ length: 180 }, (_, i) => {
-                const col = i % 18;
-                const row = Math.floor(i / 18);
-                const x = 30 + col * 44;
-                const y = 30 + row * 110;
+    <KonvaPosterStage width={POSTER_W} height={POSTER_H}>
+      {/* Rounded-corner clip */}
+      <Group
+        clipFunc={(ctx) => {
+          const r = 24;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(POSTER_W, 0, POSTER_W, POSTER_H, r);
+          ctx.arcTo(POSTER_W, POSTER_H, 0, POSTER_H, r);
+          ctx.arcTo(0, POSTER_H, 0, 0, r);
+          ctx.arcTo(0, 0, POSTER_W, 0, r);
+          ctx.closePath();
+        }}
+      >
+        {/* White background */}
+        <Rect width={POSTER_W} height={POSTER_H} fill="#FFFFFF" />
+
+        {/* Crosshatch background (conditional) */}
+        {sty.crosshatch && (
+          <CrosshatchBackground ink={pal.ink} />
+        )}
+
+        {/* ── Grid cells ── */}
+        {LAYOUT.map((row, ri) =>
+          row.map((cell, ci) => {
+            const bg = pal.cells[COLOR_IDX[ri][ci]];
+            const cx = GRID_X + ci * (CELL + GAP);
+            const cy = GRID_Y + ri * (CELL + GAP);
+            const key = `${ri}-${ci}`;
+
+            /* Text cell — bold city character */
+            if (cell.startsWith("T")) {
+              const idx = parseInt(cell.substring(1));
+              return (
+                <Group key={key}>
+                  <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
+                  <CellPatternOverlay theme={themeId} ink={pal.ink} x={cx} y={cy} size={CELL} cornerRadius={sty.borderRadius} />
+                  <Text
+                    x={cx}
+                    y={cy}
+                    width={CELL}
+                    height={CELL}
+                    text={gridChars[idx]}
+                    fontSize={72}
+                    fontStyle="900"
+                    fill={pal.ink}
+                    fontFamily={FONT_CN}
+                    align="center"
+                    verticalAlign="middle"
+                    {...textStrokeProps}
+                  />
+                </Group>
+              );
+            }
+
+            /* Cover photo cell */
+            if (cell.startsWith("C")) {
+              const cIdx = parseInt(cell.substring(1));
+              const src = covers[cIdx];
+              if (!src) {
+                /* Fallback → icon */
+                const iconEl = iconElements[cell];
+                const iconSize = 70;
                 return (
-                  <g key={i} opacity={0.06}>
-                    <line x1={x - 3} y1={y} x2={x + 3} y2={y} stroke={pal.ink} strokeWidth={1.5} />
-                    <line x1={x} y1={y - 3} x2={x} y2={y + 3} stroke={pal.ink} strokeWidth={1.5} />
-                  </g>
+                  <Group key={key}>
+                    <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
+                    <CellPatternOverlay theme={themeId} ink={pal.ink} x={cx} y={cy} size={CELL} cornerRadius={sty.borderRadius} />
+                    {iconEl && (
+                      <SvgIcon
+                        element={iconEl}
+                        x={cx + (CELL - iconSize) / 2}
+                        y={cy + (CELL - iconSize) / 2}
+                        size={iconSize}
+                      />
+                    )}
+                  </Group>
                 );
-              })}
-            </svg>
+              }
+              return (
+                <Group key={key}>
+                  <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
+                  <CoverCell src={src} x={cx} y={cy} size={CELL} cornerRadius={sty.borderRadius} />
+                </Group>
+              );
+            }
+
+            /* Icon cell — generated SVG icon */
+            const iconEl = iconElements[cell];
+            const iconSize = 70;
+            return (
+              <Group key={key}>
+                <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
+                <CellPatternOverlay theme={themeId} ink={pal.ink} x={cx} y={cy} size={CELL} cornerRadius={sty.borderRadius} />
+                {iconEl && (
+                  <SvgIcon
+                    element={iconEl}
+                    x={cx + (CELL - iconSize) / 2}
+                    y={cy + (CELL - iconSize) / 2}
+                    size={iconSize}
+                  />
+                )}
+              </Group>
+            );
+          })
+        )}
+
+        {/* ── Bottom info card — inverted color scheme ── */}
+        <Group x={INFO_X} y={INFO_Y}>
+          {/* Shadow (offset or blur based) */}
+          {sty.shadowOffset > 0 && (
+            <Rect
+              x={sty.shadowOffset}
+              y={sty.shadowOffset}
+              width={INFO_W}
+              height={INFO_H}
+              fill={pal.accent}
+              cornerRadius={sty.borderRadius}
+            />
           )}
-
-          {/* Noise overlay (sketch / vintage styles) */}
-          {sty.noiseOverlay && (
-            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", mixBlendMode: "multiply", opacity: 0.12 }}>
-              <filter id="mosaic-noise"><feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" /></filter>
-              <rect width="100%" height="100%" filter="url(#mosaic-noise)" />
-            </svg>
+          {sty.shadowBlur > 0 && (
+            <Rect
+              width={INFO_W}
+              height={INFO_H}
+              fill={pal.ink}
+              cornerRadius={sty.borderRadius}
+              shadowColor={pal.accent}
+              shadowBlur={sty.shadowBlur}
+              shadowOpacity={0.25}
+            />
           )}
+          {/* Background */}
+          <Rect
+            width={INFO_W}
+            height={INFO_H}
+            fill={pal.ink}
+            cornerRadius={sty.borderRadius}
+            stroke={sty.borderWidth > 0 ? pal.accent : undefined}
+            strokeWidth={sty.borderWidth > 0 ? sty.borderWidth : undefined}
+          />
 
-          {/* Content layer */}
-          <div
-            style={{
-              position: "relative",
-              zIndex: 1,
-              padding: "48px 0 32px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              height: "100%",
-            }}
-          >
-            {/* ── Grid ── */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(4, ${CELL}px)`,
-                gridTemplateRows: `repeat(5, ${CELL}px)`,
-                gap: GAP,
-              }}
-            >
-              {LAYOUT.map((row, ri) =>
-                row.map((cell, ci) => {
-                  const bg = pal.cells[COLOR_IDX[ri][ci]];
-                  const key = `${ri}-${ci}`;
+          {/* Big number */}
+          <Text
+            x={INFO_PAD_X}
+            y={INFO_PAD_Y}
+            text={String(cityCount)}
+            fontSize={60}
+            fontStyle="900"
+            fill={pal.accent}
+            fontFamily={FONT_CN}
+            lineHeight={1}
+          />
+          <Text
+            x={INFO_PAD_X}
+            y={INFO_PAD_Y + 62}
+            text="CITIES"
+            fontSize={10}
+            fontStyle="800"
+            fill={pal.bg}
+            opacity={0.6}
+            letterSpacing={10 * 0.15}
+            fontFamily={FONT_UI}
+          />
 
-                  /* Text cell — bold city character */
-                  if (cell.startsWith("T")) {
-                    const idx = parseInt(cell.substring(1));
-                    return (
-                      <div key={key} style={{ ...cellBase, backgroundColor: bg }}>
-                        <CellPatternOverlay theme={themeId} ink={pal.ink} size={CELL} />
-                        <span
-                          style={{
-                            fontSize: 72,
-                            fontWeight: 900,
-                            color: pal.ink,
-                            lineHeight: 1,
-                            userSelect: "none",
-                            position: "relative",
-                            zIndex: 1,
-                            ...(sty.textStroke ? { WebkitTextStroke: `${sty.textStroke} ${pal.ink}`, paintOrder: "stroke fill" } : {}),
-                          }}
-                        >
-                          {gridChars[idx]}
-                        </span>
-                      </div>
-                    );
-                  }
+          {/* Divider */}
+          <Rect
+            x={INFO_PAD_X + 80}
+            y={INFO_PAD_Y + 4}
+            width={3}
+            height={INFO_H - INFO_PAD_Y * 2 - 8}
+            fill={pal.accent}
+            opacity={0.4}
+            cornerRadius={2}
+          />
 
-                  /* Cover photo cell */
-                  if (cell.startsWith("C")) {
-                    const idx = parseInt(cell.substring(1));
-                    const src = covers[idx];
-                    if (!src) {
-                      /* Fallback → icon */
-                      return (
-                        <div key={key} style={{ ...cellBase, backgroundColor: bg }}>
-                          <CellPatternOverlay theme={themeId} ink={pal.ink} size={CELL} />
-                          <div style={{ position: "relative", zIndex: 1 }}>
-                            <GeneratedIcon index={ri * 2 + ci} size={70} color={pal.ink} seed={iconSeed} />
-                          </div>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div key={key} style={cellBase}>
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            backgroundImage: `url(${src})`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                          }}
-                        />
-                        {/* Subtle color tint */}
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            backgroundColor: bg,
-                            opacity: 0.12,
-                            mixBlendMode: "multiply",
-                          }}
-                        />
-                      </div>
-                    );
-                  }
+          {/* Text content */}
+          <Text
+            x={INFO_PAD_X + 100}
+            y={INFO_PAD_Y + 4}
+            text={subtitle}
+            fontSize={22}
+            fontStyle="900"
+            fill={pal.bg}
+            letterSpacing={22 * -0.02}
+            fontFamily={FONT_CN}
+            width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X}
+          />
+          <Text
+            x={INFO_PAD_X + 100}
+            y={INFO_PAD_Y + 36}
+            text={description}
+            fontSize={12}
+            fill={pal.bg}
+            opacity={0.7}
+            lineHeight={1.6}
+            fontFamily={FONT_CN}
+            width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X}
+          />
+        </Group>
 
-                  /* Icon cell — hand-drawn SVG */
-                  const iIdx = parseInt(cell.substring(1));
-                  return (
-                    <div key={key} style={{ ...cellBase, backgroundColor: bg }}>
-                      <CellPatternOverlay theme={themeId} ink={pal.ink} size={CELL} />
-                      <div style={{ position: "relative", zIndex: 1 }}>
-                        <GeneratedIcon index={iIdx} size={70} color={pal.ink} seed={iconSeed} />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* ── Bottom info card — inverted color scheme ── */}
-            <div
-              style={{
-                marginTop: "auto",
-                width: GRID_W,
-                padding: "22px 28px",
-                backgroundColor: pal.ink,
-                border: sty.borderWidth > 0 ? `${sty.borderWidth}px solid ${pal.accent}` : "none",
-                boxShadow: sty.shadowBlur > 0
-                  ? `0 0 ${sty.shadowBlur}px ${pal.accent}40`
-                  : sty.shadowOffset > 0
-                    ? `${sty.shadowOffset}px ${sty.shadowOffset}px 0 ${pal.accent}`
-                    : "none",
-                borderRadius: sty.borderRadius,
-                display: "flex",
-                alignItems: "center",
-                gap: 24,
-              }}
-            >
-              {/* Big number */}
-              <div style={{ flexShrink: 0, textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: 60,
-                    fontWeight: 900,
-                    lineHeight: 1,
-                    color: pal.accent,
-                  }}
-                >
-                  {cityCount}
-                </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    letterSpacing: "0.15em",
-                    color: pal.bg,
-                    opacity: 0.6,
-                    marginTop: 4,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  CITIES
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div
-                style={{
-                  width: 3,
-                  alignSelf: "stretch",
-                  backgroundColor: pal.accent,
-                  borderRadius: 2,
-                  opacity: 0.4,
-                }}
-              />
-
-              {/* Text */}
-              <div style={{ flex: 1 }}>
-                <h2
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 900,
-                    color: pal.bg,
-                    marginBottom: 6,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {subtitle}
-                </h2>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: pal.bg,
-                    opacity: 0.7,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {description}
-                </p>
-              </div>
-            </div>
-
-            {/* ── Brand footer ── */}
-            <div
-              style={{
-                marginTop: 16,
-                textAlign: "center",
-                fontSize: 13,
-                fontWeight: 900,
-                letterSpacing: "0.2em",
-                color: pal.ink,
-                opacity: 0.35,
-              }}
-            >
-              METOO · 城市拼贴
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        {/* ── Brand footer ── */}
+        <Text
+          x={0}
+          y={BRAND_Y}
+          width={POSTER_W}
+          text="METOO · 城市拼贴"
+          fontSize={13}
+          fontStyle="900"
+          fill={pal.ink}
+          opacity={0.35}
+          letterSpacing={13 * 0.2}
+          fontFamily={FONT_CN}
+          align="center"
+        />
+      </Group>
+    </KonvaPosterStage>
   );
 }
 

@@ -10,13 +10,17 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/zcool-kuaile": "^5.2.8",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
+    "html2canvas": "^1.4.1",
+    "konva": "^10.2.3",
     "lucide-react": "^0.462.0",
-    "modern-screenshot": "^4.6.8",
     "motion": "^12.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-konva": "^19.2.3",
+    "use-image": "^1.1.4",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

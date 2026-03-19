@@ -1,8 +1,29 @@
-import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import { Rect, Text, Line, Group, Circle, Path, Image as KImage } from "react-konva";
+import useImage from "use-image";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 
-/* ── Transit map: dynamic city layout ── */
+/* ── Fonts ── */
+const FONT_SERIF =
+  '"Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif';
+const FONT_SANS = "ui-sans-serif, system-ui, sans-serif";
+const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
+
+/* ── Text measurement ── */
+const _mCtx = document.createElement("canvas").getContext("2d")!;
+function measureText(
+  text: string,
+  fontSize: number,
+  fontWeight: string,
+  fontFamily: string,
+): number {
+  _mCtx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  return _mCtx.measureText(text).width;
+}
+
+/* ── Transit map: build station nodes ── */
 
 interface StationNode {
   id: string;
@@ -23,174 +44,358 @@ function buildTransitNodes(
   const maxCount = cities[0].count;
   const nodes: StationNode[] = [];
 
-  // Main line: evenly spread from x=450 → x=0
   for (let i = 0; i < mainCount; i++) {
     const city = cities[i];
     const x = 450 - i * (450 / Math.max(mainCount - 1, 1));
     const type: StationNode["type"] =
-      i === 0 ? "highlight" : city.count >= maxCount * 0.4 ? "major" : "minor";
-    nodes.push({ id: `main-${i}`, x, y: 60, name: city.name, count: city.count, type });
+      i === 0
+        ? "highlight"
+        : city.count >= maxCount * 0.4
+          ? "major"
+          : "minor";
+    nodes.push({
+      id: `main-${i}`,
+      x,
+      y: 60,
+      name: city.name,
+      count: city.count,
+      type,
+    });
   }
 
-  // Branch line: cities 7-9, from x=230 → x=140 at y=110
   const branchStartX = 230;
   for (let i = 0; i < branchCount; i++) {
     const city = cities[7 + i];
-    const x = branchStartX - i * 45;
-    nodes.push({ id: `branch-${i}`, x, y: 110, name: city.name, count: city.count, type: "minor" });
+    nodes.push({
+      id: `branch-${i}`,
+      x: branchStartX - i * 45,
+      y: 110,
+      name: city.name,
+      count: city.count,
+      type: "minor",
+    });
   }
 
   return nodes;
 }
 
-/* ── TransitMap component ── */
+/* ── Cover image sub-component ── */
 
-const TransitMap: React.FC<{ cities: { name: string; count: number }[]; scale?: number }> = ({
+function CoverImage({
+  src,
+  x,
+  y,
+  w,
+  h,
+  radius,
+  cityName,
+  cityFontSize,
+  gradientH,
+}: {
+  src: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  radius: number;
+  cityName: string;
+  cityFontSize: number;
+  gradientH: number;
+}) {
+  const [img] = useImage(src, "anonymous");
+  return (
+    <Group
+      x={x}
+      y={y}
+      clipFunc={(ctx) => {
+        const r = radius;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.arcTo(w, 0, w, h, r);
+        ctx.arcTo(w, h, 0, h, r);
+        ctx.arcTo(0, h, 0, 0, r);
+        ctx.arcTo(0, 0, w, 0, r);
+        ctx.closePath();
+      }}
+    >
+      {/* Gray placeholder */}
+      <Rect width={w} height={h} fill="#e5e7eb" />
+      {/* Cover image */}
+      {img && <KImage image={img} width={w} height={h} />}
+      {/* Gradient overlay */}
+      <Rect
+        y={h - gradientH}
+        width={w}
+        height={gradientH}
+        fillLinearGradientStartPoint={{ x: 0, y: 0 }}
+        fillLinearGradientEndPoint={{ x: 0, y: gradientH }}
+        fillLinearGradientColorStops={[
+          0,
+          "transparent",
+          1,
+          "rgba(0,0,0,0.5)",
+        ]}
+      />
+      {/* City name label */}
+      <Text
+        x={16}
+        y={h - cityFontSize - 12}
+        text={cityName}
+        fill="#fff"
+        fontSize={cityFontSize}
+        fontStyle="700"
+        fontFamily={FONT_SANS}
+        letterSpacing={cityFontSize * 0.1}
+      />
+    </Group>
+  );
+}
+
+/* ── Vertical text helper: render each char stacked vertically ── */
+
+function VerticalText({
+  x,
+  y,
+  name,
+  fontSize,
+  fontStyle,
+  fill,
+  align,
+}: {
+  x: number;
+  y: number;
+  name: string;
+  fontSize: number;
+  fontStyle: string;
+  fill: string;
+  align: "center" | "left";
+}) {
+  const chars = [...name.slice(0, 3)];
+  const charH = fontSize * 1.3;
+  const totalH = chars.length * charH;
+  const startY = align === "center" ? y - totalH / 2 : y;
+  return (
+    <>
+      {chars.map((ch, i) => (
+        <Text
+          key={i}
+          x={x - fontSize / 2}
+          y={startY + i * charH}
+          text={ch}
+          fontSize={fontSize}
+          fontStyle={fontStyle}
+          fill={fill}
+          width={fontSize}
+          align="center"
+          fontFamily={FONT_CN}
+        />
+      ))}
+    </>
+  );
+}
+
+/* ── Transit map rendered via Konva shapes ── */
+
+function KonvaTransitMap({
   cities,
-  scale = 1,
-}) => {
+  scale,
+  offsetX,
+  offsetY,
+}: {
+  cities: { name: string; count: number }[];
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}) {
   const nodes = useMemo(() => buildTransitNodes(cities), [cities]);
   const hasBranch = cities.length > 7;
   const mainRight = 480;
-  const mainLeft = nodes.length > 0 ? Math.min(...nodes.filter((n) => n.y === 60).map((n) => n.x)) - 20 : 0;
-  const baseW = 480;
-  const baseH = 160;
+  const mainLeft =
+    nodes.length > 0
+      ? Math.min(...nodes.filter((n) => n.y === 60).map((n) => n.x)) - 20
+      : 0;
 
   return (
-    <div className="relative mr-4 select-none" style={{ width: baseW * scale, height: baseH * scale }}>
-      <div style={{ width: baseW, height: baseH, transform: `scale(${scale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}>
-      <svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 480 160"
-        className="absolute top-0 left-0 z-0 pointer-events-none overflow-visible"
-      >
-        {/* Main line */}
-        <path d={`M ${mainRight} 60 L ${mainLeft} 60`} stroke="#4b5563" strokeWidth="4" fill="none" />
-        <path
-          d={`M ${mainRight} 60 L ${mainLeft} 60`}
-          stroke="#f3f4f6"
-          strokeWidth="1.5"
-          strokeDasharray="5 3"
-          fill="none"
-        />
-        {/* Branch line */}
-        {hasBranch && (
-          <path
-            d="M 290 60 L 270 60 L 230 110 L 140 110 L 100 60"
-            stroke="#6b7280"
-            strokeWidth="2.5"
-            fill="none"
-          />
-        )}
-      </svg>
+    <Group x={offsetX} y={offsetY} scaleX={scale} scaleY={scale}>
+      {/* Main line (solid) */}
+      <Line
+        points={[mainRight, 60, mainLeft, 60]}
+        stroke="#4b5563"
+        strokeWidth={4}
+      />
+      {/* Main line (dashed overlay) */}
+      <Line
+        points={[mainRight, 60, mainLeft, 60]}
+        stroke="#f3f4f6"
+        strokeWidth={1.5}
+        dash={[5, 3]}
+      />
 
-      {/* Route labels — z-40 above all station nodes */}
-      <div
-        className="absolute font-bold tracking-widest text-gray-500"
-        style={{ fontSize: 9, left: 210, top: 18, zIndex: 40, backgroundColor: "rgba(255,255,255,0.85)", padding: "1px 4px", borderRadius: 2 }}
-      >
-        收藏线
-      </div>
+      {/* Branch line */}
       {hasBranch && (
-        <div
-          className="absolute font-bold tracking-widest text-gray-500"
-          style={{ fontSize: 9, left: 180, top: 135, zIndex: 40, backgroundColor: "rgba(255,255,255,0.85)", padding: "1px 4px", borderRadius: 2 }}
-        >
-          发现支线
-        </div>
+        <Line
+          points={[290, 60, 270, 60, 230, 110, 140, 110, 100, 60]}
+          stroke="#6b7280"
+          strokeWidth={2.5}
+        />
+      )}
+
+      {/* Route label: 收藏线 */}
+      <Group x={210} y={14}>
+        <Rect
+          width={42}
+          height={14}
+          fill="rgba(255,255,255,0.85)"
+          cornerRadius={2}
+        />
+        <Text
+          x={4}
+          y={1}
+          text="收藏线"
+          fontSize={9}
+          fontStyle="700"
+          fill="#6b7280"
+          fontFamily={FONT_CN}
+          letterSpacing={9 * 0.15}
+        />
+      </Group>
+
+      {/* Route label: 发现支线 */}
+      {hasBranch && (
+        <Group x={180} y={131}>
+          <Rect
+            width={52}
+            height={14}
+            fill="rgba(255,255,255,0.85)"
+            cornerRadius={2}
+          />
+          <Text
+            x={4}
+            y={1}
+            text="发现支线"
+            fontSize={9}
+            fontStyle="700"
+            fill="#6b7280"
+            fontFamily={FONT_CN}
+            letterSpacing={9 * 0.15}
+          />
+        </Group>
       )}
 
       {/* Station nodes */}
-      {nodes.map((node) => (
-        <div
-          key={node.id}
-          className="absolute flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
-          style={{
-            left: node.x,
-            top: node.y,
-            zIndex: node.type === "highlight" ? 30 : node.type === "major" ? 20 : 10,
-          }}
-        >
-          {node.type === "highlight" ? (
-            <div
-              className="bg-black text-white rounded-full flex items-center justify-center font-bold tracking-widest leading-none"
-              style={{
-                width: 42,
-                height: 42,
-                borderWidth: 3,
-                borderColor: "white",
-                borderStyle: "solid",
-                fontSize: node.name.length > 2 ? 11 : 13,
-                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
-              }}
-            >
-              <span style={{ writingMode: "vertical-rl", textOrientation: "upright" }}>
-                {node.name.slice(0, 3)}
-              </span>
-            </div>
-          ) : node.type === "major" ? (
-            <div
-              className="bg-gray-300 text-black rounded-full flex items-center justify-center font-bold tracking-widest leading-none"
-              style={{
-                width: 24,
-                height: node.name.length > 2 ? 62 : 56,
-                border: "2px solid white",
-                fontSize: node.name.length > 2 ? 9 : 11,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-              }}
-            >
-              <span style={{ writingMode: "vertical-rl", textOrientation: "upright" }}>
-                {node.name.slice(0, 3)}
-              </span>
-            </div>
-          ) : (
-            <div
-              className="bg-white text-gray-700 rounded-full flex items-center justify-center font-bold tracking-widest leading-none"
-              style={{
-                width: 18,
-                height: node.name.length > 2 ? 48 : 44,
-                border: "1px solid #9ca3af",
-                fontSize: 9,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-              }}
-            >
-              <span style={{ writingMode: "vertical-rl", textOrientation: "upright" }}>
-                {node.name.slice(0, 3)}
-              </span>
-            </div>
-          )}
-        </div>
-      ))}
-      </div>
-    </div>
+      {nodes.map((node) => {
+        if (node.type === "highlight") {
+          // Large black circle with white border
+          const r = 21;
+          const fs = node.name.length > 2 ? 11 : 13;
+          return (
+            <Group key={node.id} x={node.x} y={node.y}>
+              {/* White border ring */}
+              <Circle radius={r + 3} fill="white" />
+              {/* Black circle */}
+              <Circle radius={r} fill="black" />
+              {/* Vertical station name */}
+              <VerticalText
+                x={0}
+                y={0}
+                name={node.name}
+                fontSize={fs}
+                fontStyle="700"
+                fill="white"
+                align="center"
+              />
+            </Group>
+          );
+        } else if (node.type === "major") {
+          // Gray pill shape
+          const pillW = 24;
+          const pillH = node.name.length > 2 ? 62 : 56;
+          const fs = node.name.length > 2 ? 9 : 11;
+          return (
+            <Group key={node.id} x={node.x} y={node.y}>
+              {/* White border */}
+              <Rect
+                x={-(pillW / 2) - 2}
+                y={-(pillH / 2) - 2}
+                width={pillW + 4}
+                height={pillH + 4}
+                cornerRadius={12}
+                fill="white"
+              />
+              {/* Gray background */}
+              <Rect
+                x={-pillW / 2}
+                y={-pillH / 2}
+                width={pillW}
+                height={pillH}
+                cornerRadius={12}
+                fill="#d1d5db"
+              />
+              {/* Vertical station name */}
+              <VerticalText
+                x={0}
+                y={0}
+                name={node.name}
+                fontSize={fs}
+                fontStyle="700"
+                fill="black"
+                align="center"
+              />
+            </Group>
+          );
+        } else {
+          // Minor: small white pill
+          const pillW = 18;
+          const pillH = node.name.length > 2 ? 48 : 44;
+          const fs = 9;
+          return (
+            <Group key={node.id} x={node.x} y={node.y}>
+              {/* Border */}
+              <Rect
+                x={-(pillW / 2) - 1}
+                y={-(pillH / 2) - 1}
+                width={pillW + 2}
+                height={pillH + 2}
+                cornerRadius={9}
+                fill="#9ca3af"
+              />
+              {/* White background */}
+              <Rect
+                x={-pillW / 2}
+                y={-pillH / 2}
+                width={pillW}
+                height={pillH}
+                cornerRadius={9}
+                fill="white"
+              />
+              {/* Vertical station name */}
+              <VerticalText
+                x={0}
+                y={0}
+                name={node.name}
+                fontSize={fs}
+                fontStyle="700"
+                fill="#374151"
+                align="center"
+              />
+            </Group>
+          );
+        }
+      })}
+    </Group>
   );
-};
+}
 
 /* ── Main component ── */
 
-function DiscoverWestPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight: POSTER_H }: PosterModuleProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fitScale, setFitScale] = useState(1);
-
-  const measure = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const containerGap = 48;
-    const sx = (el.clientWidth - containerGap) / POSTER_W;
-    const sy = (el.clientHeight - containerGap) / POSTER_H;
-    setFitScale(Math.min(sx, sy, 1));
-  }, [POSTER_W, POSTER_H]);
-
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [measure]);
-
+function DiscoverWestPoster({
+  items,
+  cityEntries,
+  posterWidth: W,
+  posterHeight: H,
+}: PosterModuleProps) {
   /* ── Aspect-ratio detection ── */
-  const aspect = POSTER_W / POSTER_H;
+  const aspect = W / H;
   const isPortrait = aspect < 0.8;
   const isSquare = aspect >= 0.8 && aspect < 1.15;
   const isWide = aspect >= 1.5;
@@ -211,7 +416,8 @@ function DiscoverWestPoster({ items, cityEntries, posterWidth: POSTER_W, posterH
   }, [cityEntries]);
 
   const transitCities = useMemo(
-    () => cityEntries.slice(0, 10).map((c) => ({ name: c.name, count: c.count })),
+    () =>
+      cityEntries.slice(0, 10).map((c) => ({ name: c.name, count: c.count })),
     [cityEntries],
   );
 
@@ -221,310 +427,506 @@ function DiscoverWestPoster({ items, cityEntries, posterWidth: POSTER_W, posterH
 
   /* ── Layout-adaptive values ── */
   const posterPad = isPortrait ? 44 : 40;
-  const serifFont = '"Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif';
   const titleSize = isPortrait ? 64 : isSquare ? 56 : isWide ? 80 : 72;
   const journeySize = isPortrait ? 20 : isSquare ? 18 : isWide ? 24 : 22;
   const sideColW = isPortrait ? 180 : isSquare ? 140 : isWide ? 220 : 180;
   const footerFs = isPortrait ? 22 : isSquare ? 20 : 24;
   const footerNumFs = isPortrait ? 26 : isSquare ? 24 : 28;
 
-  /* ── Horizontal-layout values (1:1 / 4:3 / 16:9) ── */
-  const leftW = isSquare ? "36%" : isWide ? "28%" : "32%";
-  const rightW = isSquare ? "64%" : isWide ? "72%" : "68%";
+  /* ── Title text lines ── */
+  const titleLine1 = topCity
+    ? `${topCity.name.slice(0, 2)}，`
+    : "出发，";
+  const titleLine2 = topCity
+    ? topCity.name.length > 2
+      ? `${topCity.name.slice(2)}。`
+      : "印记。"
+    : "去远方。";
+
+  /* ── Horizontal layout proportions ── */
+  const leftFrac = isSquare ? 0.36 : isWide ? 0.28 : 0.32;
   const titleMt = isSquare ? 56 : isWide ? 96 : 80;
   const journeyMt = isSquare ? 32 : isWide ? 56 : 48;
-  const footerTextW = isSquare ? "48%" : isWide ? "38%" : "45%";
-  const footerMapW = isSquare ? "52%" : isWide ? "62%" : "55%";
+  const footerH = isWide ? 240 : 180;
 
-  /* ── Shared sub-elements ── */
-  const titleContent = topCity ? (
-    <>
-      {topCity.name.slice(0, 2)}，
-      <br />
-      {topCity.name.length > 2 ? topCity.name.slice(2) + "。" : "印记。"}
-    </>
-  ) : (
-    <>
-      出发，
-      <br />
-      去远方。
-    </>
-  );
+  /* ── Pre-compute footer text layout ── */
+  const footerLayout = useMemo(() => {
+    const numW1 = measureText(String(totalItems), footerNumFs, "700", FONT_SANS);
+    const numW2 = measureText(String(totalCities), footerNumFs, "700", FONT_SANS);
+    const t1 = "个收藏 · ";
+    const t2 = "座城市";
+    const tW1 = measureText(t1, footerFs, "400", FONT_SERIF);
+    const tW2 = measureText(t2, footerFs, "400", FONT_SERIF);
+    return { numW1, numW2, tW1, tW2, t1, t2 };
+  }, [totalItems, totalCities, footerFs, footerNumFs]);
 
-  const brandEl = (
-    <div className="space-y-1 shrink-0">
-      <div
-        className="font-bold text-gray-800"
-        style={{ fontSize: 11, letterSpacing: "0.2em" }}
-      >
-        在路上，发现远方。
-      </div>
-      <div
-        className="font-bold flex items-center gap-2"
-        style={{ fontSize: 15, letterSpacing: "0.15em" }}
-      >
-        <div
-          style={{
-            width: 0,
-            height: 0,
-            borderTop: "5px solid transparent",
-            borderLeft: "8px solid black",
-            borderBottom: "5px solid transparent",
-          }}
+  /* ── Compute layout positions ── */
+  const layout = useMemo(() => {
+    if (isPortrait) {
+      /* ── Portrait (3:4) ── */
+      const brandY = posterPad;
+      const brandH = 40;
+
+      // Cover images area
+      const coverY = brandY + brandH + 24;
+      const coverH = 440;
+      const coverAreaW = W - posterPad * 2;
+
+      // Main cover
+      const sideW = heroCovers.length > 1 ? sideColW : 0;
+      const gapW = heroCovers.length > 1 ? 10 : 0;
+      const mainCoverW = coverAreaW - sideW - gapW;
+
+      // Side covers
+      const sideCovers = heroCovers.slice(1, 4);
+      const sideGap = 10;
+      const sideCoverH =
+        sideCovers.length > 0
+          ? (coverH - (sideCovers.length - 1) * sideGap) / sideCovers.length
+          : 0;
+
+      // Title area: between covers and footer
+      const titleAreaTop = coverY + coverH + 20;
+
+      // Footer area
+      const footerTextH = footerFs * 1.6 * 2 + 8;
+      const transitMapH = 160;
+      const footerTotalH = footerTextH + 20 + transitMapH + 16;
+      const footerY = H - posterPad - footerTotalH;
+
+      // Title vertically centered between covers and footer
+      const titleAreaH = footerY - titleAreaTop;
+      const titleBlockH = titleSize * 1.2 * 2 + journeySize + 32;
+      const titleY = titleAreaTop + (titleAreaH - titleBlockH) / 2;
+
+      return {
+        isPortrait: true as const,
+        brandY,
+        coverY,
+        coverH,
+        mainCoverW,
+        mainCoverX: posterPad,
+        sideX: posterPad + mainCoverW + gapW,
+        sideW,
+        sideCovers,
+        sideCoverH,
+        sideGap,
+        titleY,
+        journeyY: titleY + titleSize * 1.2 * 2 + 32,
+        footerTextY: footerY,
+        transitMapY: footerY + footerTextH + 20,
+        brandingY: H - posterPad - 48,
+        transitMapScale: 1,
+        transitMapX: posterPad,
+      };
+    } else {
+      /* ── Horizontal (1:1, 4:3, 16:9) ── */
+      const innerW = W - posterPad * 2;
+      const leftW = Math.round(innerW * leftFrac);
+      const rightW = innerW - leftW;
+
+      // Top section height (above footer)
+      const topH = H - posterPad * 2 - footerH;
+
+      // Brand
+      const brandY = posterPad + 8;
+
+      // Title
+      const titleY = posterPad + 8 + titleMt;
+
+      // Journey
+      const journeyY = titleY + titleSize * 1.2 * 2 + journeyMt;
+
+      // Right cover area
+      const coverX = posterPad + leftW + 8;
+      const coverAreaW = rightW - 8;
+      const coverH = topH;
+
+      const sideW = heroCovers.length > 1 ? sideColW : 0;
+      const gapW = heroCovers.length > 1 ? 10 : 0;
+      const mainCoverW = coverAreaW - sideW - gapW;
+
+      // Side covers — up to 4 for horizontal
+      const sideCovers = heroCovers.slice(1, 5);
+      const sideGap = 10;
+      const sideCoverH =
+        sideCovers.length > 0
+          ? (coverH - (sideCovers.length - 1) * sideGap) / sideCovers.length
+          : 0;
+
+      // Footer
+      const footerY = posterPad + topH + 32;
+      const footerTextFrac = isSquare ? 0.48 : isWide ? 0.38 : 0.45;
+      const footerTextW = Math.round(innerW * footerTextFrac);
+
+      return {
+        isPortrait: false as const,
+        brandY,
+        titleY,
+        journeyY,
+        coverX,
+        coverH: topH,
+        mainCoverW,
+        sideX: coverX + mainCoverW + gapW,
+        sideW,
+        sideCovers,
+        sideCoverH,
+        sideGap,
+        footerY,
+        footerMapX: posterPad + footerTextW,
+        transitMapScale: isWide ? 1.35 : 1,
+        brandingY: H - posterPad - 48,
+      };
+    }
+  }, [
+    W,
+    H,
+    isPortrait,
+    isSquare,
+    isWide,
+    posterPad,
+    heroCovers,
+    sideColW,
+    titleSize,
+    journeySize,
+    titleMt,
+    journeyMt,
+    footerH,
+    leftFrac,
+    footerFs,
+  ]);
+
+  /* ── Brand elements helper ── */
+  const renderBrand = (x: number, y: number) => (
+    <Group x={x} y={y}>
+      {/* "在路上，发现远方。" */}
+      <Text
+        x={0}
+        y={0}
+        text="在路上，发现远方。"
+        fontSize={11}
+        fontStyle="700"
+        fill="#1f2937"
+        fontFamily={FONT_CN}
+        letterSpacing={11 * 0.2}
+      />
+      {/* Triangle + DISCOVER */}
+      <Group y={18}>
+        {/* Triangle arrow */}
+        <Path
+          data="M 0 5 L 8 0 L 8 10 Z"
+          fill="black"
+          scaleX={-1}
+          x={8}
         />
-        DISCOVER
-      </div>
-    </div>
+        <Text
+          x={16}
+          y={-2}
+          text="DISCOVER"
+          fontSize={15}
+          fontStyle="700"
+          fill="#1f2937"
+          fontFamily={FONT_SANS}
+          letterSpacing={15 * 0.15}
+        />
+      </Group>
+    </Group>
   );
 
-  const brandingMark = (
-    <div className="flex flex-col items-center justify-end pb-2 shrink-0">
-      <div className="font-bold font-sans tracking-tighter" style={{ fontSize: 30 }}>
-        觅途
-      </div>
-      <div className="tracking-widest mt-1" style={{ fontSize: 8 }}>
-        METOO
-      </div>
-    </div>
+  /* ── Branding mark (觅途 / METOO) ── */
+  const renderBrandingMark = (x: number, y: number) => (
+    <Group x={x} y={y}>
+      <Text
+        x={0}
+        y={0}
+        text="觅途"
+        fontSize={30}
+        fontStyle="700"
+        fill="#1a1a1a"
+        fontFamily={FONT_CN}
+        letterSpacing={-1}
+        align="center"
+        width={60}
+      />
+      <Text
+        x={0}
+        y={36}
+        text="METOO"
+        fontSize={8}
+        fontStyle="400"
+        fill="#6b7280"
+        fontFamily={FONT_SANS}
+        letterSpacing={8 * 0.2}
+        align="center"
+        width={60}
+      />
+    </Group>
+  );
+
+  /* ── Title block ── */
+  const renderTitle = (x: number, y: number) => (
+    <Group x={x} y={y}>
+      <Text
+        x={0}
+        y={0}
+        text={titleLine1}
+        fontSize={titleSize}
+        fontStyle="500"
+        fill="#111827"
+        fontFamily={FONT_SERIF}
+        letterSpacing={titleSize * 0.15}
+      />
+      <Text
+        x={0}
+        y={titleSize * 1.2}
+        text={titleLine2}
+        fontSize={titleSize}
+        fontStyle="500"
+        fill="#111827"
+        fontFamily={FONT_SERIF}
+        letterSpacing={titleSize * 0.15}
+      />
+    </Group>
+  );
+
+  /* ── JOURNEY. divider ── */
+  const renderJourney = (x: number, y: number) => (
+    <Group x={x} y={y}>
+      <Line
+        points={[0, journeySize / 2, 64, journeySize / 2]}
+        stroke="#9ca3af"
+        strokeWidth={1}
+      />
+      <Text
+        x={88}
+        y={0}
+        text="JOURNEY."
+        fontSize={journeySize}
+        fontStyle="400"
+        fill="#1f2937"
+        fontFamily={FONT_SANS}
+        letterSpacing={journeySize * 0.35}
+      />
+    </Group>
+  );
+
+  /* ── Footer stats text ── */
+  const renderFooterText = (x: number, y: number) => {
+    const lineH = footerFs * 1.6;
+    // Line 1: footerLine1
+    // Line 2: {totalItems} 个收藏 · {totalCities} 座城市
+    const { numW1, numW2, tW1, t1, t2 } = footerLayout;
+    const numStr1 = String(totalItems);
+    const numStr2 = String(totalCities);
+
+    return (
+      <Group x={x} y={y}>
+        {/* Line 1 */}
+        <Text
+          x={0}
+          y={0}
+          text={footerLine1}
+          fontSize={footerFs}
+          fontStyle="400"
+          fill="#111827"
+          fontFamily={FONT_SERIF}
+          letterSpacing={footerFs * 0.1}
+        />
+        {/* Line 2: mixed font sizes */}
+        <Group y={lineH}>
+          <Text
+            x={0}
+            y={0}
+            text={numStr1}
+            fontSize={footerNumFs}
+            fontStyle="700"
+            fill="#111827"
+            fontFamily={FONT_SANS}
+          />
+          <Text
+            x={numW1 + 4}
+            y={footerNumFs - footerFs}
+            text={t1}
+            fontSize={footerFs}
+            fontStyle="400"
+            fill="#111827"
+            fontFamily={FONT_SERIF}
+            letterSpacing={footerFs * 0.1}
+          />
+          <Text
+            x={numW1 + 4 + tW1}
+            y={0}
+            text={numStr2}
+            fontSize={footerNumFs}
+            fontStyle="700"
+            fill="#111827"
+            fontFamily={FONT_SANS}
+          />
+          <Text
+            x={numW1 + 4 + tW1 + numW2 + 4}
+            y={footerNumFs - footerFs}
+            text={t2}
+            fontSize={footerFs}
+            fontStyle="400"
+            fill="#111827"
+            fontFamily={FONT_SERIF}
+            letterSpacing={footerFs * 0.1}
+          />
+        </Group>
+      </Group>
+    );
+  };
+
+  /* ── Cover images block ── */
+  const renderCovers = (
+    x: number,
+    y: number,
+    mainW: number,
+    h: number,
+    _sideX: number,
+    _sideW: number,
+    _sideCovers: { src: string; city: string }[],
+    _sideCoverH: number,
+    _sideGap: number,
+  ) => (
+    <Group x={x} y={y}>
+      {/* Main hero cover */}
+      {heroCovers.length > 0 && (
+        <CoverImage
+          src={heroCovers[0].src}
+          x={0}
+          y={0}
+          w={mainW}
+          h={h}
+          radius={16}
+          cityName={heroCovers[0].city}
+          cityFontSize={13}
+          gradientH={60}
+        />
+      )}
+      {/* Side covers */}
+      {_sideCovers.map((item, i) => (
+        <CoverImage
+          key={i}
+          src={item.src}
+          x={_sideX - x}
+          y={i * (_sideCoverH + _sideGap)}
+          w={_sideW}
+          h={_sideCoverH}
+          radius={12}
+          cityName={item.city}
+          cityFontSize={9}
+          gradientH={40}
+        />
+      ))}
+    </Group>
   );
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-    >
-      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          className="bg-white relative flex flex-col"
-          style={{
-            width: POSTER_W,
-            height: POSTER_H,
-            padding: posterPad,
-            fontFamily: serifFont,
-            boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25), 0 8px 20px -8px rgba(0,0,0,0.1)",
-          }}
-        >
-          {isPortrait ? (
-            /* ── Portrait layout (3:4) ──
-               Vertical stack: brand → hero images → title → footer/transit
-               Images dominant (~31%), title centered in remaining space,
-               transit map + stats anchored at bottom */
-            <>
-              {brandEl}
+    <KonvaPosterStage width={W} height={H}>
+      {/* Outer rounded-corner clip */}
+      <Group
+        clipFunc={(ctx) => {
+          const r = 24;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(W, 0, W, H, r);
+          ctx.arcTo(W, H, 0, H, r);
+          ctx.arcTo(0, H, 0, 0, r);
+          ctx.arcTo(0, 0, W, 0, r);
+          ctx.closePath();
+        }}
+      >
+        {/* White background */}
+        <Rect width={W} height={H} fill="white" />
 
-              {/* Cover images — hero + 3 side photos */}
-              <div className="flex gap-2.5 mt-6 shrink-0" style={{ height: 440 }}>
-                {heroCovers.length > 0 && (
-                  <div className="flex-1 min-w-0 relative rounded-2xl overflow-hidden bg-gray-200">
-                    <div
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${heroCovers[0].src})` }}
-                    />
-                    <div
-                      className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8"
-                      style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.5))" }}
-                    >
-                      <span
-                        className="text-white font-bold font-sans"
-                        style={{ fontSize: 13, letterSpacing: "0.1em" }}
-                      >
-                        {heroCovers[0].city}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {heroCovers.length > 1 && (
-                  <div className="flex flex-col gap-2.5" style={{ width: sideColW }}>
-                    {heroCovers.slice(1, 4).map((item, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 min-h-0 relative rounded-xl overflow-hidden bg-gray-200"
-                      >
-                        <div
-                          className="absolute inset-0 bg-cover bg-center"
-                          style={{ backgroundImage: `url(${item.src})` }}
-                        />
-                        <div
-                          className="absolute bottom-0 left-0 right-0 px-2.5 pb-1.5 pt-5"
-                          style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.45))" }}
-                        >
-                          <span
-                            className="text-white font-bold font-sans"
-                            style={{ fontSize: 9, letterSpacing: "0.05em" }}
-                          >
-                            {item.city}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+        {layout.isPortrait ? (
+          /* ── Portrait layout (3:4) ── */
+          <>
+            {/* Brand */}
+            {renderBrand(posterPad, layout.brandY)}
 
-              {/* Title — flex-1 centers content vertically with breathing room */}
-              <div className="flex-1 flex flex-col justify-center min-h-0">
-                <h1
-                  className="font-medium text-gray-900 whitespace-nowrap"
-                  style={{ fontSize: titleSize, lineHeight: 1.2, letterSpacing: "0.15em" }}
-                >
-                  {titleContent}
-                </h1>
-                <div className="flex items-center gap-6 mt-8">
-                  <div className="h-[1px] w-16 bg-gray-400" />
-                  <span
-                    className="text-gray-800 font-sans uppercase"
-                    style={{ fontSize: journeySize, letterSpacing: "0.35em" }}
-                  >
-                    JOURNEY.
-                  </span>
-                </div>
-              </div>
+            {/* Cover images */}
+            {renderCovers(
+              layout.mainCoverX,
+              layout.coverY,
+              layout.mainCoverW,
+              layout.coverH,
+              layout.sideX,
+              layout.sideW,
+              layout.sideCovers,
+              layout.sideCoverH,
+              layout.sideGap,
+            )}
 
-              {/* Footer: stats text stacked above transit map + branding */}
-              <div className="shrink-0">
-                <div
-                  className="text-gray-900"
-                  style={{ fontSize: footerFs, lineHeight: 1.6, letterSpacing: "0.1em" }}
-                >
-                  <p>{footerLine1}</p>
-                  <p>
-                    <span className="font-bold font-sans mx-1" style={{ fontSize: footerNumFs }}>
-                      {totalItems}
-                    </span>
-                    个收藏 ·
-                    <span className="font-bold font-sans mx-1" style={{ fontSize: footerNumFs }}>
-                      {totalCities}
-                    </span>
-                    座城市
-                  </p>
-                </div>
-                <div className="flex items-end justify-end gap-6 mt-5">
-                  <TransitMap cities={transitCities} />
-                  {brandingMark}
-                </div>
-              </div>
-            </>
-          ) : (
-            /* ── Horizontal layouts (1:1 / 4:3 / 16:9) ──
-               Left text column + right cover grid on top,
-               footer text + transit map at bottom.
-               Proportions scale by aspect ratio. */
-            <>
-              {/* Top: text + image */}
-              <div className="flex-1 flex min-h-0">
-                {/* Left text column */}
-                <div className="flex flex-col justify-between pr-8 py-2" style={{ width: leftW }}>
-                  {brandEl}
+            {/* Title */}
+            {renderTitle(posterPad, layout.titleY)}
 
-                  {/* Main title */}
-                  <div style={{ marginTop: titleMt }} className="mb-auto">
-                    <h1
-                      className="font-medium text-gray-900 whitespace-nowrap"
-                      style={{ fontSize: titleSize, lineHeight: 1.2, letterSpacing: "0.15em" }}
-                    >
-                      {titleContent}
-                    </h1>
-                    <div className="flex items-center gap-6" style={{ marginTop: journeyMt }}>
-                      <div className="h-[1px] w-16 bg-gray-400" />
-                      <span
-                        className="text-gray-800 font-sans uppercase"
-                        style={{ fontSize: journeySize, letterSpacing: "0.35em" }}
-                      >
-                        JOURNEY.
-                      </span>
-                    </div>
-                  </div>
+            {/* JOURNEY. divider */}
+            {renderJourney(posterPad, layout.journeyY)}
 
-                  {/* Spacer — keep left column bottom breathing */}
-                  <div className="mt-auto mb-8" />
-                </div>
+            {/* Footer stats text */}
+            {renderFooterText(posterPad, layout.footerTextY)}
 
-                {/* Right cover grid */}
-                <div className="h-full flex gap-2.5" style={{ width: rightW }}>
-                  {/* Main large cover */}
-                  {heroCovers.length > 0 && (
-                    <div className="flex-1 min-w-0 relative rounded-2xl overflow-hidden bg-gray-200">
-                      <div
-                        className="absolute inset-0 bg-cover bg-center"
-                        style={{ backgroundImage: `url(${heroCovers[0].src})` }}
-                      />
-                      <div
-                        className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8"
-                        style={{
-                          background: "linear-gradient(transparent, rgba(0,0,0,0.5))",
-                        }}
-                      >
-                        <span
-                          className="text-white font-bold font-sans"
-                          style={{ fontSize: 13, letterSpacing: "0.1em" }}
-                        >
-                          {heroCovers[0].city}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  {/* Side column: stacked smaller covers */}
-                  {heroCovers.length > 1 && (
-                    <div className="flex flex-col gap-2.5" style={{ width: sideColW }}>
-                      {heroCovers.slice(1, 5).map((item, i) => (
-                        <div
-                          key={i}
-                          className="flex-1 min-h-0 relative rounded-xl overflow-hidden bg-gray-200"
-                        >
-                          <div
-                            className="absolute inset-0 bg-cover bg-center"
-                            style={{ backgroundImage: `url(${item.src})` }}
-                          />
-                          <div
-                            className="absolute bottom-0 left-0 right-0 px-2.5 pb-1.5 pt-5"
-                            style={{
-                              background: "linear-gradient(transparent, rgba(0,0,0,0.45))",
-                            }}
-                          >
-                            <span
-                              className="text-white font-bold font-sans"
-                              style={{ fontSize: 9, letterSpacing: "0.05em" }}
-                            >
-                              {item.city}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+            {/* Transit map + branding mark at bottom */}
+            <KonvaTransitMap
+              cities={transitCities}
+              scale={layout.transitMapScale}
+              offsetX={layout.transitMapX}
+              offsetY={layout.transitMapY}
+            />
 
-              {/* ── Bottom: footer text + transit map ── */}
-              <div className="flex items-end justify-between pt-8 pb-4" style={{ height: isWide ? 240 : 180 }}>
-                <div
-                  className="text-gray-900 pb-2"
-                  style={{ width: footerTextW, fontSize: footerFs, lineHeight: 1.6, letterSpacing: "0.1em" }}
-                >
-                  <p>{footerLine1}</p>
-                  <p>
-                    <span className="font-bold font-sans mx-1" style={{ fontSize: footerNumFs }}>
-                      {totalItems}
-                    </span>
-                    个收藏 ·
-                    <span className="font-bold font-sans mx-1" style={{ fontSize: footerNumFs }}>
-                      {totalCities}
-                    </span>
-                    座城市
-                  </p>
-                </div>
+            {/* Branding mark (bottom right) */}
+            {renderBrandingMark(
+              W - posterPad - 60,
+              layout.brandingY,
+            )}
+          </>
+        ) : (
+          /* ── Horizontal layouts (1:1, 4:3, 16:9) ── */
+          <>
+            {/* Brand (top-left) */}
+            {renderBrand(posterPad, layout.brandY)}
 
-                <div className="flex items-end justify-end gap-6 relative" style={{ width: footerMapW }}>
-                  <TransitMap cities={transitCities} scale={isWide ? 1.35 : 1} />
-                  {brandingMark}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+            {/* Title (left column) */}
+            {renderTitle(posterPad, layout.titleY)}
+
+            {/* JOURNEY. divider (left column) */}
+            {renderJourney(posterPad, layout.journeyY)}
+
+            {/* Cover images (right column) */}
+            {renderCovers(
+              layout.coverX,
+              posterPad,
+              layout.mainCoverW,
+              layout.coverH,
+              layout.sideX,
+              layout.sideW,
+              layout.sideCovers,
+              layout.sideCoverH,
+              layout.sideGap,
+            )}
+
+            {/* Footer text (bottom-left) */}
+            {renderFooterText(posterPad, layout.footerY)}
+
+            {/* Transit map (bottom-right) */}
+            <KonvaTransitMap
+              cities={transitCities}
+              scale={layout.transitMapScale}
+              offsetX={layout.footerMapX}
+              offsetY={layout.footerY}
+            />
+
+            {/* Branding mark (bottom far right) */}
+            {renderBrandingMark(
+              W - posterPad - 60,
+              layout.brandingY,
+            )}
+          </>
+        )}
+      </Group>
+    </KonvaPosterStage>
   );
 }
 

@@ -11,10 +11,11 @@ import { PosterModuleBar } from "./PosterModuleBar";
 import { PosterPreview } from "./PosterPreview";
 import { useMapStore, type ChartView } from "../stores/useMapStore";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
-import { savePosterToDownloads } from "../lib/poster-export";
+import { invoke } from "@tauri-apps/api/core";
+import { posterStageRef, saveKonvaPosterToDownloads } from "../lib/poster-stage";
 import { getPosterModule, posterModules, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
 import { MujiPosterDevPanel, DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
-import { KEYBOARD_THEMES } from "./poster-modules/KeyboardPoster";
+import { KEYBOARD_THEMES, KEYBOARD_STYLES } from "./poster-modules/KeyboardPoster";
 import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
 import { MUJI_TEMPLATES, getDefaultTemplateIdx } from "./poster-modules/MujiPoster";
 import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
@@ -61,6 +62,8 @@ export function RightPanel() {
   const setDataPostcardHue = useMapStore((s) => s.setDataPostcardHue);
   const dataPostcardStyleIdx = useMapStore((s) => s.dataPostcardStyleIdx);
   const setDataPostcardStyleIdx = useMapStore((s) => s.setDataPostcardStyleIdx);
+  const keyboardStyleIdx = useMapStore((s) => s.keyboardStyleIdx);
+  const setKeyboardStyleIdx = useMapStore((s) => s.setKeyboardStyleIdx);
   const status = useFavoriteStore((s) => s.status);
   const favItems = useFavoriteStore((s) => s.items);
 
@@ -79,15 +82,94 @@ export function RightPanel() {
   const [showModuleBar, setShowModuleBar] = useState(false);
 
   const handlePosterDownload = useCallback(async () => {
-    if (!posterRef.current || !activePosterModule || dlState === "loading") return;
+    if (!activePosterModule || dlState === "loading") return;
     const mod = getPosterModule(activePosterModule);
     if (!mod) return;
 
     setDlState("loading");
     try {
-      const card = posterRef.current.querySelector("[data-poster-export]") as HTMLElement;
-      const target = card || posterRef.current;
-      await savePosterToDownloads(target, mod.name);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `觅途-${mod.name}-${timestamp}.png`;
+
+      if (activePosterModule === "muji" && posterRef.current) {
+        // MujiPoster = DOM dot-matrix map (watermark) + Konva (text).
+        // Direct canvas compositing — avoids html2canvas which is extremely
+        // slow on the complex SVG/canvas WorldMap DOM.
+        const rect = posterRef.current.getBoundingClientRect();
+        const W = rect.width;
+        const H = rect.height;
+        const dpr = 3;
+
+        const output = document.createElement("canvas");
+        output.width = Math.round(W * dpr);
+        output.height = Math.round(H * dpr);
+        const ctx = output.getContext("2d")!;
+        ctx.scale(dpr, dpr);
+
+        // White background
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, W, H);
+
+        // Replicate CSS `opacity: 0.18` on the parent: composite dots + avatars
+        // at full opacity on an offscreen canvas, then stamp it at 0.18.
+        const offscreen = document.createElement("canvas");
+        offscreen.width = output.width;
+        offscreen.height = output.height;
+        const oCtx = offscreen.getContext("2d")!;
+        oCtx.scale(dpr, dpr);
+
+        // 1) Dot-matrix map (full opacity on offscreen)
+        const dotCanvas = posterRef.current.querySelector(".muji-map-bg canvas") as HTMLCanvasElement | null;
+        if (dotCanvas) {
+          oCtx.drawImage(dotCanvas, 0, 0, W, H);
+        }
+
+        // 2) City avatars on top of dots (white border + circular clip)
+        const avatarEls = posterRef.current.querySelectorAll<HTMLElement>(".muji-map-bg [data-city]");
+        for (const el of avatarEls) {
+          const img = el.querySelector("img") as HTMLImageElement | null;
+          if (!img?.complete || !img.naturalWidth) continue;
+          const elRect = el.getBoundingClientRect();
+          const x = elRect.left - rect.left;
+          const y = elRect.top - rect.top;
+          const s = elRect.width;
+          const r = s / 2;
+          // White border (2px visible border)
+          oCtx.save();
+          oCtx.beginPath();
+          oCtx.arc(x + r, y + r, r, 0, Math.PI * 2);
+          oCtx.fillStyle = "rgba(255,255,255,0.9)";
+          oCtx.fill();
+          // Clip image to slightly smaller circle (inset by border)
+          const border = 2;
+          oCtx.beginPath();
+          oCtx.arc(x + r, y + r, r - border, 0, Math.PI * 2);
+          oCtx.clip();
+          oCtx.drawImage(img, x + border, y + border, s - border * 2, s - border * 2);
+          oCtx.restore();
+        }
+
+        // 3) Stamp offscreen onto output at 0.18 opacity
+        ctx.globalAlpha = 0.18;
+        ctx.drawImage(offscreen, 0, 0, W, H);
+        ctx.globalAlpha = 1;
+
+        // Draw Konva text layer on top
+        if (posterStageRef.current) {
+          const konvaCanvas = posterStageRef.current.toCanvas({ pixelRatio: dpr });
+          ctx.drawImage(konvaCanvas, 0, 0, W, H);
+        }
+
+        // Export composite
+        const blob = await new Promise<Blob>((res) => output.toBlob((b) => res(b!), "image/png"));
+        const buf = await blob.arrayBuffer();
+        const data = Array.from(new Uint8Array(buf));
+        await invoke("save_image_to_downloads", { data, filename });
+      } else if (posterStageRef.current) {
+        // All other modules: Konva native export
+        await saveKonvaPosterToDownloads(posterStageRef.current, mod.name);
+      }
+
       setDlState("done");
       setTimeout(() => setDlState("idle"), 2000);
     } catch (err) {
@@ -295,8 +377,14 @@ export function RightPanel() {
                         transition={{ layout: { type: "spring", stiffness: 400, damping: 35 } }}
                       >
                         {activePosterModule === "muji" && (
-                          <div className="absolute inset-0 pointer-events-none">
-                            <MapView />
+                          <div className="absolute inset-0 pointer-events-none muji-map-bg">
+                            {/* Sharp map at low opacity — watermark on premium paper, colors preserved */}
+                            <div
+                              className="absolute inset-0"
+                              style={{ opacity: 0.18 }}
+                            >
+                              <MapView />
+                            </div>
                           </div>
                         )}
                         <PosterPreview />
@@ -338,6 +426,36 @@ export function RightPanel() {
                     {/* Style buttons — module-specific, morphing indicator */}
                     {activePosterModule === "keyboard" && (
                       <div className="flex items-center gap-0.5">
+                        {KEYBOARD_STYLES.map((s, i) => {
+                          const isActive = keyboardStyleIdx === i;
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setKeyboardStyleIdx(i)}
+                              className="relative px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer z-[1]"
+                            >
+                              {isActive && (
+                                <motion.div
+                                  layoutId="keyboard-style-indicator"
+                                  className="absolute inset-0 bg-neutral-800 rounded-lg"
+                                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                                />
+                              )}
+                              <span
+                                className={`relative z-[1] transition-colors duration-200 ${
+                                  isActive ? "text-white" : "text-neutral-500"
+                                }`}
+                              >
+                                {s.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {activePosterModule === "keyboard" && (
+                      <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-neutral-200">
                         {KEYBOARD_THEMES.map((t, i) => {
                           const isActive = keyboardThemeIdx === i;
                           return (
@@ -617,6 +735,7 @@ export function RightPanel() {
                           style={{ "--hue-thumb": deriveMujiColors(mujiHue).textColor } as React.CSSProperties} />
                       </div>
                     )}
+
                   </div>
                 </motion.div>
               )}
@@ -650,17 +769,15 @@ export function RightPanel() {
                   transition={{ type: "spring", stiffness: 500, damping: 30 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => {
-                    setShowModuleBar((v) => {
-                      const next = !v;
-                      if (next) {
-                        if (!activePosterModule) {
-                          setActivePosterModule(posterModules[0].id);
-                        }
-                      } else {
-                        setActivePosterModule(null);
+                    const next = !showModuleBar;
+                    setShowModuleBar(next);
+                    if (next) {
+                      if (!activePosterModule) {
+                        setActivePosterModule(posterModules[0].id);
                       }
-                      return next;
-                    });
+                    } else {
+                      setActivePosterModule(null);
+                    }
                   }}
                   className={`flex items-center justify-center
                              w-[26px] h-[26px] rounded-full cursor-pointer

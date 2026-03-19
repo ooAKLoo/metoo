@@ -33,6 +33,8 @@ export interface PosterModule {
   component: React.LazyExoticComponent<ComponentType<PosterModuleProps>>;
   /** true = 海报自带不透明背景，无需显示底层 map */
   opaqueBackground?: boolean;
+  /** true = 使用 Konva Canvas 渲染，导出走 stage.toDataURL() */
+  canvasBased?: boolean;
 }
 
 export const posterModules: PosterModule[] = [
@@ -43,6 +45,7 @@ export const posterModules: PosterModule[] = [
     description: "极简留白，诗意旅行",
     component: lazy(() => import("../components/poster-modules/MujiPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "dotmap",
@@ -51,6 +54,7 @@ export const posterModules: PosterModule[] = [
     description: "点阵分布图，可视化你的城市足迹",
     component: lazy(() => import("../components/poster-modules/DotMapPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "discover",
@@ -59,6 +63,7 @@ export const posterModules: PosterModule[] = [
     description: "地铁路线图风格，展示你的城市足迹",
     component: lazy(() => import("../components/poster-modules/DiscoverWestPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "pattern",
@@ -67,6 +72,7 @@ export const posterModules: PosterModule[] = [
     description: "几何纹样卡片，支持极简 / 粗犷风格切换",
     component: lazy(() => import("../components/poster-modules/PatternCardPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
 {
     id: "grid-mosaic",
@@ -75,6 +81,7 @@ export const posterModules: PosterModule[] = [
     description: "城市首字 + 封面图交错拼贴，数据驱动的网格海报",
     component: lazy(() => import("../components/poster-modules/GridMosaicPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "data-postcard",
@@ -83,6 +90,7 @@ export const posterModules: PosterModule[] = [
     description: "四宫格数据可视化明信片，极简现代风",
     component: lazy(() => import("../components/poster-modules/DataPostcardPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "grid-blank",
@@ -91,6 +99,7 @@ export const posterModules: PosterModule[] = [
     description: "10×15 纯方格模板，极简网格",
     component: lazy(() => import("../components/poster-modules/GridBlankPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "pop-board",
@@ -101,6 +110,7 @@ export const posterModules: PosterModule[] = [
       () => import("../components/poster-modules/PopBoardPoster"),
     ),
     opaqueBackground: true,
+    canvasBased: true,
   },
   {
     id: "keyboard",
@@ -109,6 +119,7 @@ export const posterModules: PosterModule[] = [
     description: "波普键盘透视，桌面视角极简明信片",
     component: lazy(() => import("../components/poster-modules/KeyboardPoster")),
     opaqueBackground: true,
+    canvasBased: true,
   },
 ];
 

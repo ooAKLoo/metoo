@@ -544,11 +544,11 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
           onPointerUp={roam.onPointerUp}
           style={{ touchAction: "none", cursor: "grab" }}
         >
-          {geoSvgData.provinces.map((prov) => {
+          {geoSvgData.provinces.map((prov, provIdx) => {
             const isHovered = hoveredCountry === prov.name;
             return (
               <g
-                key={prov.name}
+                key={`${prov.name}-${provIdx}`}
                 onMouseEnter={() => handleCountryMouseEnter(prov.name)}
                 onMouseLeave={handleCountryMouseLeave}
                 onClick={() => handleCountryClick(prov.name)}

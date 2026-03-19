@@ -1,5 +1,8 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import { Rect, Text, Line, Group, Circle, Image as KImage } from "react-konva";
+import useImage from "use-image";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 
 /* ── Cluster palette ── */
@@ -29,26 +32,55 @@ const rand = (seed: number, offset: number) => {
   return x - Math.floor(x);
 };
 
-function DotMapPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight: POSTER_H }: PosterModuleProps) {
-  /* ── Scale-to-fit container ── */
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fitScale, setFitScale] = useState(1);
+/* ── Fonts ── */
+const FONT_UI = "ui-sans-serif, system-ui, sans-serif";
+const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
 
-  const measure = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const pad = 48;
-    const sx = (el.clientWidth - pad) / POSTER_W;
-    const sy = (el.clientHeight - pad) / POSTER_H;
-    setFitScale(Math.min(sx, sy, 1));
-  }, [POSTER_W, POSTER_H]);
+/* ── Footer tag colors (matching original Tailwind classes) ── */
+const FOOTER_TAGS: { text: string; color: string }[] = [
+  { text: "足迹", color: "#ef4444" },   // red-500
+  { text: "收藏", color: "#60a5fa" },   // blue-400
+  { text: "城市", color: "#facc15" },   // yellow-400
+  { text: "旅行", color: "#c084fc" },   // purple-400
+  { text: "发现", color: "#a3a3a3" },   // neutral-400
+];
 
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [measure]);
+/* ── QR-like 3x3 grid pattern ── */
+const QR_PATTERN = [
+  1, 0, 1,
+  0, 1, 0,
+  1, 1, 0,
+];
+
+/* ── Cover image sub-component ── */
+function CoverImg({
+  src,
+  x,
+  y,
+  w,
+  h,
+}: {
+  src: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}) {
+  const [img] = useImage(src, "anonymous");
+  return img ? (
+    <KImage image={img} x={x} y={y} width={w} height={h} />
+  ) : null;
+}
+
+/* ── Component ── */
+function DotMapPoster({
+  items,
+  cityEntries,
+  posterWidth: W,
+  posterHeight: H,
+}: PosterModuleProps) {
+  const totalItems = items.length;
+  const totalCities = cityEntries.length;
 
   /* ── Derive clusters from city data ── */
   const topCities = useMemo(() => {
@@ -84,19 +116,28 @@ function DotMapPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight:
           const dx = nx - c.x;
           const dy = ny - c.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const noise = (rand(seed, row * COLS + col + ci * 100) - 0.5) * FUZZINESS;
+          const noise =
+            (rand(seed, row * COLS + col + ci * 100) - 0.5) * FUZZINESS;
           if (dist + noise < c.r) {
             color = c.color;
             break;
           }
         }
 
-        if (color === BASE_COLOR && rand(seed, row * COLS + col + 999) > 0.85) {
+        if (
+          color === BASE_COLOR &&
+          rand(seed, row * COLS + col + 999) > 0.85
+        ) {
           color = LIGHT_COLOR;
           isLight = true;
         }
 
-        out.push({ x: col * SPACING, y: row * SPACING, r: isLight ? DOT_R * 0.6 : DOT_R, color });
+        out.push({
+          x: col * SPACING,
+          y: row * SPACING,
+          r: isLight ? DOT_R * 0.6 : DOT_R,
+          color,
+        });
       }
     }
     return out;
@@ -104,163 +145,417 @@ function DotMapPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight:
 
   const svgW = (COLS - 1) * SPACING;
   const svgH = (ROWS - 1) * SPACING;
-  const totalItems = items.length;
-  const totalCities = cityEntries.length;
 
+  /* ── Cover image urls ── */
   const covers = useMemo(
-    () => cityEntries.flatMap((c) => c.covers).filter(Boolean).slice(0, 3).map(coverSrc),
+    () =>
+      cityEntries
+        .flatMap((c) => c.covers)
+        .filter(Boolean)
+        .slice(0, 3)
+        .map(coverSrc),
     [cityEntries],
   );
 
+  /* ── Layout constants ── */
+  const PAD = 48;
+  const HEADER_Y = PAD;
+
+  // Header text metrics
+  const labelFS = 14; // "足迹 / FOOTPRINT"
+  const numFS = 36; // city count number
+  const statsFS = 10; // stats line
+
+  // Cover thumbnails
+  const coverW = 48;
+  const coverH = 40;
+  const coverGap = 4;
+
+  // Header right description
+  const descFS = 8;
+  const descW = W / 3;
+
+  // Footer
+  const footerH = 80;
+  const footerY = H - footerH;
+  const footerLineY = footerY;
+  const footerContentY = footerY + 24;
+
+  // Dot grid: centered in the middle area
+  const gridPad = 20;
+  const gridTotalW = svgW + 2 * gridPad;
+  const gridTotalH = svgH + 2 * gridPad;
+  const headerBottom = HEADER_Y + 100;
+  const availH = footerY - headerBottom;
+  const gridX = (W - gridTotalW) / 2;
+  const gridY = headerBottom + (availH - gridTotalH - 20) / 2;
+  const dotsOffsetX = gridX + gridPad;
+  const dotsOffsetY = gridY + gridPad;
+
+  // Caption below dot grid
+  const captionFS = 8;
+  const captionY = gridY + gridTotalH + 8;
+
+  // Legend (right side, above footer)
+  const legendFS = 10;
+  const legendGap = 16;
+  const legendBarW = 24;
+  const legendBarH = 2;
+  const legendX = W - PAD;
+  const legendBottomY = footerY - 32;
+
+  // Compute left-side header positions
+  const labelY = HEADER_Y;
+  const numY = labelY + labelFS + 4;
+  const statsY = numY + numFS + 8;
+
+  // Cover thumbnails: to the right of the text column
+  const textColW = 140;
+  const coversX = PAD + textColW + 16;
+  const coversY = HEADER_Y + 4;
+  const coversTotalW = covers.length * coverW + (covers.length - 1) * coverGap;
+
+  // Red border (right side of covers group)
+  const coverBorderX = coversX + coversTotalW + 16;
+
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-      style={{ fontFamily: '"Noto Sans SC", "PingFang SC", sans-serif' }}
-    >
-      <div style={{ transform: `scale(${fitScale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          className="relative flex flex-col"
-          style={{
-            width: POSTER_W,
-            minHeight: POSTER_H,
-            backgroundColor: "#fcfcfc",
-            boxShadow: "0 25px 50px -12px rgba(0,0,0,0.15)",
-          }}
-        >
-          {/* ── Header ── */}
-          <div className="px-12 pt-12 flex justify-between items-start">
-            <div className="flex gap-4">
-              <div className="flex flex-col">
-                <span className="text-sm font-medium tracking-widest text-neutral-800 mb-1">
-                  足迹 / FOOTPRINT
-                </span>
-                <span className="text-4xl font-normal tracking-tight text-neutral-900 leading-none">
-                  {totalCities}
-                </span>
-                <span className="text-[10px] text-neutral-400 mt-2">
-                  {totalItems} 个收藏 · {totalCities} 座城市
-                </span>
-              </div>
+    <KonvaPosterStage width={W} height={H}>
+      {/* Rounded-corner clip */}
+      <Group
+        clipFunc={(ctx) => {
+          const r = 24;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(W, 0, W, H, r);
+          ctx.arcTo(W, H, 0, H, r);
+          ctx.arcTo(0, H, 0, 0, r);
+          ctx.arcTo(0, 0, W, 0, r);
+          ctx.closePath();
+        }}
+      >
+        {/* Background */}
+        <Rect width={W} height={H} fill="#fcfcfc" />
 
-              {covers.length > 0 && (
-                <div className="flex gap-1 ml-4 border-r-2 border-red-500 pr-4">
-                  {covers.map((src, i) => (
-                    <div
-                      key={i}
-                      className="w-12 h-10 bg-neutral-300 grayscale"
-                      style={{
-                        backgroundImage: `url("${src}")`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+        {/* ── Header ── */}
+        {/* Label: 足迹 / FOOTPRINT */}
+        <Text
+          x={PAD}
+          y={labelY}
+          text="足迹 / FOOTPRINT"
+          fontSize={labelFS}
+          fontStyle="500"
+          fill="#262626"
+          letterSpacing={labelFS * 0.12}
+          fontFamily={FONT_CN}
+        />
 
-            <div className="w-1/3 text-[8px] text-neutral-400 leading-tight text-right uppercase">
-              Mapping your journey across cities and places.
-              Each dot represents a moment captured in your collection.
-            </div>
-          </div>
+        {/* City count number */}
+        <Text
+          x={PAD}
+          y={numY}
+          text={`${totalCities}`}
+          fontSize={numFS}
+          fontStyle="normal"
+          fill="#171717"
+          letterSpacing={-1}
+          fontFamily={FONT_CN}
+        />
 
-          {/* ── Dot Grid ── */}
-          <div className="flex-1 flex flex-col items-center justify-center p-12">
-            <div className="relative">
-              <svg width={svgW + 40} height={svgH + 40}>
-                <g transform="translate(20,20)">
-                  {dots.map((d, i) => (
-                    <circle key={i} cx={d.x} cy={d.y} r={d.r} fill={d.color} />
-                  ))}
-                  {/* Crosshairs */}
-                  {(
-                    [
-                      [0, 0],
-                      [svgW, 0],
-                      [0, svgH],
-                      [svgW, svgH],
-                    ] as [number, number][]
-                  ).map(([cx, cy], i) => (
-                    <g key={i} transform={`translate(${cx},${cy})`}>
-                      <path d="M-6 0L6 0M0-6L0 6" stroke="black" strokeWidth="1.5" />
-                    </g>
-                  ))}
-                </g>
-              </svg>
-              <div className="text-center text-[8px] text-neutral-400 mt-4 uppercase tracking-widest">
-                Travel footprint distribution · dot matrix visualization
-              </div>
-            </div>
-          </div>
+        {/* Stats line */}
+        <Text
+          x={PAD}
+          y={statsY}
+          text={`${totalItems} 个收藏 · ${totalCities} 座城市`}
+          fontSize={statsFS}
+          fontStyle="normal"
+          fill="#a3a3a3"
+          fontFamily={FONT_CN}
+        />
 
-          {/* ── Legend ── */}
-          {topCities.length > 0 && (
-            <div className="absolute right-12 bottom-32 flex flex-col items-end gap-3 text-[10px] tracking-widest text-neutral-600 font-medium uppercase">
-              {topCities.map((c) => (
-                <div key={c.name} className="flex items-center gap-4">
-                  <span>{c.name}</span>
-                  <div className="w-6 h-[2px]" style={{ backgroundColor: c.color }} />
-                </div>
-              ))}
-              {totalCities > 6 && (
-                <div className="flex items-center gap-4">
-                  <span>其他 {totalCities - 6} 城</span>
-                  <div className="w-6 h-[2px] bg-neutral-400" />
-                </div>
-              )}
-            </div>
-          )}
+        {/* Cover thumbnails */}
+        {covers.length > 0 && (
+          <Group>
+            {covers.map((src, i) => (
+              <CoverImg
+                key={i}
+                src={src}
+                x={coversX + i * (coverW + coverGap)}
+                y={coversY}
+                w={coverW}
+                h={coverH}
+              />
+            ))}
+            {/* Red vertical border to the right of covers */}
+            <Rect
+              x={coverBorderX}
+              y={coversY}
+              width={2}
+              height={coverH}
+              fill="#ef4444"
+            />
+          </Group>
+        )}
 
-          {/* ── Footer ── */}
-          <div className="mt-auto w-full">
-            <div className="border-t-[1.5px] border-neutral-300 px-12 py-6 flex justify-between items-center">
-              <div className="flex gap-4 items-center">
-                <div className="flex flex-col text-neutral-900 font-bold tracking-tighter text-2xl leading-none">
-                  <span>觅途</span>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="text-neutral-400 text-sm font-medium tracking-wide">METOO</span>
-                  </div>
-                </div>
-                <div className="w-[1px] h-10 bg-neutral-400 mx-2" />
-                <div className="w-7 h-7 bg-neutral-800 p-[2px]">
-                  <div className="w-full h-full bg-white grid grid-cols-3 grid-rows-3 gap-[1px]">
-                    <div className="bg-neutral-800" />
-                    <div className="bg-white" />
-                    <div className="bg-neutral-800" />
-                    <div className="bg-white" />
-                    <div className="bg-neutral-800" />
-                    <div className="bg-white" />
-                    <div className="bg-neutral-800" />
-                    <div className="bg-neutral-800" />
-                    <div className="bg-white" />
-                  </div>
-                </div>
-              </div>
+        {/* Right-side description text */}
+        <Text
+          x={W - PAD - descW}
+          y={HEADER_Y}
+          width={descW}
+          text="MAPPING YOUR JOURNEY ACROSS CITIES AND PLACES. EACH DOT REPRESENTS A MOMENT CAPTURED IN YOUR COLLECTION."
+          fontSize={descFS}
+          fontStyle="normal"
+          fill="#a3a3a3"
+          lineHeight={1.3}
+          align="right"
+          fontFamily={FONT_UI}
+          letterSpacing={descFS * 0.02}
+        />
 
-              <div className="flex flex-wrap justify-end gap-x-3 gap-y-1.5 text-[9px] uppercase tracking-wider text-neutral-600 font-semibold">
-                {(
-                  [
-                    ["足迹", "bg-red-500"],
-                    ["收藏", "bg-blue-400"],
-                    ["城市", "bg-yellow-400"],
-                    ["旅行", "bg-purple-400"],
-                    ["发现", "bg-neutral-400"],
-                  ] as const
-                ).map(([text, dot]) => (
-                  <span key={text} className="flex items-center gap-1.5">
-                    <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                    {text}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        {/* ── Dot Grid ── */}
+        <Group x={dotsOffsetX} y={dotsOffsetY}>
+          {dots.map((d, i) => (
+            <Circle
+              key={i}
+              x={d.x}
+              y={d.y}
+              radius={d.r}
+              fill={d.color}
+            />
+          ))}
+
+          {/* Crosshair markers at corners */}
+          {(
+            [
+              [0, 0],
+              [svgW, 0],
+              [0, svgH],
+              [svgW, svgH],
+            ] as [number, number][]
+          ).map(([cx, cy], i) => (
+            <Group key={`cross-${i}`} x={cx} y={cy}>
+              <Line
+                points={[-6, 0, 6, 0]}
+                stroke="black"
+                strokeWidth={1.5}
+              />
+              <Line
+                points={[0, -6, 0, 6]}
+                stroke="black"
+                strokeWidth={1.5}
+              />
+            </Group>
+          ))}
+        </Group>
+
+        {/* Caption below grid */}
+        <Text
+          x={0}
+          y={captionY}
+          width={W}
+          text="TRAVEL FOOTPRINT DISTRIBUTION · DOT MATRIX VISUALIZATION"
+          fontSize={captionFS}
+          fontStyle="normal"
+          fill="#a3a3a3"
+          align="center"
+          letterSpacing={captionFS * 0.15}
+          fontFamily={FONT_UI}
+        />
+
+        {/* ── Legend (right side) ── */}
+        {topCities.length > 0 && (
+          <Group>
+            {topCities.map((c, i) => {
+              const ly =
+                legendBottomY - (topCities.length - 1 - i) * legendGap;
+              const textW = c.name.length * legendFS * 0.9;
+              return (
+                <Group key={c.name} x={legendX} y={ly}>
+                  {/* City name */}
+                  <Text
+                    x={-legendBarW - 16 - textW}
+                    y={-legendFS / 2}
+                    text={c.name}
+                    fontSize={legendFS}
+                    fontStyle="500"
+                    fill="#525252"
+                    letterSpacing={legendFS * 0.12}
+                    fontFamily={FONT_CN}
+                  />
+                  {/* Color bar */}
+                  <Rect
+                    x={-legendBarW}
+                    y={-legendBarH / 2}
+                    width={legendBarW}
+                    height={legendBarH}
+                    fill={c.color}
+                  />
+                </Group>
+              );
+            })}
+            {totalCities > 6 && (
+              <Group
+                x={legendX}
+                y={legendBottomY + legendGap}
+              >
+                <Text
+                  x={-legendBarW - 16 - 80}
+                  y={-legendFS / 2}
+                  text={`其他 ${totalCities - 6} 城`}
+                  fontSize={legendFS}
+                  fontStyle="500"
+                  fill="#525252"
+                  letterSpacing={legendFS * 0.12}
+                  fontFamily={FONT_CN}
+                />
+                <Rect
+                  x={-legendBarW}
+                  y={-legendBarH / 2}
+                  width={legendBarW}
+                  height={legendBarH}
+                  fill="#a3a3a3"
+                />
+              </Group>
+            )}
+          </Group>
+        )}
+
+        {/* ── Footer ── */}
+        {/* Divider line */}
+        <Line
+          points={[PAD, footerLineY, W - PAD, footerLineY]}
+          stroke="#d4d4d4"
+          strokeWidth={1.5}
+        />
+
+        {/* Brand: 觅途 */}
+        <Text
+          x={PAD}
+          y={footerContentY}
+          text="觅途"
+          fontSize={24}
+          fontStyle="bold"
+          fill="#171717"
+          letterSpacing={-1}
+          fontFamily={FONT_CN}
+        />
+
+        {/* Brand: METOO */}
+        <Text
+          x={PAD}
+          y={footerContentY + 28}
+          text="METOO"
+          fontSize={14}
+          fontStyle="500"
+          fill="#a3a3a3"
+          letterSpacing={14 * 0.1}
+          fontFamily={FONT_UI}
+        />
+
+        {/* Vertical separator between brand and QR */}
+        <Line
+          points={[
+            PAD + 60 + 8,
+            footerContentY,
+            PAD + 60 + 8,
+            footerContentY + 40,
+          ]}
+          stroke="#a3a3a3"
+          strokeWidth={1}
+        />
+
+        {/* QR-like grid (3x3) */}
+        {(() => {
+          const qrSize = 28;
+          const qrX = PAD + 60 + 8 + 12;
+          const qrY = footerContentY + 6;
+          const border = 2;
+          const inner = qrSize - border * 2;
+          const cellSize = (inner - 2) / 3; // 2px total gap
+          const cellGap = 1;
+          const rects: React.ReactNode[] = [];
+
+          // Outer dark background
+          rects.push(
+            <Rect
+              key="qr-bg"
+              x={qrX}
+              y={qrY}
+              width={qrSize}
+              height={qrSize}
+              fill="#262626"
+            />,
+          );
+          // Inner white background
+          rects.push(
+            <Rect
+              key="qr-inner"
+              x={qrX + border}
+              y={qrY + border}
+              width={inner}
+              height={inner}
+              fill="#ffffff"
+            />,
+          );
+
+          // 3x3 cells
+          for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+              const idx = r * 3 + c;
+              const cx = qrX + border + c * (cellSize + cellGap);
+              const cy = qrY + border + r * (cellSize + cellGap);
+              rects.push(
+                <Rect
+                  key={`qr-${r}-${c}`}
+                  x={cx}
+                  y={cy}
+                  width={cellSize}
+                  height={cellSize}
+                  fill={QR_PATTERN[idx] ? "#262626" : "#ffffff"}
+                />,
+              );
+            }
+          }
+          return rects;
+        })()}
+
+        {/* Footer tags with colored dots */}
+        {(() => {
+          const tagFS = 9;
+          const tagGap = 14;
+          const dotR = 3;
+          const dotGap = 6;
+          // Compute total width to right-align
+          const tagWidths = FOOTER_TAGS.map(
+            (t) => dotR * 2 + dotGap + t.text.length * tagFS,
+          );
+          const totalTagW =
+            tagWidths.reduce((a, b) => a + b, 0) +
+            (FOOTER_TAGS.length - 1) * tagGap;
+          let ox = W - PAD - totalTagW;
+          const tagY = footerContentY + 16;
+
+          return FOOTER_TAGS.map((tag, i) => {
+            const x0 = ox;
+            ox += tagWidths[i] + tagGap;
+            return (
+              <Group key={tag.text} x={x0} y={tagY}>
+                <Circle x={dotR} y={tagFS / 2} radius={dotR} fill={tag.color} />
+                <Text
+                  x={dotR * 2 + dotGap}
+                  y={0}
+                  text={tag.text}
+                  fontSize={tagFS}
+                  fontStyle="600"
+                  fill="#525252"
+                  letterSpacing={tagFS * 0.08}
+                  fontFamily={FONT_CN}
+                />
+              </Group>
+            );
+          });
+        })()}
+      </Group>
+    </KonvaPosterStage>
   );
 }
 

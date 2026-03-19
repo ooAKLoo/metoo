@@ -34,6 +34,7 @@ interface MapState {
   mosaicStyleIdx: number;
   dataPostcardHue: number;
   dataPostcardStyleIdx: number;
+  keyboardStyleIdx: number;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -57,6 +58,7 @@ interface MapState {
   setMosaicStyleIdx: (idx: number) => void;
   setDataPostcardHue: (hue: number) => void;
   setDataPostcardStyleIdx: (idx: number) => void;
+  setKeyboardStyleIdx: (idx: number) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -123,6 +125,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   mosaicStyleIdx: 0,
   dataPostcardHue: 35,
   dataPostcardStyleIdx: 0,
+  keyboardStyleIdx: 0,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -162,4 +165,5 @@ export const useMapStore = create<MapState>((set, get) => ({
   setMosaicStyleIdx: (idx) => set({ mosaicStyleIdx: idx }),
   setDataPostcardHue: (hue) => set({ dataPostcardHue: hue }),
   setDataPostcardStyleIdx: (idx) => set({ dataPostcardStyleIdx: idx }),
+  setKeyboardStyleIdx: (idx) => set({ keyboardStyleIdx: idx }),
 }));

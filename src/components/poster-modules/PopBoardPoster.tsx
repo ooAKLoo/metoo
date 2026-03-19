@@ -1,17 +1,21 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
+import {
+  Rect,
+  Text,
+  Group,
+  Circle,
+  Shape,
+  Image as KImage,
+} from "react-konva";
+import useImage from "use-image";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { useMapStore } from "../../stores/useMapStore";
 
-/* ── Dimensions ── */
-const N = 7; // 7×7 grid → 24 edge cells
-const GAP = 3;
-const PAD = 4;
-
-/* ═══════════════════════════════════════════════════
-   HSL 色彩推导引擎 — 参考 ThumbnailBanner 思路
-   单一色相 → 自动推导 6 色 + 背景 + 描边
-   ═══════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   Shared Utilities
+   ══════════════════════════════════════════════════════ */
 
 export function hslToHex(h: number, s: number, l: number): string {
   h = ((h % 360) + 360) % 360;
@@ -27,7 +31,8 @@ export function hslToHex(h: number, s: number, l: number): string {
   else if (h < 240) { g = x; b = c; }
   else if (h < 300) { r = x; b = c; }
   else { r = c; b = x; }
-  const to = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  const to = (v: number) =>
+    Math.round((v + m) * 255).toString(16).padStart(2, "0");
   return `#${to(r)}${to(g)}${to(b)}`;
 }
 
@@ -48,19 +53,6 @@ export function hexToHsl(hex: string): [number, number, number] {
   return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
 }
 
-/**
- * 从主色色相推导完整 Pop-Art 棋盘配色
- *
- * 设计逻辑：
- *   primary   → HSL(H,   90%, 65%)  主色
- *   secondary → HSL(H+55°, 95%, 62%) 暖邻近（原 yellow 位）
- *   tertiary  → HSL(H+180°,85%, 55%) 补色（原 blue 位）
- *   quad      → HSL(H+150°,80%, 62%) 拆补色（原 mint 位）
- *   quinary   → HSL(H+30°, 88%, 58%) 近邻（原 orange 位）
- *   bg        → HSL(H+210°,45%, 7%)  极暗衬底
- *   ink       → HSL(H+210°,20%, 12%) 暗描边/阴影
- *   lightInk  → HSL(H+210°,15%, 25%) 浅描边（图标用）
- */
 export interface DerivedPopPalette {
   primary: string;
   secondary: string;
@@ -74,18 +66,17 @@ export interface DerivedPopPalette {
 
 export function derivePopBoardPalette(hue: number): DerivedPopPalette {
   return {
-    primary:   hslToHex(hue,       90, 65),
-    secondary: hslToHex(hue + 55,  95, 62),
-    tertiary:  hslToHex(hue + 180, 85, 55),
-    quad:      hslToHex(hue + 150, 80, 62),
-    quinary:   hslToHex(hue + 30,  88, 58),
-    bg:        hslToHex(hue + 210, 45, 7),
-    ink:       hslToHex(hue + 210, 20, 12),
-    lightInk:  hslToHex(hue + 210, 15, 25),
+    primary: hslToHex(hue, 90, 65),
+    secondary: hslToHex(hue + 55, 95, 62),
+    tertiary: hslToHex(hue + 180, 85, 55),
+    quad: hslToHex(hue + 150, 80, 62),
+    quinary: hslToHex(hue + 30, 88, 58),
+    bg: hslToHex(hue + 210, 45, 7),
+    ink: hslToHex(hue + 210, 20, 12),
+    lightInk: hslToHex(hue + 210, 15, 25),
   };
 }
 
-/* ── Hue 预设 — 只需定义名字和色相，配色全自动 ── */
 export const POP_BOARD_HUE_PRESETS = [
   { name: "玫粉", hue: 330 },
   { name: "橙红", hue: 15 },
@@ -95,100 +86,16 @@ export const POP_BOARD_HUE_PRESETS = [
   { name: "靛紫", hue: 275 },
 ];
 
-/* ── Hand-drawn SVG corner icons ── */
-const S = 28; // icon size
-const ICON_STYLE: React.CSSProperties = {
-  width: S,
-  height: S,
-  display: "block",
-};
+/* ── Hue 预设 — 只需定义名字和色相，配色全自动 ── */
 
-function IconFlag() {
-  // Single-color checkered flag matching FA fa-flag-checkered (white on pink bg)
-  const f = "#fff";
-  return (
-    <svg viewBox="0 0 448 512" style={ICON_STYLE} fill={f}>
-      {/* pole */}
-      <rect x="0" y="0" width="32" height="512" rx="16" />
-      {/* flag body with checkered cutouts — matching FA path */}
-      <clipPath id="fg">
-        <path d="M32 0 H416 Q400 64 416 128 Q432 192 416 256 H32 Z" />
-      </clipPath>
-      <g clipPath="url(#fg)">
-        {/* row 0 */}
-        <rect x="32" y="0" width="96" height="64" />
-        <rect x="224" y="0" width="96" height="64" />
-        {/* row 1 */}
-        <rect x="128" y="64" width="96" height="64" />
-        <rect x="320" y="64" width="96" height="64" />
-        {/* row 2 */}
-        <rect x="32" y="128" width="96" height="64" />
-        <rect x="224" y="128" width="96" height="64" />
-        {/* row 3 */}
-        <rect x="128" y="192" width="96" height="64" />
-        <rect x="320" y="192" width="96" height="64" />
-      </g>
-    </svg>
-  );
-}
+const FONT_CN = "'ZCOOL KuaiLe', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
 
-function IconCoffee({ ink }: { ink: string }) {
-  return (
-    <svg viewBox="0 0 28 28" style={ICON_STYLE} fill="none">
-      <path d="M10 6 Q11 3 10 1" stroke={ink} strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M15 6 Q16 3 15 1" stroke={ink} strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M4 9 H20 L18 24 H6 Z" fill="#fff" stroke={ink} strokeWidth="2.5" strokeLinejoin="round" />
-      <path d="M20 12 Q26 12 26 17 Q26 22 20 22" stroke={ink} strokeWidth="2.5" fill="none" strokeLinecap="round" />
-      <rect x="7" y="14" width="10" height="4" rx="1" fill={ink} opacity="0.2" />
-    </svg>
-  );
-}
+/* ── Dimensions ── */
 
-function IconSearch({ ink }: { ink: string }) {
-  return (
-    <svg viewBox="0 0 28 28" style={ICON_STYLE} fill="none">
-      <circle cx="12" cy="12" r="8" stroke={ink} strokeWidth="2.5" fill="#fff" />
-      <circle cx="10" cy="10" r="2" fill={ink} opacity="0.15" />
-      <line x1="18" y1="18" x2="25" y2="25" stroke={ink} strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
+const N = 7;
+const GAP = 3;
+const PAD = 4;
 
-function IconRocket({ ink }: { ink: string }) {
-  return (
-    <svg viewBox="0 0 28 28" style={ICON_STYLE} fill="none">
-      <path d="M14 2 Q22 8 22 18 L18 22 H10 L6 18 Q6 8 14 2Z" fill="#fff" stroke={ink} strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx="14" cy="12" r="3" fill={ink} opacity="0.25" stroke={ink} strokeWidth="1.5" />
-      <path d="M6 18 L3 24 L10 22" fill={ink} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M22 18 L25 24 L18 22" fill={ink} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M11 22 Q14 28 17 22" fill={ink} opacity="0.3" />
-    </svg>
-  );
-}
-
-/* ── Corner definitions ── */
-const CORNER_IDX = [0, N - 1, 2 * (N - 1), 3 * (N - 1)] as const; // 0,6,12,18
-
-interface CornerDef {
-  label: string;
-  icon: React.FC;
-  color: string;
-}
-
-function buildCornerMeta(dp: DerivedPopPalette): Record<number, CornerDef> {
-  const ink = dp.lightInk;
-  return {
-    [CORNER_IDX[0]]: { label: "起点", icon: () => <IconFlag />,      color: dp.primary },
-    [CORNER_IDX[1]]: { label: "休息", icon: () => <IconCoffee ink={ink} />, color: dp.tertiary },
-    [CORNER_IDX[2]]: { label: "发现", icon: () => <IconSearch ink={ink} />, color: dp.secondary },
-    [CORNER_IDX[3]]: { label: "传送", icon: () => <IconRocket ink={ink} />, color: dp.quad },
-  };
-}
-
-/* ── Pattern cell indices (decorative breaks) ── */
-const PATTERN_IDX = new Set([3, 15]);
-
-/** Clockwise edge path: top → right → bottom(rev) → left(rev) = 24 cells */
 function buildEdgePath(): Array<[number, number]> {
   const p: Array<[number, number]> = [];
   for (let c = 0; c < N; c++) p.push([0, c]);
@@ -199,21 +106,10 @@ function buildEdgePath(): Array<[number, number]> {
 }
 
 const EDGE_PATH = buildEdgePath();
+const CORNER_IDX = [0, N - 1, 2 * (N - 1), 3 * (N - 1)] as const;
+const PATTERN_IDX = new Set([3, 15]);
 
-function buildStarburstBg(yellow: string): string {
-  return Array.from({ length: 12 }, (_, i) => {
-    const a = i * 30;
-    return `${yellow}40 ${a}deg ${a + 15}deg, transparent ${a + 15}deg ${a + 30}deg`;
-  }).join(", ");
-}
-
-/* ── Scatter slot type & defaults ── */
-interface ScatterSlot {
-  x: number; // left %
-  y: number; // top %
-  rot: number; // degrees
-  w: number; // px (at intrinsic 800×800)
-}
+interface ScatterSlot { x: number; y: number; rot: number; w: number; }
 
 const DEFAULT_SCATTER: ScatterSlot[] = [
   { x: 39, y: 8, rot: -14, w: 105 },
@@ -226,67 +122,243 @@ const DEFAULT_SCATTER: ScatterSlot[] = [
   { x: 74, y: 16, rot: -15, w: 92 },
 ];
 
-/* ── Component ── */
+function cellSize(totalLen: number) { return (totalLen - PAD * 2 - GAP * (N - 1)) / N; }
+function cellX(col: number, cs: number) { return PAD + col * (cs + GAP); }
+function cellY(row: number, cs: number) { return PAD + row * (cs + GAP); }
+
+/* ── Konva icon shapes ── */
+
+function KonvaIconFlag({ x, y, s }: { x: number; y: number; s: number }) {
+  return (
+    <Shape x={x} y={y} sceneFunc={(ctx, shape) => {
+      const sc = s / 448;
+      ctx.save(); ctx.scale(sc, sc); ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.roundRect(0, 0, 32, 512, 16); ctx.fill();
+      ctx.save(); ctx.beginPath();
+      ctx.moveTo(32, 0); ctx.lineTo(416, 0);
+      ctx.quadraticCurveTo(400, 64, 416, 128);
+      ctx.quadraticCurveTo(432, 192, 416, 256);
+      ctx.lineTo(32, 256); ctx.closePath(); ctx.clip();
+      ctx.fillRect(32, 0, 96, 64); ctx.fillRect(224, 0, 96, 64);
+      ctx.fillRect(128, 64, 96, 64); ctx.fillRect(320, 64, 96, 64);
+      ctx.fillRect(32, 128, 96, 64); ctx.fillRect(224, 128, 96, 64);
+      ctx.fillRect(128, 192, 96, 64); ctx.fillRect(320, 192, 96, 64);
+      ctx.restore(); ctx.restore(); ctx.fillStrokeShape(shape);
+    }} />
+  );
+}
+
+function KonvaIconCoffee({ x, y, s, ink }: { x: number; y: number; s: number; ink: string }) {
+  return (
+    <Shape x={x} y={y} sceneFunc={(ctx, shape) => {
+      const sc = s / 28;
+      ctx.save(); ctx.scale(sc, sc);
+      ctx.strokeStyle = ink; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(10, 6); ctx.quadraticCurveTo(11, 3, 10, 1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(15, 6); ctx.quadraticCurveTo(16, 3, 15, 1); ctx.stroke();
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(4, 9); ctx.lineTo(20, 9); ctx.lineTo(18, 24); ctx.lineTo(6, 24); ctx.closePath();
+      ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(20, 12); ctx.quadraticCurveTo(26, 12, 26, 17); ctx.quadraticCurveTo(26, 22, 20, 22); ctx.stroke();
+      ctx.fillStyle = ink; ctx.globalAlpha = 0.2;
+      ctx.beginPath(); ctx.roundRect(7, 14, 10, 4, 1); ctx.fill();
+      ctx.globalAlpha = 1; ctx.restore(); ctx.fillStrokeShape(shape);
+    }} />
+  );
+}
+
+function KonvaIconSearch({ x, y, s, ink }: { x: number; y: number; s: number; ink: string }) {
+  return (
+    <Shape x={x} y={y} sceneFunc={(ctx, shape) => {
+      const sc = s / 28;
+      ctx.save(); ctx.scale(sc, sc);
+      ctx.strokeStyle = ink; ctx.lineCap = "round";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(12, 12, 8, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = ink; ctx.globalAlpha = 0.15;
+      ctx.beginPath(); ctx.arc(10, 10, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(18, 18); ctx.lineTo(25, 25); ctx.stroke();
+      ctx.restore(); ctx.fillStrokeShape(shape);
+    }} />
+  );
+}
+
+function KonvaIconRocket({ x, y, s, ink }: { x: number; y: number; s: number; ink: string }) {
+  return (
+    <Shape x={x} y={y} sceneFunc={(ctx, shape) => {
+      const sc = s / 28;
+      ctx.save(); ctx.scale(sc, sc);
+      ctx.strokeStyle = ink; ctx.lineJoin = "round";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(14, 2); ctx.quadraticCurveTo(22, 8, 22, 18);
+      ctx.lineTo(18, 22); ctx.lineTo(10, 22); ctx.lineTo(6, 18);
+      ctx.quadraticCurveTo(6, 8, 14, 2); ctx.closePath();
+      ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(14, 12, 3, 0, Math.PI * 2);
+      ctx.fillStyle = ink; ctx.globalAlpha = 0.25; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(6, 18); ctx.lineTo(3, 24); ctx.lineTo(10, 22); ctx.closePath();
+      ctx.fillStyle = ink; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(22, 18); ctx.lineTo(25, 24); ctx.lineTo(18, 22); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = ink; ctx.globalAlpha = 0.3;
+      ctx.beginPath(); ctx.moveTo(11, 22); ctx.quadraticCurveTo(14, 28, 17, 22); ctx.fill();
+      ctx.globalAlpha = 1; ctx.restore(); ctx.fillStrokeShape(shape);
+    }} />
+  );
+}
+
+/* ── Corner metadata ── */
+interface CornerDef { label: string; iconType: "flag" | "coffee" | "search" | "rocket"; color: string; }
+
+function buildCornerMeta(dp: DerivedPopPalette): Record<number, CornerDef> {
+  return {
+    [CORNER_IDX[0]]: { label: "起点", iconType: "flag", color: dp.primary },
+    [CORNER_IDX[1]]: { label: "休息", iconType: "coffee", color: dp.tertiary },
+    [CORNER_IDX[2]]: { label: "发现", iconType: "search", color: dp.secondary },
+    [CORNER_IDX[3]]: { label: "传送", iconType: "rocket", color: dp.quad },
+  };
+}
+
+/* ── Cover image sub-component ── */
+function CoverImageCell({
+  src, x, y, w, h, name, count, ink, mode, bgColor,
+}: {
+  src: string; x: number; y: number; w: number; h: number;
+  name: string; count: number; ink: string; mode: "cells" | "center"; bgColor: string;
+}) {
+  const [img] = useImage(src, "anonymous");
+  const showCover = mode === "cells" && !!src && !!img;
+  const fs = name.length > 5 ? 11 : name.length > 3 ? 13 : 15;
+  const contentH = fs * 1.2 + 2 + 14;
+  const contentTop = (h - contentH) / 2;
+  const nameY = contentTop;
+  const badgeY = contentTop + fs * 1.2 + 2;
+  const badgeW = 11 * String(count).length + 18;
+
+  return (
+    <Group x={x} y={y} clipX={0} clipY={0} clipWidth={w} clipHeight={h}>
+      <Rect width={w} height={h} fill={bgColor} />
+      {showCover && img && (
+        <>
+          <KImage image={img} x={0} y={0} width={w} height={h}
+            crop={img.width && img.height ? (() => {
+              const imgAspect = img.width / img.height;
+              const cellAspect = w / h;
+              if (imgAspect > cellAspect) {
+                const cropW = img.height * cellAspect;
+                return { x: (img.width - cropW) / 2, y: 0, width: cropW, height: img.height };
+              } else {
+                const cropH = img.width / cellAspect;
+                return { x: 0, y: (img.height - cropH) / 2, width: img.width, height: cropH };
+              }
+            })() : undefined}
+          />
+          <Rect x={0} y={0} width={w} height={h}
+            fillLinearGradientStartPoint={{ x: 0, y: h }}
+            fillLinearGradientEndPoint={{ x: 0, y: h * 0.4 }}
+            fillLinearGradientColorStops={[0, "rgba(0,0,0,0.75)", 1, "rgba(0,0,0,0.1)"]}
+          />
+        </>
+      )}
+      {showCover && [[1, 1], [-1, -1], [1, -1], [-1, 1]].map(([dx, dy], i) => (
+        <Text key={i} x={dx} y={nameY + dy} width={w} align="center"
+          text={name} fontSize={fs} fontStyle="900" fill={ink} fontFamily={FONT_CN} />
+      ))}
+      <Text x={0} y={nameY} width={w} align="center"
+        text={name} fontSize={fs} fontStyle="900" fill={showCover ? "#fff" : ink} fontFamily={FONT_CN} />
+      <Rect x={(w - badgeW) / 2} y={badgeY} width={badgeW} height={14}
+        fill={showCover ? "rgba(0,0,0,0.5)" : ink} cornerRadius={2} />
+      <Text x={(w - badgeW) / 2} y={badgeY + 1} width={badgeW} align="center"
+        text={`\u00d7${count}`} fontSize={11} fontStyle="700" fill="#fff" fontFamily={FONT_CN} />
+      <Circle x={5.5} y={5.5} radius={2.5} fill="#fff" stroke={ink} strokeWidth={1.5} opacity={0.5} />
+    </Group>
+  );
+}
+
+/* ── Scattered photo card ── */
+function ScatteredPhotoCard({
+  src, name, slot, centerW, centerH, ink, yellow, onDragEnd,
+}: {
+  src: string; name: string; slot: ScatterSlot;
+  centerW: number; centerH: number; ink: string; yellow: string;
+  onDragEnd: (x: number, y: number) => void;
+}) {
+  const [img] = useImage(src, "anonymous");
+  const baseCenter = 750;
+  const photoScale = Math.max(centerW, centerH) / baseCenter;
+  const pw = Math.round(slot.w * photoScale);
+  const ph = Math.round(pw * 0.75);
+  const border = 4;
+  const innerW = pw - border * 2 - 4;
+  const innerH = ph - border * 2 - 4;
+  const labelW = Math.max(name.length * 10 + 16, 40);
+  const labelH = 16;
+
+  return (
+    <Group draggable
+      x={(slot.x / 100) * centerW} y={(slot.y / 100) * centerH} rotation={slot.rot}
+      onDragEnd={(e) => {
+        const node = e.target;
+        const newX = (node.x() / centerW) * 100;
+        const newY = (node.y() / centerH) * 100;
+        onDragEnd(Math.round(Math.max(-5, Math.min(88, newX))), Math.round(Math.max(-5, Math.min(88, newY))));
+      }}
+    >
+      <Rect x={5} y={5} width={pw} height={ph} fill={ink} />
+      <Rect x={0} y={0} width={pw} height={ph} fill="#fff" stroke={ink} strokeWidth={border} />
+      {img && (
+        <KImage image={img} x={border + 2} y={border + 2} width={innerW} height={innerH}
+          crop={img.width && img.height ? (() => {
+            const imgAspect = img.width / img.height;
+            const cellAspect = innerW / innerH;
+            if (imgAspect > cellAspect) {
+              const cropW = img.height * cellAspect;
+              return { x: (img.width - cropW) / 2, y: 0, width: cropW, height: img.height };
+            } else {
+              const cropH = img.width / cellAspect;
+              return { x: 0, y: (img.height - cropH) / 2, width: img.width, height: cropH };
+            }
+          })() : undefined}
+        />
+      )}
+      <Group x={(pw - labelW) / 2} y={ph - 10}>
+        <Rect x={2} y={2} width={labelW} height={labelH} fill={ink} />
+        <Rect x={0} y={0} width={labelW} height={labelH} fill={yellow} stroke={ink} strokeWidth={2} />
+        <Text x={0} y={2} width={labelW} align="center"
+          text={name} fontSize={10} fontStyle="900" fill={ink} fontFamily={FONT_CN} />
+      </Group>
+    </Group>
+  );
+}
+
+/* ── Board Game Content ── */
 function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: PosterModuleProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const centerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
   const mode = useMapStore((s) => s.popBoardMode);
   const popBoardHue = useMapStore((s) => s.popBoardHue);
   const dp = useMemo(() => derivePopBoardPalette(popBoardHue), [popBoardHue]);
   const C = { pink: dp.primary, yellow: dp.secondary, blue: dp.tertiary, mint: dp.quad, orange: dp.quinary };
   const INK = dp.ink;
-  const CELL_PALETTE = useMemo(() => [C.pink, C.yellow, "#fff", C.mint, C.orange, "#fff"], [C.pink, C.yellow, C.mint, C.orange]);
+
+  const CELL_PALETTE = useMemo(
+    () => [C.pink, C.yellow, "#fff", C.mint, C.orange, "#fff"],
+    [C.pink, C.yellow, C.mint, C.orange],
+  );
   const CORNER_META = useMemo(() => buildCornerMeta(dp), [dp]);
-  const STARBURST_BG = useMemo(() => buildStarburstBg(C.yellow), [C.yellow]);
   const [slots, setSlots] = useState<ScatterSlot[]>(DEFAULT_SCATTER);
+  const csW = cellSize(PW);
+  const csH = cellSize(PH);
 
-  /* Drag state (kept in ref to avoid re-renders during move) */
-  const dragRef = useRef<{
-    idx: number;
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-  } | null>(null);
-
-  const measure = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const pad = 48;
-    setScale(
-      Math.min(
-        (el.clientWidth - pad) / PW,
-        (el.clientHeight - pad) / PH,
-        1,
-      ),
-    );
-  }, [PW, PH]);
-
-  useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (ref.current) ro.observe(ref.current);
-    return () => ro.disconnect();
-  }, [measure]);
-
-  const cities = useMemo(
-    () => [...cityEntries].sort((a, b) => b.count - a.count),
-    [cityEntries],
-  );
-
-  const totalVisits = useMemo(
-    () => cityEntries.reduce((s, c) => s + c.count, 0),
-    [cityEntries],
-  );
-
+  const cities = useMemo(() => [...cityEntries].sort((a, b) => b.count - a.count), [cityEntries]);
+  const totalVisits = useMemo(() => cityEntries.reduce((s, c) => s + c.count, 0), [cityEntries]);
   const centerCovers = useMemo(
-    () =>
-      cities
-        .flatMap((c) =>
-          c.covers[0] ? [{ src: coverSrc(c.covers[0]), name: c.name }] : [],
-        )
-        .slice(0, DEFAULT_SCATTER.length),
+    () => cities.flatMap((c) => c.covers[0] ? [{ src: coverSrc(c.covers[0]), name: c.name }] : []).slice(0, DEFAULT_SCATTER.length),
     [cities],
   );
 
@@ -295,587 +367,191 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
     return EDGE_PATH.map(([row, col], idx) => {
       const corner = CORNER_META[idx];
       const isPattern = PATTERN_IDX.has(idx);
-      const city =
-        !corner && !isPattern && ci < cities.length ? cities[ci++] : null;
+      const city = !corner && !isPattern && ci < cities.length ? cities[ci++] : null;
       const cover = city?.covers[0] ? coverSrc(city.covers[0]) : "";
-      const bgColor = corner
-        ? corner.color
-        : isPattern
-          ? "#fff"
-          : CELL_PALETTE[idx % CELL_PALETTE.length];
+      const bgColor = corner ? corner.color : isPattern ? "#fff" : CELL_PALETTE[idx % CELL_PALETTE.length];
       return { row, col, idx, corner, isPattern, city, cover, bgColor };
     });
   }, [cities, CORNER_META, CELL_PALETTE]);
 
-  /* ── Drag handlers ── */
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent, idx: number) => {
-      if (mode !== "center") return;
-      e.preventDefault();
-      e.stopPropagation();
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      dragRef.current = {
-        idx,
-        startX: e.clientX,
-        startY: e.clientY,
-        origX: slots[idx].x,
-        origY: slots[idx].y,
-      };
-    },
-    [mode, slots],
-  );
+  const centerX = cellX(1, csW);
+  const centerY = cellY(1, csH);
+  const centerW = 5 * csW + 4 * GAP;
+  const centerH = 5 * csH + 4 * GAP;
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const d = dragRef.current;
-    const el = centerRef.current;
-    if (!d || !el) return;
-    const rect = el.getBoundingClientRect();
-    const dx = ((e.clientX - d.startX) / rect.width) * 100;
-    const dy = ((e.clientY - d.startY) / rect.height) * 100;
-    setSlots((prev) =>
-      prev.map((s, i) =>
-        i === d.idx
-          ? {
-              ...s,
-              x: Math.round(Math.max(-5, Math.min(88, d.origX + dx))),
-              y: Math.round(Math.max(-5, Math.min(88, d.origY + dy))),
-            }
-          : s,
-      ),
-    );
+  const updateSlot = useCallback((i: number, x: number, y: number) => {
+    setSlots((prev) => prev.map((s, idx) => (idx === i ? { ...s, x, y } : s)));
   }, []);
-
-  const onPointerUp = useCallback(() => {
-    dragRef.current = null;
-  }, []);
-
 
   return (
-    <div
-      ref={ref}
-      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-    >
-      <div style={{ transform: `scale(${scale})`, transformOrigin: "center" }}>
-        <div
-          data-poster-export
-          style={{
-            width: PW,
-            height: PH,
-            backgroundColor: dp.bg,
-            padding: PAD,
-            boxSizing: "border-box",
-            fontFamily: '"ZCOOL KuaiLe", system-ui, -apple-system, sans-serif',
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${N}, 1fr)`,
-              gridTemplateRows: `repeat(${N}, 1fr)`,
-              gap: GAP,
-              width: "100%",
-              height: "100%",
-            }}
-          >
-            {/* ── Edge cells ── */}
-            {cellMap.map((cell) => (
-              <div
-                key={cell.idx}
-                style={{
-                  gridColumn: cell.col + 1,
-                  gridRow: cell.row + 1,
-                  backgroundColor: cell.bgColor,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: cell.corner ? 6 : 4,
-                  position: "relative",
-                  overflow: "hidden",
-                  ...(cell.isPattern
-                    ? {
-                        backgroundImage: `linear-gradient(45deg, ${C.pink} 25%, transparent 25%), linear-gradient(-45deg, ${C.pink} 25%, transparent 25%), linear-gradient(45deg, transparent 75%, ${C.pink} 75%), linear-gradient(-45deg, transparent 75%, ${C.pink} 75%)`,
-                        backgroundSize: "16px 16px",
-                        backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0",
-                      }
-                    : {}),
-                }}
-              >
-                {cell.corner ? (
-                  <>
-                    <cell.corner.icon />
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 900,
-                        color: "#fff",
-                        textShadow:
-                          `1px 1px 0 ${INK}, -1px -1px 0 ${INK}, 1px -1px 0 ${INK}, -1px 1px 0 ${INK}`,
-                        marginTop: 2,
-                      }}
-                    >
-                      {cell.corner.label}
-                    </div>
-                  </>
-                ) : cell.isPattern ? null : cell.city ? (
-                  (() => {
-                    const showCover = mode === "cells" && !!cell.cover;
-                    return (
-                      <>
-                        {showCover && (
-                          <>
-                            <img
-                              src={cell.cover}
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                background:
-                                  "linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.1) 60%)",
-                              }}
-                            />
-                          </>
-                        )}
-                        <div
-                          style={{
-                            position: "relative",
-                            zIndex: 1,
-                            fontSize: 15,
-                            fontWeight: 900,
-                            color: showCover ? "#fff" : INK,
-                            lineHeight: 1.1,
-                            textAlign: "center",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            maxWidth: "100%",
-                            ...(showCover
-                              ? {
-                                  textShadow:
-                                    `1px 1px 0 ${INK}, -1px -1px 0 ${INK}, 1px -1px 0 ${INK}, -1px 1px 0 ${INK}`,
-                                }
-                              : {}),
-                          }}
-                        >
-                          {cell.city.name}
-                        </div>
-                        <div
-                          style={{
-                            position: "relative",
-                            zIndex: 1,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#fff",
-                            backgroundColor: showCover
-                              ? "rgba(0,0,0,0.5)"
-                              : INK,
-                            padding: "0 5px",
-                            borderRadius: 2,
-                            marginTop: 2,
-                          }}
-                        >
-                          ×{cell.city.count}
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      opacity: 0.15,
-                      background:
-                        `repeating-linear-gradient(45deg, ${INK}, ${INK} 2px, transparent 2px, transparent 8px)`,
-                    }}
-                  />
-                )}
-                {!cell.corner && !cell.isPattern && cell.city && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 3,
-                      left: 3,
-                      width: 5,
-                      height: 5,
-                      borderRadius: "50%",
-                      border: `1.5px solid ${INK}`,
-                      backgroundColor: "#fff",
-                      opacity: 0.5,
-                    }}
-                  />
-                )}
-              </div>
-            ))}
+    <KonvaPosterStage width={PW} height={PH}>
+      <Rect width={PW} height={PH} fill={dp.bg} />
 
-            {/* ── Center area (5×5) ── */}
-            <div
-              ref={centerRef}
-              style={{
-                gridColumn: "2 / 7",
-                gridRow: "2 / 7",
-                position: "relative",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background:
-                  "repeating-linear-gradient(45deg, #fff, #fff 20px, #f0f0f0 20px, #f0f0f0 40px)",
-              }}
-            >
-              {/* Starburst */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: "-50%",
-                  left: "-50%",
-                  width: "200%",
-                  height: "200%",
-                  background: `conic-gradient(${STARBURST_BG})`,
-                }}
-              />
+      {/* Edge cells */}
+      {cellMap.map((cell) => {
+        const cx = cellX(cell.col, csW);
+        const cy = cellY(cell.row, csH);
 
-              {/* ── Scattered photo stickers (center mode) ── */}
-              {mode === "center" &&
-                centerCovers.map((photo, i) => {
-                  const slot = slots[i];
-                  return (
-                    <div
-                      key={i}
-                      onPointerDown={(e) => onPointerDown(e, i)}
-                      onPointerMove={onPointerMove}
-                      onPointerUp={onPointerUp}
-                      style={{
-                        position: "absolute",
-                        left: `${slot.x}%`,
-                        top: `${slot.y}%`,
-                        width: slot.w,
-                        height: slot.w * 0.75,
-                        transform: `rotate(${slot.rot}deg)`,
-                        zIndex: dragRef.current?.idx === i ? 5 : 1,
-                        backgroundColor: "#fff",
-                        border: `4px solid ${INK}`,
-                        boxShadow: `5px 5px 0 0 ${INK}`,
-                        padding: 4,
-                        boxSizing: "border-box",
-                        cursor: "grab",
-                        pointerEvents: "auto",
-                        touchAction: "none",
-                        userSelect: "none",
-                      }}
-                    >
-                      <img
-                        src={photo.src}
-                        draggable={false}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          display: "block",
-                          pointerEvents: "none",
-                        }}
-                      />
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: -10,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          backgroundColor: C.yellow,
-                          border: `2px solid ${INK}`,
-                          boxShadow: `2px 2px 0 0 ${INK}`,
-                          padding: "1px 8px",
-                          fontSize: 10,
-                          fontWeight: 900,
-                          whiteSpace: "nowrap",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {photo.name}
-                      </div>
-                    </div>
-                  );
-                })}
+        if (cell.corner) {
+          const iconS = Math.min(csW, csH) * 0.32;
+          const iconX = cx + (csW - iconS) / 2;
+          const iconY = cy + csH * 0.15;
+          return (
+            <Group key={cell.idx}>
+              <Rect x={cx} y={cy} width={csW} height={csH} fill={cell.bgColor} />
+              {cell.corner.iconType === "flag" && <KonvaIconFlag x={iconX} y={iconY} s={iconS} />}
+              {cell.corner.iconType === "coffee" && <KonvaIconCoffee x={iconX} y={iconY} s={iconS} ink={dp.lightInk} />}
+              {cell.corner.iconType === "search" && <KonvaIconSearch x={iconX} y={iconY} s={iconS} ink={dp.lightInk} />}
+              {cell.corner.iconType === "rocket" && <KonvaIconRocket x={iconX} y={iconY} s={iconS} ink={dp.lightInk} />}
+              <Text x={cx} y={cy + csH * 0.55} width={csW} align="center"
+                text={cell.corner.label} fontSize={14} fontStyle="900" fill="#fff"
+                fontFamily={FONT_CN} stroke={INK} strokeWidth={1} />
+            </Group>
+          );
+        }
 
-              {/* Center content group */}
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 2,
-                  textAlign: "center",
-                }}
-              >
-                {/* Title banner */}
-                <div
-                  style={{
-                    transform: "rotate(-6deg)",
-                    backgroundColor: C.pink,
-                    padding: "14px 32px",
-                    border: `4px solid ${INK}`,
-                    boxShadow: `6px 6px 0 0 ${INK}`,
-                    marginBottom: 14,
-                    display: "inline-block",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 42,
-                      fontWeight: 900,
-                      color: "#fff",
-                      textShadow: `3px 3px 0 ${INK}`,
-                      WebkitTextStroke: `2px ${INK}`,
-                      letterSpacing: 4,
-                    }}
-                  >
-                    旅行棋盘
-                  </div>
-                </div>
+        if (cell.isPattern) {
+          return (
+            <Group key={cell.idx}>
+              <Shape x={cx} y={cy} sceneFunc={(ctx, shape) => {
+                ctx.save(); ctx.beginPath(); ctx.rect(0, 0, csW, csH); ctx.clip();
+                ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, csW, csH);
+                const tile = 8; ctx.fillStyle = C.pink;
+                for (let ry = 0; ry < csH; ry += tile) {
+                  for (let rx = 0; rx < csW; rx += tile) {
+                    if (((Math.floor(rx / tile) + Math.floor(ry / tile)) & 1) === 0) ctx.fillRect(rx, ry, tile, tile);
+                  }
+                }
+                ctx.restore(); ctx.fillStrokeShape(shape);
+              }} />
+            </Group>
+          );
+        }
 
-                {/* Stats pills */}
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    justifyContent: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      backgroundColor: "#fff",
-                      border: `3px solid ${INK}`,
-                      boxShadow: `3px 3px 0 0 ${INK}`,
-                      borderRadius: 999,
-                      padding: "4px 14px",
-                      transform: "rotate(3deg)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        letterSpacing: 2,
-                      }}
-                    >
-                      {cityEntries.length} 座城市
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      backgroundColor: C.yellow,
-                      border: `3px solid ${INK}`,
-                      boxShadow: `3px 3px 0 0 ${INK}`,
-                      borderRadius: 999,
-                      padding: "4px 14px",
-                      transform: "rotate(-2deg)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        letterSpacing: 2,
-                      }}
-                    >
-                      {totalVisits} 次足迹
-                    </span>
-                  </div>
-                </div>
-              </div>
+        if (cell.city) {
+          return (
+            <CoverImageCell key={cell.idx} src={cell.cover} x={cx} y={cy} w={csW} h={csH}
+              name={cell.city.name} count={cell.city.count} ink={INK} mode={mode} bgColor={cell.bgColor} />
+          );
+        }
 
-              {/* ── Floating decorations ── */}
+        return (
+          <Group key={cell.idx}>
+            <Rect x={cx} y={cy} width={csW} height={csH} fill={cell.bgColor} />
+            <Shape x={cx} y={cy} sceneFunc={(ctx, shape) => {
+              ctx.save(); ctx.beginPath(); ctx.rect(0, 0, csW, csH); ctx.clip();
+              ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.globalAlpha = 0.15;
+              for (let d = -csH; d < csW + csH; d += 8) {
+                ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d - csH, csH); ctx.stroke();
+              }
+              ctx.globalAlpha = 1; ctx.restore(); ctx.fillStrokeShape(shape);
+            }} />
+          </Group>
+        );
+      })}
 
-              {/* Smiley face */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 16,
-                  right: 24,
-                  width: 48,
-                  height: 48,
-                  borderRadius: "50%",
-                  backgroundColor: C.yellow,
-                  border: `3px solid ${INK}`,
-                  boxShadow: `3px 3px 0 0 ${INK}`,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  zIndex: 3,
-                }}
-              >
-                <div style={{ display: "flex", gap: 6, marginBottom: 2 }}>
-                  <div
-                    style={{
-                      width: 5,
-                      height: 7,
-                      backgroundColor: INK,
-                      borderRadius: "50%",
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: 5,
-                      height: 7,
-                      backgroundColor: INK,
-                      borderRadius: "50%",
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    width: 16,
-                    height: 8,
-                    borderBottom: `3px solid ${INK}`,
-                    borderRadius: "0 0 50% 50%",
-                  }}
-                />
-              </div>
+      {/* Center area (5x5) */}
+      <Group x={centerX} y={centerY} clipX={0} clipY={0} clipWidth={centerW} clipHeight={centerH}>
+        <Shape sceneFunc={(ctx, shape) => {
+          ctx.save(); ctx.beginPath(); ctx.rect(0, 0, centerW, centerH); ctx.clip();
+          for (let d = 0; d < centerW + centerH; d += 40) {
+            ctx.fillStyle = "#fff";
+            ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d + 20, 0);
+            ctx.lineTo(d + 20 - centerH, centerH); ctx.lineTo(d - centerH, centerH); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = "#f0f0f0";
+            ctx.beginPath(); ctx.moveTo(d + 20, 0); ctx.lineTo(d + 40, 0);
+            ctx.lineTo(d + 40 - centerH, centerH); ctx.lineTo(d + 20 - centerH, centerH); ctx.closePath(); ctx.fill();
+          }
+          ctx.restore(); ctx.fillStrokeShape(shape);
+        }} />
 
-              {/* Radio */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 16,
-                  left: 16,
-                  backgroundColor: C.orange,
-                  border: `3px solid ${INK}`,
-                  boxShadow: `3px 3px 0 0 ${INK}`,
-                  padding: 6,
-                  transform: "rotate(-12deg)",
-                  width: 72,
-                  zIndex: 3,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      border: `2px solid ${INK}`,
-                      backgroundColor: "#fff",
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: 30,
-                      height: 6,
-                      border: `2px solid ${INK}`,
-                      backgroundColor: "#fff",
-                      marginTop: 2,
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 4,
-                    justifyContent: "center",
-                  }}
-                >
-                  {[0, 1].map((i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        border: `3px solid ${INK}`,
-                        backgroundColor: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 5,
-                          height: 5,
-                          backgroundColor: INK,
-                          borderRadius: "50%",
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
+        <Shape sceneFunc={(ctx, shape) => {
+          const cxc = centerW / 2; const cyc = centerH / 2;
+          const radius = Math.max(centerW, centerH);
+          for (let i = 0; i < 12; i++) {
+            const a1 = (i * 30 * Math.PI) / 180;
+            const a2 = ((i * 30 + 15) * Math.PI) / 180;
+            ctx.beginPath(); ctx.moveTo(cxc, cyc); ctx.arc(cxc, cyc, radius, a1, a2);
+            ctx.closePath(); ctx.fillStyle = `${C.yellow}40`; ctx.fill();
+          }
+          ctx.fillStrokeShape(shape);
+        }} />
 
-              {/* Dice */}
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 20,
-                  left: 24,
-                  width: 36,
-                  height: 36,
-                  backgroundColor: "#fff",
-                  border: `3px solid ${INK}`,
-                  boxShadow: `3px 3px 0 0 ${INK}`,
-                  transform: "rotate(15deg)",
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gridTemplateRows: "1fr 1fr",
-                  padding: 4,
-                  zIndex: 3,
-                }}
-              >
-                {[0, 1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: 7,
-                      height: 7,
-                      backgroundColor: INK,
-                      borderRadius: "50%",
-                      margin: "auto",
-                    }}
-                  />
-                ))}
-              </div>
+        {mode === "center" && centerCovers.map((photo, i) => (
+          <ScatteredPhotoCard key={i} src={photo.src} name={photo.name} slot={slots[i]}
+            centerW={centerW} centerH={centerH} ink={INK} yellow={C.yellow}
+            onDragEnd={(x, y) => updateSlot(i, x, y)} />
+        ))}
 
-              {/* "Good Time!" sticker */}
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 16,
-                  right: 16,
-                  backgroundColor: C.blue,
-                  color: "#fff",
-                  fontWeight: 900,
-                  fontSize: 13,
-                  padding: "3px 10px",
-                  border: `3px solid ${INK}`,
-                  boxShadow: `3px 3px 0 0 ${INK}`,
-                  transform: "rotate(-6deg)",
-                  textShadow: `1px 1px 0 ${INK}`,
-                  zIndex: 3,
-                }}
-              >
-                Good Time!
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        <Group x={centerW / 2} y={centerH / 2}>
+          {/* Title banner */}
+          <Group rotation={-6} y={-40}>
+            <Rect x={-100 + 6} y={-32 + 6} width={200} height={64} fill={INK} />
+            <Rect x={-100} y={-32} width={200} height={64} fill={C.pink} stroke={INK} strokeWidth={4} />
+            <Text x={-100} y={-18} width={200} align="center" text="旅行棋盘"
+              fontSize={42} fontStyle="900" fill="#fff" fontFamily={FONT_CN}
+              stroke={INK} strokeWidth={2} letterSpacing={4} />
+          </Group>
 
-      {/* ── Bottom toolbar ── */}
-    </div>
+          {/* Stats pills */}
+          <Group y={30}>
+            <Group x={-75} rotation={3}>
+              <Rect x={3} y={3} width={68} height={24} fill={INK} cornerRadius={12} />
+              <Rect x={0} y={0} width={68} height={24} fill="#fff" stroke={INK} strokeWidth={3} cornerRadius={12} />
+              <Text x={0} y={5} width={68} align="center" text={`${cityEntries.length} 座城市`}
+                fontSize={12} fontStyle="700" fill={INK} fontFamily={FONT_CN} letterSpacing={1} />
+            </Group>
+            <Group x={5} rotation={-2}>
+              <Rect x={3} y={3} width={68} height={24} fill={INK} cornerRadius={12} />
+              <Rect x={0} y={0} width={68} height={24} fill={C.yellow} stroke={INK} strokeWidth={3} cornerRadius={12} />
+              <Text x={0} y={5} width={68} align="center" text={`${totalVisits} 次足迹`}
+                fontSize={12} fontStyle="700" fill={INK} fontFamily={FONT_CN} letterSpacing={1} />
+            </Group>
+          </Group>
+        </Group>
+
+        {/* Floating decorations */}
+        <Group x={centerW - 72} y={16}>
+          <Circle x={24 + 3} y={24 + 3} radius={24} fill={INK} />
+          <Circle x={24} y={24} radius={24} fill={C.yellow} stroke={INK} strokeWidth={3} />
+          <Circle x={18} y={20} radiusX={2.5} radiusY={3.5} radius={3} fill={INK} />
+          <Circle x={30} y={20} radiusX={2.5} radiusY={3.5} radius={3} fill={INK} />
+          <Shape sceneFunc={(ctx, shape) => {
+            ctx.beginPath(); ctx.arc(24, 26, 8, 0.1 * Math.PI, 0.9 * Math.PI, false);
+            ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.stroke();
+            ctx.fillStrokeShape(shape);
+          }} />
+        </Group>
+
+        <Group x={16} y={16} rotation={-12}>
+          <Rect x={3} y={3} width={72} height={44} fill={INK} />
+          <Rect x={0} y={0} width={72} height={44} fill={C.orange} stroke={INK} strokeWidth={3} />
+          <Circle x={14} y={14} radius={5} fill="#fff" stroke={INK} strokeWidth={2} />
+          <Rect x={28} y={10} width={30} height={6} fill="#fff" stroke={INK} strokeWidth={2} />
+          {[0, 1].map((i) => (
+            <Group key={i} x={18 + i * 24} y={30}>
+              <Circle x={0} y={0} radius={10} fill="#fff" stroke={INK} strokeWidth={3} />
+              <Circle x={0} y={0} radius={2.5} fill={INK} />
+            </Group>
+          ))}
+        </Group>
+
+        <Group x={24} y={centerH - 56} rotation={15}>
+          <Rect x={3} y={3} width={36} height={36} fill={INK} />
+          <Rect x={0} y={0} width={36} height={36} fill="#fff" stroke={INK} strokeWidth={3} />
+          {[[9, 9], [27, 9], [9, 27], [27, 27]].map(([dx, dy], i) => (
+            <Circle key={i} x={dx} y={dy} radius={3.5} fill={INK} />
+          ))}
+        </Group>
+
+        <Group x={centerW - 90} y={centerH - 40} rotation={-6}>
+          <Rect x={3} y={3} width={76} height={22} fill={INK} />
+          <Rect x={0} y={0} width={76} height={22} fill={C.blue} stroke={INK} strokeWidth={3} />
+          <Text x={0} y={4} width={76} align="center" text="Good Time!"
+            fontSize={13} fontStyle="900" fill="#fff" fontFamily={FONT_CN} stroke={INK} strokeWidth={1} />
+        </Group>
+      </Group>
+    </KonvaPosterStage>
   );
 }
 
