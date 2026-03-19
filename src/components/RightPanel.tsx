@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Map as MapIcon, LayoutGrid, Shapes, Palette, ArrowLeft, Download, Loader2, Check } from "lucide-react";
+import { Map as MapIcon, LayoutGrid, Shapes, Palette, ArrowLeft, Download, Loader2, Check, Layers } from "lucide-react";
 import { MapView } from "./MapView";
 import { GridView } from "./GridView";
 import { BubbleCluster } from "./BubbleCluster";
@@ -12,10 +12,12 @@ import { PosterPreview } from "./PosterPreview";
 import { useMapStore, type ChartView } from "../stores/useMapStore";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { savePosterToDownloads } from "../lib/poster-export";
-import { getPosterModule, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
+import { getPosterModule, posterModules, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
 import { MujiPosterDevPanel, DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
 import { KEYBOARD_THEMES } from "./poster-modules/KeyboardPoster";
+import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
 import { MUJI_TEMPLATES, getDefaultTemplateIdx } from "./poster-modules/MujiPoster";
+import { MOSAIC_THEMES } from "./poster-modules/GridMosaicPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
@@ -30,16 +32,21 @@ export function RightPanel() {
   const mapLevel = useMapStore((s) => s.mapLevel);
   const setMapLevel = useMapStore((s) => s.setMapLevel);
   const activePosterModule = useMapStore((s) => s.activePosterModule);
+  const setActivePosterModule = useMapStore((s) => s.setActivePosterModule);
   const posterRatio = useMapStore((s) => s.posterRatio);
   const setPosterRatio = useMapStore((s) => s.setPosterRatio);
   const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const setMujiConfig = useMapStore((s) => s.setMujiConfig);
   const keyboardThemeIdx = useMapStore((s) => s.keyboardThemeIdx);
   const setKeyboardThemeIdx = useMapStore((s) => s.setKeyboardThemeIdx);
+  const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
+  const setPatternStyleIdx = useMapStore((s) => s.setPatternStyleIdx);
   const popBoardMode = useMapStore((s) => s.popBoardMode);
   const setPopBoardMode = useMapStore((s) => s.setPopBoardMode);
   const mujiTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
   const setMujiTemplateIdx = useMapStore((s) => s.setMujiTemplateIdx);
+  const mosaicThemeIdx = useMapStore((s) => s.mosaicThemeIdx);
+  const setMosaicThemeIdx = useMapStore((s) => s.setMosaicThemeIdx);
   const status = useFavoriteStore((s) => s.status);
   const favItems = useFavoriteStore((s) => s.items);
 
@@ -55,6 +62,7 @@ export function RightPanel() {
 
   const posterRef = useRef<HTMLDivElement>(null);
   const [dlState, setDlState] = useState<"idle" | "loading" | "done">("idle");
+  const [showModuleBar, setShowModuleBar] = useState(false);
 
   const handlePosterDownload = useCallback(async () => {
     if (!posterRef.current || !activePosterModule || dlState === "loading") return;
@@ -237,14 +245,22 @@ export function RightPanel() {
             )}
           </AnimatePresence>
 
-          {/* Poster preview — two-layer dock: white preview + gray controls */}
-          <AnimatePresence>
-            {inPosterMode && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
+          {/* Poster overlay — module bar + preview */}
+          <div
+            className="absolute inset-0 z-10 flex flex-col pointer-events-none"
+            style={{ padding: "56px 12px 12px" }}
+          >
+            {/* Module bar — lightweight, left-aligned above poster */}
+            <div className="shrink-0 mb-1.5 pointer-events-auto">
+              <PosterModuleBar open={showModuleBar} />
+            </div>
+
+            {/* Poster preview — fills remaining space */}
+            <AnimatePresence>
+              {inPosterMode && (
                 <motion.div
                   key="poster-area"
-                  className="w-[calc(100%-24px)] mx-3 flex flex-col bg-neutral-100 rounded-2xl overflow-hidden origin-center"
-                  style={{ height: "78%" }}
+                  className="flex-1 min-h-0 flex flex-col bg-neutral-100 rounded-2xl overflow-hidden origin-center"
                   initial={{ opacity: 0, scale: 0.92 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.92 }}
@@ -353,6 +369,107 @@ export function RightPanel() {
                       </div>
                     )}
 
+                    {activePosterModule === "pattern" && (
+                      <div className="flex items-center">
+                        {PATTERN_STYLES.map((s, i) => {
+                          const isActive = patternStyleIdx === i;
+                          const isBrutal = s.id === "brutalism";
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setPatternStyleIdx(i)}
+                              className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium cursor-pointer z-[1]"
+                            >
+                              {isActive && (
+                                <motion.div
+                                  layoutId="pattern-style-pill"
+                                  className="absolute inset-0 bg-neutral-800 rounded-lg"
+                                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                                />
+                              )}
+                              {/* Style mini preview */}
+                              <svg
+                                className="relative z-[1] shrink-0"
+                                width="16" height="16" viewBox="0 0 16 16" fill="none"
+                              >
+                                {isBrutal ? (<>
+                                  {/* Brutalism: thick border + offset shadow */}
+                                  <rect x="1" y="1" width="12" height="12" rx="2" fill="#FDFDFD" stroke="#000" strokeWidth="1.5" />
+                                  <rect x="3" y="3" width="12" height="12" rx="2" fill="#FDFDFD" stroke="#000" strokeWidth="1.5" />
+                                  <circle cx="9" cy="9" r="3" fill="#4361EE" stroke="#000" strokeWidth="1" />
+                                </>) : (<>
+                                  {/* Flat: clean thin border */}
+                                  <rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="#FDFDFD" stroke="#1a1a1a" strokeWidth="1" />
+                                  <circle cx="8" cy="8" r="3" fill="none" stroke="#1a1a1a" strokeWidth="1" />
+                                </>)}
+                              </svg>
+                              <span
+                                className={`relative z-[1] transition-colors duration-200 ${
+                                  isActive ? "text-white" : "text-neutral-500"
+                                }`}
+                              >
+                                {s.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {activePosterModule === "grid-mosaic" && (
+                      <div className="flex items-center">
+                        {MOSAIC_THEMES.map((t, i) => {
+                          const isActive = mosaicThemeIdx === i;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => setMosaicThemeIdx(i)}
+                              className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium cursor-pointer z-[1]"
+                            >
+                              {isActive && (
+                                <motion.div
+                                  layoutId="poster-style-indicator"
+                                  className="absolute inset-0 bg-neutral-800 rounded-lg"
+                                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                                />
+                              )}
+                              {/* Pattern mini preview */}
+                              <svg
+                                className="relative z-[1] shrink-0"
+                                width="16" height="16" viewBox="0 0 16 16" fill="none"
+                              >
+                                <rect x="1" y="1" width="14" height="14" rx="2"
+                                  fill={isActive ? "#555" : "#e5e5e5"}
+                                  stroke={isActive ? "#999" : "#aaa"} strokeWidth="0.8"
+                                />
+                                {t.id === "stripe" && (<>
+                                  <line x1="4" y1="14" x2="14" y2="4" stroke={isActive ? "#fff" : "#666"} strokeWidth="1" opacity="0.6" />
+                                  <line x1="1" y1="12" x2="12" y2="1" stroke={isActive ? "#fff" : "#666"} strokeWidth="1" opacity="0.6" />
+                                  <line x1="1" y1="8" x2="8" y2="1" stroke={isActive ? "#fff" : "#666"} strokeWidth="1" opacity="0.6" />
+                                  <line x1="1" y1="4" x2="4" y2="1" stroke={isActive ? "#fff" : "#666"} strokeWidth="1" opacity="0.6" />
+                                  <line x1="8" y1="15" x2="15" y2="8" stroke={isActive ? "#fff" : "#666"} strokeWidth="1" opacity="0.6" />
+                                </>)}
+                                {t.id === "dot" && (<>
+                                  <circle cx="5" cy="5" r="1.2" fill={isActive ? "#fff" : "#666"} opacity="0.6" />
+                                  <circle cx="11" cy="5" r="1.2" fill={isActive ? "#fff" : "#666"} opacity="0.6" />
+                                  <circle cx="5" cy="11" r="1.2" fill={isActive ? "#fff" : "#666"} opacity="0.6" />
+                                  <circle cx="11" cy="11" r="1.2" fill={isActive ? "#fff" : "#666"} opacity="0.6" />
+                                  <circle cx="8" cy="8" r="1.2" fill={isActive ? "#fff" : "#666"} opacity="0.6" />
+                                </>)}
+                              </svg>
+                              <span
+                                className={`relative z-[1] transition-colors duration-200 ${
+                                  isActive ? "text-white" : "text-neutral-500"
+                                }`}
+                              >
+                                {t.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {activePosterModule === "muji" && (
                       <div className="flex items-center gap-0.5">
                         {MUJI_TEMPLATES.map((t, i) => {
@@ -420,26 +537,62 @@ export function RightPanel() {
                     })()}
                   </div>
                 </motion.div>
+              )}
+            </AnimatePresence>
 
-                {/* Muji dev panel — floating over poster area */}
-                {activePosterModule === "muji" && (
-                  <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
-                    <MujiPosterDevPanel
-                      config={currentMujiConfig}
-                      onChange={(c) => setMujiConfig(currentMujiTemplate.id, c)}
-                      templateLabel={currentMujiTemplate.label}
-                    />
-                  </div>
-                )}
+            {/* Muji dev panel — floating over poster area */}
+            {activePosterModule === "muji" && (
+              <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
+                <MujiPosterDevPanel
+                  config={currentMujiConfig}
+                  onChange={(c) => setMujiConfig(currentMujiTemplate.id, c)}
+                  templateLabel={currentMujiTemplate.label}
+                />
               </div>
+            )}
+          </div>
+
+          {/* Module bar toggle — inside content card, top-right */}
+          <AnimatePresence>
+            {status === "done" && chartView === "map" && favItems.length > 0 && (
+              <motion.button
+                key="module-bar-toggle"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  setShowModuleBar((v) => {
+                    const next = !v;
+                    if (next) {
+                      // 开启时默认选中第一个模块，直接进入预览
+                      if (!activePosterModule) {
+                        setActivePosterModule(posterModules[0].id);
+                      }
+                    } else {
+                      // 关闭时清除选中
+                      setActivePosterModule(null);
+                    }
+                    return next;
+                  });
+                }}
+                className={`absolute z-[11] top-2.5 right-2.5 flex items-center justify-center
+                           w-[26px] h-[26px] rounded-full cursor-pointer
+                           transition-colors duration-200
+                           ${showModuleBar
+                             ? "bg-neutral-800 text-white"
+                             : "text-neutral-400 hover:text-neutral-600"
+                           }`}
+              >
+                <Layers size={12} strokeWidth={2} />
+              </motion.button>
             )}
           </AnimatePresence>
 
           {!inPosterMode && chartView === "map" && <RouteStopList />}
           {!inPosterMode && <StatusBar />}
         </div>
-
-        <PosterModuleBar />
       </div>
     </div>
   );

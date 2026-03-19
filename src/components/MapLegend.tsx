@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useTagExtraction } from "../hooks/useTagExtraction";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import { getCategoryColor } from "../lib/category-colors";
+import { FoodDoodleIcon, hasFoodDoodle } from "./FoodDoodleIcon";
 
 export function MapLegend() {
   const tags = useTagExtraction();
@@ -36,8 +37,17 @@ export function MapLegend() {
             className="w-[5px] h-[5px] rounded-full shrink-0"
             style={{ backgroundColor: getCategoryColor(tag.category) }}
           />
-          <span className="text-[8px] leading-none shrink-0 opacity-80">
-            {tag.emoji}
+          <span className="shrink-0 opacity-80 flex items-center">
+            {hasFoodDoodle(tag.category) ? (
+              <FoodDoodleIcon
+                category={tag.category}
+                size={12}
+                color={getCategoryColor(tag.category)}
+                seed={tag.category.charCodeAt(0) * 7 + tag.category.length}
+              />
+            ) : (
+              <span className="text-[8px] leading-none">{tag.emoji}</span>
+            )}
           </span>
           <span className="text-[8px] text-[var(--text-secondary)] leading-none">
             {tag.category}

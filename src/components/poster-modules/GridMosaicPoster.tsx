@@ -5,6 +5,15 @@ import { PixelSpriteSVG, SPRITE_NAMES } from "../poster-generators/PixelSprites"
 import { ElevationPersonSVG } from "../poster-generators/ElevationPeople";
 import { CharacterSVG, POSE_CATEGORIES, BODY_TYPES } from "../poster-generators/CharacterGenerator";
 import { mulberry32, DOODLE_ENTRIES } from "../poster-generators/DoodleGallery";
+import { useMapStore } from "../../stores/useMapStore";
+
+/* ── Theme definitions — cell decoration styles ── */
+export type MosaicThemeId = "solid" | "stripe" | "dot";
+export const MOSAIC_THEMES: { id: MosaicThemeId; label: string }[] = [
+  { id: "solid", label: "纯色" },
+  { id: "stripe", label: "斜线" },
+  { id: "dot", label: "圆点" },
+];
 
 /* ── Grid dimensions (base at 800×1100, scales proportionally) ── */
 const BASE_W = 800;
@@ -109,9 +118,64 @@ function GeneratedIcon({ index, size, color, seed }: { index: number; size: numb
   );
 }
 
+/* ── Cell pattern overlay — renders decorative SVG pattern on top of cell bg ── */
+function CellPatternOverlay({ theme, ink, size }: { theme: MosaicThemeId; ink: string; size: number }) {
+  if (theme === "solid") return null;
+
+  if (theme === "stripe") {
+    const gap = Math.round(size * 0.11);
+    const sw = Math.max(1.5, size * 0.015);
+    return (
+      <svg
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+        viewBox={`0 0 ${size} ${size}`}
+      >
+        {Array.from({ length: Math.ceil((size * 2) / gap) }, (_, i) => {
+          const offset = -size + i * gap;
+          return (
+            <line
+              key={i}
+              x1={offset}
+              y1={size}
+              x2={offset + size}
+              y2={0}
+              stroke={ink}
+              strokeWidth={sw}
+              opacity={0.12}
+            />
+          );
+        })}
+      </svg>
+    );
+  }
+
+  // dot
+  const dotR = Math.max(2, size * 0.025);
+  const gap = Math.round(size * 0.11);
+  const cols = Math.ceil(size / gap);
+  const rows = Math.ceil(size / gap);
+  return (
+    <svg
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      viewBox={`0 0 ${size} ${size}`}
+    >
+      {Array.from({ length: cols * rows }, (_, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cx = gap * 0.5 + col * gap;
+        const cy = gap * 0.5 + row * gap;
+        return <circle key={i} cx={cx} cy={cy} r={dotR} fill={ink} opacity={0.1} />;
+      })}
+    </svg>
+  );
+}
+
 /* ── Main Component ── */
 
 function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight: POSTER_H }: PosterModuleProps) {
+  const mosaicThemeIdx = useMapStore((s) => s.mosaicThemeIdx);
+  const themeId = MOSAIC_THEMES[mosaicThemeIdx]?.id ?? "solid";
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
 
@@ -260,6 +324,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                     const idx = parseInt(cell.substring(1));
                     return (
                       <div key={key} style={{ ...cellBase, backgroundColor: bg }}>
+                        <CellPatternOverlay theme={themeId} ink={pal.ink} size={CELL} />
                         <span
                           style={{
                             fontSize: 72,
@@ -267,6 +332,8 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                             color: pal.ink,
                             lineHeight: 1,
                             userSelect: "none",
+                            position: "relative",
+                            zIndex: 1,
                           }}
                         >
                           {gridChars[idx]}
@@ -283,7 +350,10 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                       /* Fallback → icon */
                       return (
                         <div key={key} style={{ ...cellBase, backgroundColor: bg }}>
-                          <GeneratedIcon index={ri * 2 + ci} size={70} color={pal.ink} seed={iconSeed} />
+                          <CellPatternOverlay theme={themeId} ink={pal.ink} size={CELL} />
+                          <div style={{ position: "relative", zIndex: 1 }}>
+                            <GeneratedIcon index={ri * 2 + ci} size={70} color={pal.ink} seed={iconSeed} />
+                          </div>
                         </div>
                       );
                     }
@@ -316,7 +386,10 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                   const iIdx = parseInt(cell.substring(1));
                   return (
                     <div key={key} style={{ ...cellBase, backgroundColor: bg }}>
-                      <GeneratedIcon index={iIdx} size={70} color={pal.ink} seed={iconSeed} />
+                      <CellPatternOverlay theme={themeId} ink={pal.ink} size={CELL} />
+                      <div style={{ position: "relative", zIndex: 1 }}>
+                        <GeneratedIcon index={iIdx} size={70} color={pal.ink} seed={iconSeed} />
+                      </div>
                     </div>
                   );
                 })

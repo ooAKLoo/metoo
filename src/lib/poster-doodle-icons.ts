@@ -135,15 +135,6 @@ function genHalfCircle(rng: RNG) {
   return s;
 }
 
-/** ◉ Pattern brutal - concentric circles */
-function genConcentricCircle(rng: RNG) {
-  let s = "";
-  s += handCircle(rng, 20, 20, 15, 15, false, 1.5);
-  s += handCircle(rng, 20, 20, 10, 10);
-  s += handCircle(rng, 20, 20, 5, 5);
-  s += `<circle cx="${jitter(rng, 20, 0.5)}" cy="${jitter(rng, 20, 0.5)}" r="2" fill="currentColor"/>`;
-  return s;
-}
 
 /** 🃏 Explorer card - playing card */
 function genCard(rng: RNG) {
@@ -278,8 +269,7 @@ const ICON_GENS: Record<string, (rng: RNG) => string> = {
   muji: genMountain,
   dotmap: genDotMap,
   discover: genTrain,
-  "pattern-flat": genHalfCircle,
-  "pattern-brutal": genConcentricCircle,
+  pattern: genHalfCircle,
   "explorer-card": genCard,
   "grid-mosaic": genPuzzle,
   "data-postcard": genChart,

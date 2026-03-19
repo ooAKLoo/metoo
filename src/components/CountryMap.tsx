@@ -1,22 +1,123 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Maximize2, ArrowLeft } from "lucide-react";
+import { Maximize2 } from "lucide-react";
 import { MapLegend } from "./MapLegend";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
-import { useThemeStore } from "../stores/useThemeStore";
-import { useCityAggregation } from "../hooks/useCityAggregation";
+import type { CityEntry } from "../hooks/useCityAggregation";
 import {
-  coverSrc, lerpColor, ensureCountryGeo, buildGeoSvg, useSvgRoam,
+  coverSrc, ensureCountryGeo, buildGeoSvg, useSvgRoam,
   PROV_FULL, AVATAR_MIN, AVATAR_MAX,
   type AvatarPos, type GeoSvgData,
 } from "./map-shared";
 
-const FAUVIST_PALETTE = [
-  "#E63946", "#F77F00", "#FCBF49", "#2A9D8F",
-  "#3A86FF", "#7209B7", "#8AC926", "#FF006E",
-  "#FB5607", "#06D6A0", "#FFBE0B", "#4CC9F0",
-];
+// ── Dot Matrix constants (same as WorldMap) ──
+const DOT_BG = "#ffffff";
+const DOT_LAND_DEFAULT = "#d0d0d0";
+const DOT_LAND_ACTIVE = "#E63946";
+const DOT_COLS = 90;
+const DOT_RADIUS_RATIO = 2.5 / (1000 / DOT_COLS);
+
+// ── Geometry helpers ──
+
+interface DotInfo {
+  svgX: number;
+  svgY: number;
+  provIdx: number;
+}
+
+interface ProvPolygons {
+  bbox: [number, number, number, number];
+  rings: number[][][];
+}
+
+function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function extractProvPolygons(
+  geometry: { type: string; coordinates: number[][][][] | number[][][][][] },
+): ProvPolygons {
+  const rings: number[][][] = [];
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  const addRing = (coords: number[][][]) => {
+    if (!coords?.[0]?.length) return;
+    const outer = coords[0];
+    rings.push(outer);
+    for (const pt of outer) {
+      if (pt[0] < minLng) minLng = pt[0];
+      if (pt[0] > maxLng) maxLng = pt[0];
+      if (pt[1] < minLat) minLat = pt[1];
+      if (pt[1] > maxLat) maxLat = pt[1];
+    }
+  };
+  if (!geometry?.coordinates) return { bbox: [0, 0, 0, 0], rings };
+  if (geometry.type === "Polygon") addRing(geometry.coordinates as unknown as number[][][]);
+  else if (geometry.type === "MultiPolygon")
+    for (const poly of geometry.coordinates as number[][][][]) addRing(poly);
+  return { bbox: [minLng, minLat, maxLng, maxLat], rings };
+}
+
+type GeoFeature = {
+  geometry: { type: string; coordinates: unknown };
+  properties?: { name?: string };
+};
+
+function buildCountryDotGrid(
+  features: GeoFeature[],
+  svgToGeo: (sx: number, sy: number) => [number, number],
+  svgW: number,
+  svgH: number,
+) {
+  const validFeatures = features.filter((f) => f.geometry?.coordinates);
+  const provPolygons = validFeatures.map((f) =>
+    extractProvPolygons(
+      f.geometry as { type: string; coordinates: number[][][][] | number[][][][][] },
+    ),
+  );
+
+  const nameToIdx = new Map<string, number>();
+  validFeatures.forEach((f, i) => {
+    if (f.properties?.name) nameToIdx.set(f.properties.name, i);
+  });
+
+  const svgSpacing = svgW / DOT_COLS;
+  const rows = Math.ceil(svgH / svgSpacing);
+
+  const dots: DotInfo[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < DOT_COLS; c++) {
+      const svgX = c * svgSpacing + svgSpacing / 2;
+      const svgY = r * svgSpacing + svgSpacing / 2;
+      const [lng, lat] = svgToGeo(svgX, svgY);
+      if (lat < -60 || lat > 85) continue;
+      let provIdx = -1;
+      for (let pi = 0; pi < provPolygons.length; pi++) {
+        const pp = provPolygons[pi];
+        if (pp.rings.length === 0) continue;
+        if (lng < pp.bbox[0] || lng > pp.bbox[2] || lat < pp.bbox[1] || lat > pp.bbox[3]) continue;
+        for (const ring of pp.rings) {
+          if (pointInRing(lng, lat, ring)) { provIdx = pi; break; }
+        }
+        if (provIdx >= 0) break;
+      }
+      if (provIdx >= 0) {
+        dots.push({ svgX, svgY, provIdx });
+      }
+    }
+  }
+  return { dots, nameToIdx };
+}
+
+// ── Component ──
 
 interface CountryMapProps {
   countryName: string;
@@ -33,38 +134,83 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
 
-  const themeId = useThemeStore((s) => s.themeId);
-  const { entries } = useCityAggregation();
-
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  // ── GeoJSON → SVG data ──
+  // ── GeoJSON → SVG data + raw features ──
   const [geo, setGeo] = useState<GeoSvgData | null>(null);
+  const [countryFeatures, setCountryFeatures] = useState<GeoFeature[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setGeo(null);
+    setCountryFeatures(null);
     setLoadFailed(false);
     ensureCountryGeo(countryName).then((geoJson) => {
       if (cancelled) return;
       if (!geoJson) { setLoadFailed(true); return; }
       setGeo(buildGeoSvg(geoJson, 1000));
+      setCountryFeatures((geoJson.features || []) as GeoFeature[]);
     });
     return () => { cancelled = true; };
   }, [countryName]);
 
-  // ── SVG element ref via callback ──
-  const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
-  const sketchContainerRef = useRef<SVGSVGElement | null>(null);
+  // ── Country-filtered city aggregation ──
+  // Only include cities whose province belongs to the current country's GeoJSON
+  const entries = useMemo((): CityEntry[] => {
+    if (!geo) return [];
+    const provNames = new Set(geo.provinces.map((p) => p.name));
 
-  const svgRefCallback = useCallback((el: SVGSVGElement | null) => {
-    setSvgEl(el);
-    sketchContainerRef.current = el;
-  }, []);
+    const cityAgg = new Map<
+      string,
+      { coord: [number, number]; count: number; titles: string[]; covers: string[] }
+    >();
+
+    for (const item of items) {
+      for (const loc of item.locations) {
+        const fullProv = isChina
+          ? (PROV_FULL[loc.province] || loc.province)
+          : loc.province;
+        if (!provNames.has(fullProv)) continue;
+
+        const key = loc.name;
+        const existing = cityAgg.get(key);
+        if (existing) {
+          existing.count++;
+          if (existing.titles.length < 5) existing.titles.push(item.title);
+          if (existing.covers.length < 4 && item.cover) existing.covers.push(item.cover);
+        } else {
+          cityAgg.set(key, {
+            coord: [loc.lng, loc.lat],
+            count: 1,
+            titles: [item.title],
+            covers: item.cover ? [item.cover] : [],
+          });
+        }
+      }
+    }
+
+    return Array.from(cityAgg.entries())
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.count - a.count);
+  }, [items, geo, isChina]);
+
+  // ── SVG element ref ──
+  const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
+  const svgRefCallback = useCallback((el: SVGSVGElement | null) => setSvgEl(el), []);
 
   // ── Pan / Zoom ──
   const roam = useSvgRoam(svgEl, geo?.svgW ?? 0, geo?.svgH ?? 0);
+
+  // ── Canvas + container refs ──
+  const dotCanvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const svgSpacingRef = useRef(0);
+
+  // ── Hover animation refs ──
+  const hoverAnimRef = useRef({ provIdx: -1, dotOpacity: 1, rafId: 0 });
+  const nameToIdxRef = useRef(new Map<string, number>());
+  const drawDotMatrixRef = useRef(() => {});
 
   // ── Avatar overlay ──
   const [avatarPositions, setAvatarPositions] = useState<AvatarPos[]>([]);
@@ -78,6 +224,12 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     const effectiveMin = Math.max(18, AVATAR_MIN * zoomScale);
     const effectiveMax = Math.min(72, AVATAR_MAX * zoomScale);
     const maxCount = Math.max(...entries.map((e) => e.count), 1);
+    const maxSize = effectiveMax;
+
+    const rect = svgEl.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (!w || !h) return [];
 
     const raw: AvatarPos[] = [];
     for (const city of entries) {
@@ -85,6 +237,8 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       const [sx, sy] = geo.geoToSvg(city.coord[0], city.coord[1]);
       const [px, py] = roam.svgToScreen(sx, sy);
       if (!isFinite(px) || !isFinite(py)) continue;
+      if (px < -maxSize || px > w + maxSize) continue;
+      if (py < -maxSize || py > h + maxSize) continue;
       const t = Math.sqrt(city.count / maxCount);
       const size = effectiveMin + t * (effectiveMax - effectiveMin);
       raw.push({ city, x: px, y: py, size, visible: true });
@@ -114,6 +268,10 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     const container = avatarContainerRef.current;
     if (!container) return;
 
+    const rect = svgEl.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
     for (const ap of avatarPosRef.current) {
       if (!ap.visible) continue;
       const el = container.querySelector(
@@ -123,12 +281,199 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       const [sx, sy] = geo.geoToSvg(ap.city.coord[0], ap.city.coord[1]);
       const [px, py] = roam.svgToScreen(sx, sy);
       if (!isFinite(px) || !isFinite(py)) { el.style.display = "none"; continue; }
+      if (w && h && (px < -ap.size || px > w + ap.size || py < -ap.size || py > h + ap.size)) {
+        el.style.display = "none"; continue;
+      }
       el.style.display = "";
       el.style.transform = `translate3d(${px - ap.size / 2}px, ${py - ap.size / 2}px, 0)`;
       ap.x = px;
       ap.y = py;
     }
   }, [geo, svgEl, roam.svgToScreen]);
+
+  // ── Build dot grid ──
+  const dotData = useMemo(() => {
+    if (!countryFeatures || !geo) {
+      return { dots: [] as DotInfo[], nameToIdx: new Map<string, number>() };
+    }
+    const data = buildCountryDotGrid(countryFeatures, geo.svgToGeo, geo.svgW, geo.svgH);
+    svgSpacingRef.current = geo.svgW / DOT_COLS;
+    return data;
+  }, [countryFeatures, geo]);
+
+  const dotGrid = dotData.dots;
+  nameToIdxRef.current = dotData.nameToIdx;
+
+  // ── Province counts (by name) ──
+  const provCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const loc of item.locations) {
+        const name = isChina ? (PROV_FULL[loc.province] || loc.province) : loc.province;
+        if (name) counts.set(name, (counts.get(name) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [items, isChina]);
+
+  // ── Province counts (by feature index) ──
+  const provIdxCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const [name, count] of provCounts.entries()) {
+      const idx = dotData.nameToIdx.get(name);
+      if (idx !== undefined) counts.set(idx, count);
+    }
+    return counts;
+  }, [provCounts, dotData.nameToIdx]);
+
+  // ── Draw dot matrix on canvas ──
+  const drawDotMatrix = useCallback(() => {
+    const canvas = dotCanvasRef.current;
+    if (!canvas || dotGrid.length === 0) {
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      return;
+    }
+    const ctx = canvas.getContext("2d")!;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    const canvasW = rect.width;
+    const canvasH = rect.height;
+    if (canvasW <= 0 || canvasH <= 0) return;
+
+    const vb = roam.vbRef.current;
+    const scX = canvasW / vb.w;
+    const scY = canvasH / vb.h;
+    const scale = Math.min(scX, scY);
+    const offX = (canvasW - vb.w * scale) / 2;
+    const offY = (canvasH - vb.h * scale) / 2;
+
+    const svgSpacing = svgSpacingRef.current;
+    if (svgSpacing <= 0) return;
+    const spacingPx = svgSpacing * scale;
+    const baseR = spacingPx * DOT_RADIUS_RATIO;
+    if (baseR < 0.3) return;
+
+    const padSvg = svgSpacing * 2;
+    const visMinX = vb.x - padSvg;
+    const visMaxX = vb.x + vb.w + padSvg;
+    const visMinY = vb.y - padSvg;
+    const visMaxY = vb.y + vb.h + padSvg;
+
+    const maxCount = provIdxCounts.size > 0 ? Math.max(...provIdxCounts.values()) : 1;
+    const defaultDots: { x: number; y: number }[] = [];
+    const activeBuckets = new Map<number, { x: number; y: number }[]>();
+    const hoverIdx = hoverAnimRef.current.provIdx;
+    const hoverDefaultDots: { x: number; y: number }[] = [];
+    const hoverActiveBuckets = new Map<number, { x: number; y: number }[]>();
+
+    for (const dot of dotGrid) {
+      if (dot.svgX < visMinX || dot.svgX > visMaxX) continue;
+      if (dot.svgY < visMinY || dot.svgY > visMaxY) continue;
+
+      const screenX = (dot.svgX - vb.x) * scale + offX;
+      const screenY = (dot.svgY - vb.y) * scale + offY;
+
+      const isHovered = hoverIdx >= 0 && dot.provIdx === hoverIdx;
+      const targetDefault = isHovered ? hoverDefaultDots : defaultDots;
+      const targetActive = isHovered ? hoverActiveBuckets : activeBuckets;
+
+      const count = provIdxCounts.get(dot.provIdx) || 0;
+      if (count > 0) {
+        const t = Math.sqrt(count / maxCount);
+        const opacity = Math.round((0.45 + t * 0.55) * 10) / 10;
+        if (!targetActive.has(opacity)) targetActive.set(opacity, []);
+        targetActive.get(opacity)!.push({ x: screenX, y: screenY });
+      } else {
+        targetDefault.push({ x: screenX, y: screenY });
+      }
+    }
+
+    // Draw non-hovered dots
+    ctx.fillStyle = DOT_LAND_DEFAULT;
+    ctx.beginPath();
+    for (const p of defaultDots) {
+      ctx.moveTo(p.x + baseR, p.y);
+      ctx.arc(p.x, p.y, baseR, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    for (const [opacity, pts] of activeBuckets) {
+      ctx.fillStyle = DOT_LAND_ACTIVE;
+      ctx.globalAlpha = opacity;
+      ctx.beginPath();
+      for (const p of pts) {
+        ctx.moveTo(p.x + baseR, p.y);
+        ctx.arc(p.x, p.y, baseR, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+
+    // Draw hovered province dots with animated fade
+    const dotAlpha = hoverAnimRef.current.dotOpacity;
+    if (dotAlpha > 0.01) {
+      if (hoverDefaultDots.length > 0) {
+        ctx.fillStyle = DOT_LAND_DEFAULT;
+        ctx.globalAlpha = dotAlpha;
+        ctx.beginPath();
+        for (const p of hoverDefaultDots) {
+          ctx.moveTo(p.x + baseR, p.y);
+          ctx.arc(p.x, p.y, baseR, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+      for (const [opacity, pts] of hoverActiveBuckets) {
+        ctx.fillStyle = DOT_LAND_ACTIVE;
+        ctx.globalAlpha = opacity * dotAlpha;
+        ctx.beginPath();
+        for (const p of pts) {
+          ctx.moveTo(p.x + baseR, p.y);
+          ctx.arc(p.x, p.y, baseR, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }, [dotGrid, provIdxCounts, roam.vbRef]);
+  drawDotMatrixRef.current = drawDotMatrix;
+
+  // ── Hover animation ──
+  const startHoverAnim = useCallback((newIdx: number) => {
+    const anim = hoverAnimRef.current;
+    if (newIdx === anim.provIdx) return;
+
+    const fadeOut = newIdx >= 0;
+    anim.provIdx = newIdx;
+    const startOpacity = anim.dotOpacity;
+    const endOpacity = fadeOut ? 0 : 1;
+    if (startOpacity === endOpacity) {
+      drawDotMatrixRef.current();
+      return;
+    }
+
+    const start = performance.now();
+    const duration = fadeOut ? 200 : 150;
+
+    const animate = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = fadeOut ? t * t : 1 - (1 - t) * (1 - t);
+      anim.dotOpacity = startOpacity + (endOpacity - startOpacity) * eased;
+      drawDotMatrixRef.current();
+      if (t < 1) anim.rafId = requestAnimationFrame(animate);
+    };
+
+    cancelAnimationFrame(anim.rafId);
+    anim.rafId = requestAnimationFrame(animate);
+  }, []);
+  const startHoverAnimRef = useRef(startHoverAnim);
+  startHoverAnimRef.current = startHoverAnim;
 
   // ── Progressive route drawing ──
   const totalSegments = routePath ? routePath.length - 1 : 0;
@@ -154,80 +499,20 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     return [item.locations[0].lng, item.locations[0].lat] as [number, number];
   }, [selectedItemId, items]);
 
-  // ── Province choropleth ──
-  const { provCounts, maxProv } = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of items) {
-      for (const loc of item.locations) {
-        // China uses full province names in GeoJSON (北京市), but items may have short (北京)
-        const name = isChina ? (PROV_FULL[loc.province] || loc.province) : loc.province;
-        if (name) counts.set(name, (counts.get(name) || 0) + 1);
-      }
-    }
-    const max = counts.size > 0 ? Math.max(...counts.values()) : 0;
-    return { provCounts: counts, maxProv: max };
-  }, [items, isChina]);
-
-  // ── Theme palettes ──
-  const isDark = themeId === "rose";
-  const isFauvist = themeId === "fauvist";
-
-  const ramp = isDark
-    ? { lo: "#1a2240", mid: "#2d4878", hi: "#5a9ad6" }
-    : { lo: "#eeeef2", mid: "#a8c8e8", hi: "#3b82f6" };
-
-  const pal = isFauvist
-    ? { area: "#f5f0e8", border: "#ffffff", emphasis: "#f5f0e8", borderWidth: 1.5,
-        selectedDot: "#ffffff", selectedBorder: "#2D2A32", shadow: 0.12 }
-    : isDark
-      ? { area: "#1e2744", border: "#2e3d5c", emphasis: "#2a3560", borderWidth: 0.8,
-          selectedDot: "#f59e0b", selectedBorder: "#1a2240", shadow: 0.25 }
-      : { area: "#f4f4f7", border: "#d8d8e0", emphasis: "#e8e4ee", borderWidth: 0.8,
-          selectedDot: "#e94560", selectedBorder: "#ffffff", shadow: 0.06 };
-
-  // ── Province fill map ──
-  const provinceFills = useMemo(() => {
-    const map = new Map<string, { fill: string; emphFill: string }>();
-    if (!geo) return map;
-
-    if (isFauvist) {
-      const names = geo.provinces.map((p) => p.name);
-      for (let i = 0; i < names.length; i++) {
-        const color = FAUVIST_PALETTE[i % FAUVIST_PALETTE.length];
-        const hasData = provCounts.has(names[i]);
-        map.set(names[i], {
-          fill: hasData ? color : lerpColor(color, "#f5f0e8", 0.35),
-          emphFill: lerpColor(color, "#ffffff", 0.2),
-        });
-      }
-    } else {
-      const safeMax = Math.max(maxProv, 1);
-      for (const [name, count] of provCounts.entries()) {
-        const t = Math.sqrt(count / safeMax);
-        const color = t < 0.5
-          ? lerpColor(ramp.lo, ramp.mid, t * 2)
-          : lerpColor(ramp.mid, ramp.hi, (t - 0.5) * 2);
-        const emphT = Math.min(t + 0.15, 1);
-        const emphColor = emphT < 0.5
-          ? lerpColor(ramp.lo, ramp.mid, emphT * 2)
-          : lerpColor(ramp.mid, ramp.hi, (emphT - 0.5) * 2);
-        map.set(name, { fill: color, emphFill: emphColor });
-      }
-    }
-    return map;
-  }, [geo, isFauvist, provCounts, maxProv, ramp.lo, ramp.mid, ramp.hi]);
-
   // ── Hovered province ──
   const [hoveredProv, setHoveredProv] = useState<string | null>(null);
 
   const handleProvEnter = useCallback((name: string) => {
     setHoveredProv(name);
     setHoveredProvince(name);
+    const idx = nameToIdxRef.current.get(name) ?? -1;
+    startHoverAnimRef.current(idx);
   }, [setHoveredProvince]);
 
   const handleProvLeave = useCallback(() => {
     setHoveredProv(null);
     setHoveredProvince(null);
+    startHoverAnimRef.current(-1);
   }, [setHoveredProvince]);
 
   // ── Reset view ──
@@ -255,25 +540,45 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     }
   }, [selectedCity, entries, geo, roam.centerOn]);
 
-  // ── Sync avatars on viewBox change ──
-  const roamIdleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
+  // ── Redraw canvas + sync avatars on viewBox change ──
   useEffect(() => {
-    if (!geo) return;
-    if (roam.isDragging.current) {
-      if (sketchContainerRef.current) sketchContainerRef.current.style.filter = "none";
-      syncAvatarDOM();
-      clearTimeout(roamIdleTimerRef.current);
-      roamIdleTimerRef.current = setTimeout(() => {
-        if (sketchContainerRef.current) sketchContainerRef.current.style.filter = "url(#sketch-edges)";
-        updateAvatarPositions();
-      }, 200);
-    } else {
-      updateAvatarPositions();
-    }
-  }, [roam.vb, geo]);
+    drawDotMatrix();
+    syncAvatarDOM();
+  }, [roam.viewBox, drawDotMatrix, syncAvatarDOM]);
 
-  useEffect(() => () => clearTimeout(roamIdleTimerRef.current), []);
+  // ── Debounced avatar recalc after zoom/pan settles ──
+  useEffect(() => {
+    const timer = setTimeout(updateAvatarPositions, 200);
+    return () => clearTimeout(timer);
+  }, [roam.viewBox, updateAvatarPositions]);
+
+  // ── Update avatar positions on data change ──
+  useEffect(() => {
+    updateAvatarPositions();
+  }, [updateAvatarPositions]);
+
+  // ── ResizeObserver ──
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        drawDotMatrix();
+        updateAvatarPositions();
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [drawDotMatrix, updateAvatarPositions]);
+
+  // ── Redraw when data changes ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      drawDotMatrix();
+      updateAvatarPositions();
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [dotGrid, provIdxCounts, drawDotMatrix, updateAvatarPositions]);
 
   // ── Route geometry in SVG coords ──
   const routeSvgData = useMemo(() => {
@@ -300,17 +605,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     return { cx, cy };
   }, [geo, selectedCoord]);
 
-  // ── Hover label ──
-  const hoveredProvData = useMemo(() => {
-    if (!hoveredProv || !geo) return null;
-    const prov = geo.provinces.find((p) => p.name === hoveredProv);
-    if (!prov) return null;
-    const count = provCounts.get(hoveredProv);
-    const label = count ? `${hoveredProv} · ${count}` : hoveredProv;
-    return { cx: prov.center[0], cy: prov.center[1], label };
-  }, [hoveredProv, geo, provCounts]);
-
-  // ── Dash animation ──
+  // ── Dash animation for routes ──
   const dashAnimRef = useRef(0);
   const dashRafRef = useRef(0);
   const [dashOffset, setDashOffset] = useState(0);
@@ -350,122 +645,72 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const z = Math.max(roam.zoom, 1);
 
   return (
-    <div className="absolute inset-0">
-      {/* SVG filters */}
-      <svg className="absolute w-0 h-0" aria-hidden>
-        <defs>
-          <filter id="sketch-edges">
-            <feTurbulence type="turbulence" baseFrequency="0.04" numOctaves={4} seed={2} result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale={1.8} xChannelSelector="R" yChannelSelector="G" />
-          </filter>
-          <filter id="noise-grain">
-            <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves={3} stitchTiles="stitch" />
-            <feColorMatrix type="saturate" values="0" />
-          </filter>
-        </defs>
-      </svg>
-
-      {/* Radial vignette */}
+    <div ref={containerRef} className="absolute inset-0" style={{ background: DOT_BG }}>
+      {/* Radial vignette (same as WorldMap) */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: isDark
-            ? "radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgba(10,10,25,0.35) 100%)"
-            : "radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgba(0,0,0,0.06) 100%)",
+          background: "radial-gradient(ellipse 80% 70% at 50% 45%, transparent 50%, rgba(0,0,0,0.04) 100%)",
         }}
       />
 
-      {/* Noise grain overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none mix-blend-soft-light"
-        style={{ filter: "url(#noise-grain)", opacity: isDark ? 0.08 : 0.04 }}
-      />
+      {/* Dot matrix canvas */}
+      <canvas ref={dotCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
 
-      {/* Main SVG map */}
+      {/* SVG overlay for events + route + selected dot */}
       <svg
         ref={svgRefCallback}
-        className="absolute inset-0 w-full h-full z-[2] cursor-grab active:cursor-grabbing"
+        className="absolute inset-0 w-full h-full z-[2]"
         viewBox={roam.viewBox}
         preserveAspectRatio="xMidYMid meet"
-        style={{ filter: "url(#sketch-edges)" }}
         onPointerDown={roam.onPointerDown}
         onPointerMove={roam.onPointerMove}
         onPointerUp={roam.onPointerUp}
+        style={{ touchAction: "none", cursor: "grab" }}
       >
         <defs>
           <linearGradient id="route-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor={isFauvist ? "#2D2A32" : "#ff6b6b"} />
-            <stop offset="100%" stopColor={isFauvist ? "#7209B7" : "#ee5a24"} />
+            <stop offset="0%" stopColor="#ff6b6b" />
+            <stop offset="100%" stopColor="#ee5a24" />
           </linearGradient>
-          <filter id="prov-shadow" x="-5%" y="-5%" width="110%" height="110%">
-            <feDropShadow
-              dx={isFauvist ? 3 : 2}
-              dy={isFauvist ? 4 : 3}
-              stdDeviation={isFauvist ? 4 : 3}
-              floodColor={
-                isDark ? "rgba(0,0,0,0.45)"
-                  : isFauvist ? "rgba(80,60,30,0.18)"
-                    : "rgba(0,0,0,0.12)"
-              }
-            />
-          </filter>
         </defs>
 
-        {/* Province paths */}
-        <g filter="url(#prov-shadow)">
-          {geo.provinces.map((prov) => {
-            const fills = provinceFills.get(prov.name);
-            const isHovered = hoveredProv === prov.name;
-            const fillColor = isHovered
-              ? (fills?.emphFill ?? pal.emphasis)
-              : (fills?.fill ?? pal.area);
-            return prov.paths.map((d, pi) => (
-              <path
-                key={`${prov.name}-${pi}`}
-                d={d}
-                fill={fillColor}
-                stroke={pal.border}
-                strokeWidth={pal.borderWidth / z}
-                strokeLinejoin="round"
-                style={{ transition: "fill 0.15s ease" }}
-                onMouseEnter={() => handleProvEnter(prov.name)}
-                onMouseLeave={handleProvLeave}
-              />
-            ));
-          })}
-        </g>
-
-        {/* Hovered province label */}
-        {hoveredProvData && (
-          <text
-            x={hoveredProvData.cx}
-            y={hoveredProvData.cy}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fill={isDark ? "#e2e8f0" : "#4a4a5a"}
-            fontSize={11 / z}
-            fontWeight={500}
-            pointerEvents="none"
-          >
-            {hoveredProvData.label}
-          </text>
-        )}
-
-        {/* Fauvist province name labels */}
-        {isFauvist && geo.provinces.map((prov) => (
-          <text
-            key={`label-${prov.name}`}
-            x={prov.center[0]}
-            y={prov.center[1]}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fill="#3a3a3a"
-            fontSize={9 / z}
-            pointerEvents="none"
-          >
-            {prov.name}
-          </text>
-        ))}
+        {/* Transparent province paths for event detection */}
+        {geo.provinces.map((prov) => {
+          const isHovered = hoveredProv === prov.name;
+          return (
+            <g
+              key={prov.name}
+              onMouseEnter={() => handleProvEnter(prov.name)}
+              onMouseLeave={handleProvLeave}
+            >
+              {prov.paths.map((d, i) => (
+                <path
+                  key={i}
+                  d={d}
+                  fill={isHovered ? "rgba(0,0,0,0.045)" : "transparent"}
+                  stroke="none"
+                />
+              ))}
+              {isHovered && (
+                <text
+                  x={prov.center[0]}
+                  y={prov.center[1]}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="#333"
+                  fontSize={14 / z}
+                  fontWeight={500}
+                  fontFamily="system-ui, sans-serif"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {prov.name}
+                  {provCounts.get(prov.name) ? ` · ${provCounts.get(prov.name)}` : ""}
+                </text>
+              )}
+            </g>
+          );
+        })}
 
         {/* Route lines */}
         {routeSvgData?.segments.map((seg, i) => (
@@ -473,24 +718,24 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
             key={`route-seg-${i}`}
             x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
             stroke="url(#route-grad)"
-            strokeWidth={(isFauvist ? 3 : 2) / z}
+            strokeWidth={2 / z}
             strokeDasharray={`${6 / z} ${4 / z}`}
             strokeDashoffset={-dashOffset / z}
             strokeLinecap="round"
-            opacity={isFauvist ? 0.85 : 0.7}
+            opacity={0.7}
           />
         ))}
 
         {/* Route node circles */}
         {routeSvgData?.nodes.map((node) => {
-          const r = (isFauvist ? 11 : 10) / z;
+          const r = 10 / z;
           return (
             <g key={`route-node-${node.label}`}>
               <circle
                 cx={node.cx} cy={node.cy} r={r}
-                fill={isFauvist ? "#2D2A32" : "url(#route-grad)"}
-                stroke={isFauvist ? "#FCBF49" : "#fff"}
-                strokeWidth={(isFauvist ? 2.5 : 1.5) / z}
+                fill="url(#route-grad)"
+                stroke="#fff"
+                strokeWidth={1.5 / z}
               />
               <text
                 x={node.cx} y={node.cy}
@@ -510,8 +755,8 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
           <circle
             cx={selectedSvg.cx} cy={selectedSvg.cy}
             r={4 / z}
-            fill={pal.selectedDot}
-            stroke={pal.selectedBorder}
+            fill={DOT_LAND_ACTIVE}
+            stroke="#ffffff"
             strokeWidth={1.5 / z}
           />
         )}
@@ -583,27 +828,10 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
         })}
       </div>
 
-      {/* Back button + zoom reset */}
-      <div className="absolute top-[42px] left-2 z-[10] flex gap-1.5">
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={onBack}
-          className="flex items-center gap-1
-                     bg-panel/90 backdrop-blur-sm border border-[var(--border-color)]/40
-                     shadow-[0_1px_4px_rgba(0,0,0,0.06)]
-                     px-2 py-1 rounded-lg
-                     text-[10px] font-medium text-secondary
-                     hover:text-primary hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]
-                     transition-all cursor-pointer"
-        >
-          <ArrowLeft size={11} />
-          返回
-        </motion.button>
-
-        <AnimatePresence>
-          {isZoomedIn && (
+      {/* Zoom reset */}
+      <AnimatePresence>
+        {isZoomedIn && (
+          <div className="absolute top-[42px] left-2 z-[10]">
             <motion.button
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -621,9 +849,9 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
               <Maximize2 size={11} />
               全览
             </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Category legend */}
       <MapLegend />

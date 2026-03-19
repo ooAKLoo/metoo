@@ -61,19 +61,11 @@ export const posterModules: PosterModule[] = [
     opaqueBackground: true,
   },
   {
-    id: "pattern-flat",
-    name: "纹样 · 极简",
+    id: "pattern",
+    name: "纹样 · 卡片",
     thumbnail: "◐",
-    description: "几何纹样卡片，极简风格",
-    component: lazy(() => import("../components/poster-modules/PatternCardFlat")),
-    opaqueBackground: true,
-  },
-  {
-    id: "pattern-brutal",
-    name: "纹样 · 粗犷",
-    thumbnail: "◉",
-    description: "几何纹样卡片，Brutalism 风格",
-    component: lazy(() => import("../components/poster-modules/PatternCardBrutal")),
+    description: "几何纹样卡片，支持极简 / 粗犷风格切换",
+    component: lazy(() => import("../components/poster-modules/PatternCardPoster")),
     opaqueBackground: true,
   },
 {

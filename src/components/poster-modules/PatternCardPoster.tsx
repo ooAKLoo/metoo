@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { coverSrc } from "../map-shared";
+import { useMapStore } from "../../stores/useMapStore";
 
 /* ── Color palette ── */
 const CITY_COLORS = [
@@ -15,6 +16,11 @@ const generateSolidShadow = (depth: number, color: string) => {
 
 export type PatternStyle = "flat" | "brutalism";
 
+export const PATTERN_STYLES: { id: PatternStyle; label: string }[] = [
+  { id: "flat", label: "极简" },
+  { id: "brutalism", label: "粗犷" },
+];
+
 /* ── City cell data ── */
 interface CityCell {
   name: string;
@@ -25,13 +31,14 @@ interface CityCell {
 
 /* ── Main Component ── */
 
-export function PatternCardPoster({
+export default function PatternCardPoster({
   items,
   cityEntries,
   posterWidth: POSTER_W,
   posterHeight: POSTER_H,
-  cardStyle,
-}: PosterModuleProps & { cardStyle: PatternStyle }) {
+}: PosterModuleProps) {
+  const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
+  const cardStyle = PATTERN_STYLES[patternStyleIdx % PATTERN_STYLES.length].id;
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
 
@@ -100,6 +107,112 @@ export function PatternCardPoster({
   const maxByH = (availH - (rows - 1) * GRID_GAP - rows * LABEL_H) / rows;
   const cellW = Math.min(maxByW, maxByH);
 
+  /* ── Shared city grid content ── */
+  const cityGrid = (
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: GRID_PAD,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, ${cellW}px)`,
+          gap: GRID_GAP,
+        }}
+      >
+        {cells.map((cell, i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            {/* Circle: cover image or color fallback */}
+            <div
+              style={{
+                width: cellW,
+                height: cellW,
+                borderRadius: "50%",
+                overflow: "hidden",
+                position: "relative",
+                backgroundColor: cell.color,
+                ...(isBrutal
+                  ? { border: `${borderWidth}px solid #000`, boxShadow: `3px 3px 0 #000` }
+                  : {}),
+              }}
+            >
+              {cell.cover ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    backgroundImage: `url(${cell.cover})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
+                />
+              ) : cell.name ? (
+                /* No cover — show first character */
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#fff",
+                    fontSize: cellW * 0.35,
+                    fontWeight: 700,
+                    textShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  {cell.name[0]}
+                </div>
+              ) : null}
+              {/* Star overlay */}
+              <svg
+                viewBox="0 0 100 100"
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+              >
+                <path
+                  d="M 50 10 Q 50 50 90 50 Q 50 50 50 90 Q 50 50 10 50 Q 50 50 50 10 Z"
+                  fill={cell.cover ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}
+                />
+              </svg>
+            </div>
+
+            {/* City name + count */}
+            {cell.name ? (
+              <div style={{ textAlign: "center", lineHeight: 1.2 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: isBrutal ? 800 : 500,
+                    color: isBrutal ? "#000" : "#1a1a1a",
+                    letterSpacing: "0.02em",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: cellW,
+                  }}
+                >
+                  {cell.name}
+                </div>
+                <div style={{ fontSize: 10, color: "#a3a3a3", marginTop: 2 }}>
+                  {cell.count} 收藏
+                </div>
+              </div>
+            ) : (
+              <div style={{ height: 28 }} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
@@ -121,38 +234,41 @@ export function PatternCardPoster({
             overflow: "hidden",
           }}
         >
-          {/* ── Header ── */}
+          {/* ── Header + City Grid ── */}
           {isBrutal ? (
-            <div style={{ display: "flex", borderBottom: `${borderWidth}px solid #000`, height: 72 }}>
-              <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 28 }}>
-                <span style={{ fontSize: 28, fontWeight: 900, color: "#000" }}>{title}</span>
-              </div>
-              <div
-                style={{
-                  width: 72,
-                  borderLeft: `${borderWidth}px solid #000`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  backgroundColor: accentColor,
-                }}
-              >
+            <>
+              <div style={{ display: "flex", borderBottom: `${borderWidth}px solid #000`, height: 72 }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 28 }}>
+                  <span style={{ fontSize: 28, fontWeight: 900, color: "#000" }}>{title}</span>
+                </div>
                 <div
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: brRadius / 2,
-                    backgroundColor: primaryColor,
-                    border: "3px solid #000",
-                    boxShadow: generateSolidShadow(4, "#000"),
+                    width: 72,
+                    borderLeft: `${borderWidth}px solid #000`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    backgroundColor: accentColor,
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: brRadius / 2,
+                      backgroundColor: primaryColor,
+                      border: "3px solid #000",
+                      boxShadow: generateSolidShadow(4, "#000"),
+                    }}
+                  />
+                </div>
               </div>
-            </div>
+              {cityGrid}
+            </>
           ) : (
-            <div style={{ padding: "20px 32px 0" }}>
-              <div style={{ border: "1.5px solid #1a1a1a" }}>
+            <div style={{ padding: "20px 32px 12px", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <div style={{ border: "1.5px solid #1a1a1a", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <div style={{ display: "flex", borderBottom: "1.5px solid #1a1a1a", height: 60 }}>
                   <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 20 }}>
                     <span style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em", color: "#1a1a1a" }}>
@@ -163,116 +279,10 @@ export function PatternCardPoster({
                     <div style={{ width: 24, height: 24, borderRadius: "50%", backgroundColor: primaryColor }} />
                   </div>
                 </div>
+                {cityGrid}
               </div>
             </div>
           )}
-
-          {/* ── City Grid ── */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: GRID_PAD,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${cols}, ${cellW}px)`,
-                gap: GRID_GAP,
-              }}
-            >
-              {cells.map((cell, i) => (
-                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                  {/* Circle: cover image or color fallback */}
-                  <div
-                    style={{
-                      width: cellW,
-                      height: cellW,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      position: "relative",
-                      backgroundColor: cell.color,
-                      ...(isBrutal
-                        ? { border: `${borderWidth}px solid #000`, boxShadow: `3px 3px 0 #000` }
-                        : {}),
-                    }}
-                  >
-                    {cell.cover ? (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          backgroundImage: `url(${cell.cover})`,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                        }}
-                      />
-                    ) : cell.name ? (
-                      /* No cover — show first character */
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "#fff",
-                          fontSize: cellW * 0.35,
-                          fontWeight: 700,
-                          textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                        }}
-                      >
-                        {cell.name[0]}
-                      </div>
-                    ) : null}
-                    {/* Star overlay */}
-                    <svg
-                      viewBox="0 0 100 100"
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-                    >
-                      <path
-                        d="M 50 10 Q 50 50 90 50 Q 50 50 50 90 Q 50 50 10 50 Q 50 50 50 10 Z"
-                        fill={cell.cover ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}
-                      />
-                    </svg>
-                  </div>
-
-                  {/* City name + count */}
-                  {cell.name ? (
-                    <div style={{ textAlign: "center", lineHeight: 1.2 }}>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: isBrutal ? 800 : 500,
-                          color: isBrutal ? "#000" : "#1a1a1a",
-                          letterSpacing: "0.02em",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          maxWidth: cellW,
-                        }}
-                      >
-                        {cell.name}
-                      </div>
-                      <div style={{ fontSize: 10, color: "#a3a3a3", marginTop: 2 }}>
-                        {cell.count} 收藏
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ height: 28 }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Intersection dots (decorative, between cells) ── */}
-          {/* Rendered via absolute positioned dots between grid cells */}
 
           {/* ── Stats section ── */}
           <div style={{ padding: "0 32px 12px" }}>

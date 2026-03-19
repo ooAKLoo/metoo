@@ -24,8 +24,10 @@ interface MapState {
   posterRatio: PosterRatio;
   mujiConfigs: Record<string, MujiPosterConfig>;
   keyboardThemeIdx: number;
+  patternStyleIdx: number;
   popBoardMode: "cells" | "center";
   mujiTemplateIdx: number;
+  mosaicThemeIdx: number;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -39,8 +41,10 @@ interface MapState {
   setPosterRatio: (ratio: PosterRatio) => void;
   setMujiConfig: (templateId: string, config: MujiPosterConfig) => void;
   setKeyboardThemeIdx: (idx: number) => void;
+  setPatternStyleIdx: (idx: number) => void;
   setPopBoardMode: (mode: "cells" | "center") => void;
   setMujiTemplateIdx: (idx: number) => void;
+  setMosaicThemeIdx: (idx: number) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -97,8 +101,10 @@ export const useMapStore = create<MapState>((set, get) => ({
   posterRatio: "4:3" as PosterRatio,
   mujiConfigs: {},
   keyboardThemeIdx: 0,
+  patternStyleIdx: 0,
   popBoardMode: "cells",
   mujiTemplateIdx: -1,
+  mosaicThemeIdx: 0,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -128,6 +134,8 @@ export const useMapStore = create<MapState>((set, get) => ({
     mujiConfigs: { ...s.mujiConfigs, [templateId]: config },
   })),
   setKeyboardThemeIdx: (idx) => set({ keyboardThemeIdx: idx }),
+  setPatternStyleIdx: (idx) => set({ patternStyleIdx: idx }),
   setPopBoardMode: (mode) => set({ popBoardMode: mode }),
   setMujiTemplateIdx: (idx) => set({ mujiTemplateIdx: idx }),
+  setMosaicThemeIdx: (idx) => set({ mosaicThemeIdx: idx }),
 }));
