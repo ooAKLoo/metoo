@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Settings, X } from "lucide-react";
 import { useState } from "react";
 import { THEMES, useThemeStore } from "../stores/useThemeStore";
+import { Tooltip } from "./Tooltip";
 
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
@@ -9,14 +10,16 @@ export function SettingsPanel() {
 
   return (
     <>
-      <motion.button
-        whileTap={{ scale: 0.9 }}
-        onClick={() => setOpen(true)}
-        className="w-7 h-7 flex items-center justify-center rounded-lg
-                   text-secondary hover:text-primary hover:bg-card transition-colors"
-      >
-        <Settings size={15} />
-      </motion.button>
+      <Tooltip label="设置">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setOpen(true)}
+          className="w-7 h-7 flex items-center justify-center rounded-lg
+                     text-secondary hover:text-primary hover:bg-card transition-colors"
+        >
+          <Settings size={15} />
+        </motion.button>
+      </Tooltip>
 
       <AnimatePresence>
         {open && (

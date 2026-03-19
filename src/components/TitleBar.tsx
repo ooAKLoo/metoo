@@ -1,11 +1,7 @@
-import { MapPin, RotateCcw } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { SettingsPanel } from "./SettingsPanel";
-import { useFavoriteStore } from "../stores/useFavoriteStore";
 
 export function TitleBar() {
-  const status = useFavoriteStore((s) => s.status);
-  const reset = useFavoriteStore((s) => s.reset);
-
   return (
     <div
       data-tauri-drag-region
@@ -25,17 +21,6 @@ export function TitleBar() {
       <div data-tauri-drag-region className="flex-1" />
 
       <div className="flex items-center gap-1.5">
-        {status === "done" && (
-          <button
-            onClick={reset}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                       text-[10px] font-medium text-secondary
-                       hover:bg-card hover:text-primary transition-colors"
-          >
-            <RotateCcw size={12} />
-            重置
-          </button>
-        )}
         <SettingsPanel />
       </div>
     </div>

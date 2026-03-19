@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { extractTagsFromTitle } from "../hooks/useTagExtraction";
-import { PROVINCES } from "../lib/china-divisions";
 import { getCategoryColor } from "../lib/category-colors";
 import { TAG_MAP } from "../lib/tag-dictionary";
 
@@ -19,7 +18,7 @@ interface Bubble {
 }
 
 interface Cluster {
-  province: string;
+  city: string;
   cx: number;
   cy: number;
   totalCount: number;
@@ -40,9 +39,9 @@ const CENTER_COLOR = "#e8e0d4"; // beige for center bubble
 export function BubbleCluster() {
   const items = useFavoriteStore((s) => s.items);
 
-  const [hoveredProvince, setHoveredProvince] = useState<string | null>(null);
+  const [hoveredCity, setHoveredCity] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{
-    province: string;
+    city: string;
     category: string;
     emoji: string;
     count: number;
@@ -50,41 +49,43 @@ export function BubbleCluster() {
     y: number;
   } | null>(null);
 
-  /* ── Aggregate: province → category → count ── */
+  /* ── Aggregate: city → category → count ── */
 
   const clusters = useMemo(() => {
     if (items.length === 0) return [];
 
-    const provMap = new Map<string, Map<string, number>>();
+    const cityMap = new Map<string, Map<string, number>>();
 
     for (const item of items) {
       const tags = extractTagsFromTitle(item.title);
       if (tags.length === 0 || item.locations.length === 0) continue;
 
-      const province = item.locations[0].province;
-      if (!province || !PROVINCES[province]) continue;
+      for (const loc of item.locations) {
+        const city = loc.name;
+        if (!city) continue;
 
-      let catMap = provMap.get(province);
-      if (!catMap) {
-        catMap = new Map();
-        provMap.set(province, catMap);
-      }
-      for (const tag of tags) {
-        catMap.set(tag, (catMap.get(tag) || 0) + 1);
+        let catMap = cityMap.get(city);
+        if (!catMap) {
+          catMap = new Map();
+          cityMap.set(city, catMap);
+        }
+        for (const tag of tags) {
+          catMap.set(tag, (catMap.get(tag) || 0) + 1);
+        }
       }
     }
 
-    if (provMap.size === 0) return [];
+    if (cityMap.size === 0) return [];
 
     // Global max for radius scaling
-    const allTotals = Array.from(provMap.values()).map((m) =>
+    const allTotals = Array.from(cityMap.values()).map((m) =>
       Array.from(m.values()).reduce((a, b) => a + b, 0),
     );
     const globalMax = Math.max(...allTotals, 1);
 
     const rawClusters: Cluster[] = [];
 
-    for (const [province, catMap] of provMap) {
+    for (const [city, catMap] of cityMap) {
       const totalCount = Array.from(catMap.values()).reduce((a, b) => a + b, 0);
 
       // Center bubble radius based on total count
@@ -119,7 +120,7 @@ export function BubbleCluster() {
       );
 
       rawClusters.push({
-        province,
+        city,
         cx: 0,
         cy: 0,
         totalCount,
@@ -173,12 +174,12 @@ export function BubbleCluster() {
         preserveAspectRatio="xMidYMid meet"
       >
         {clusters.map((cluster, ci) => {
-          const isHovered = hoveredProvince === cluster.province;
-          const dimmed = hoveredProvince !== null && !isHovered;
+          const isHovered = hoveredCity === cluster.city;
+          const dimmed = hoveredCity !== null && !isHovered;
 
           return (
             <motion.g
-              key={cluster.province}
+              key={cluster.city}
               initial={{ opacity: 0, scale: 0 }}
               animate={{ opacity: dimmed ? 0.25 : 1, scale: 1 }}
               transition={{
@@ -188,9 +189,9 @@ export function BubbleCluster() {
                 damping: 24,
                 opacity: { duration: 0.2 },
               }}
-              onMouseEnter={() => setHoveredProvince(cluster.province)}
+              onMouseEnter={() => setHoveredCity(cluster.city)}
               onMouseLeave={() => {
-                setHoveredProvince(null);
+                setHoveredCity(null);
                 setTooltip(null);
               }}
             >
@@ -212,7 +213,7 @@ export function BubbleCluster() {
                   className="cursor-pointer"
                 />
 
-                {/* Province name inside center bubble */}
+                {/* City name inside center bubble */}
                 <text
                   textAnchor="middle"
                   dominantBaseline="central"
@@ -220,7 +221,7 @@ export function BubbleCluster() {
                   fill="#6b6256"
                   opacity={0.85}
                 >
-                  {cluster.province}
+                  {cluster.city}
                 </text>
 
                 {/* Count below province name */}
@@ -254,7 +255,7 @@ export function BubbleCluster() {
                     className="cursor-pointer"
                     onMouseEnter={(e) => {
                       setTooltip({
-                        province: cluster.province,
+                        city: cluster.city,
                         category: b.category,
                         emoji: b.emoji,
                         count: b.count,
@@ -286,7 +287,7 @@ export function BubbleCluster() {
                       className="text-[10px] font-semibold pointer-events-none"
                       fill="var(--text-primary)"
                     >
-                      {cluster.province} · {cluster.totalCount}
+                      {cluster.city} · {cluster.totalCount}
                     </motion.text>
                   )}
                 </AnimatePresence>
@@ -334,7 +335,7 @@ export function BubbleCluster() {
             }}
           >
             <div className="text-[10px] font-medium text-[var(--text-primary)]">
-              {tooltip.province} · {tooltip.emoji} {tooltip.category}
+              {tooltip.city} · {tooltip.emoji} {tooltip.category}
             </div>
             <div className="text-[9px] text-[var(--text-secondary)]">
               {tooltip.count} 条收藏

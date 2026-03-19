@@ -1,10 +1,10 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Map as MapIcon, LayoutGrid, Shapes, Palette, ArrowLeft, Download, Loader2, Check, Layers } from "lucide-react";
+import { Map as MapIcon, LayoutGrid, Shapes, ArrowLeft, Download, Loader2, Check, Layers } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 import { MapView } from "./MapView";
 import { GridView } from "./GridView";
 import { BubbleCluster } from "./BubbleCluster";
-import { CountryMapView } from "./CountryMapView";
 import { StatusBar } from "./StatusBar";
 import { RouteStopList } from "./RouteStopList";
 import { PosterModuleBar } from "./PosterModuleBar";
@@ -23,7 +23,6 @@ const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
   { id: "grid", icon: LayoutGrid, label: "网格" },
   { id: "bubble", icon: Shapes, label: "气泡" },
-  { id: "artmap", icon: Palette, label: "风格" },
 ];
 
 export function RightPanel() {
@@ -117,27 +116,28 @@ export function RightPanel() {
                 const Icon = opt.icon;
                 const active = chartView === opt.id;
                 return (
-                  <button
-                    key={opt.id}
-                    onClick={() => setChartView(opt.id)}
-                    className="relative flex items-center justify-center"
-                    style={{ width: 28, height: 26 }}
-                  >
-                    {active && (
-                      <motion.div
-                        layoutId="notch-view-indicator"
-                        className="absolute inset-0 bg-neutral-100 rounded-lg"
-                        transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                  <Tooltip key={opt.id} label={opt.label}>
+                    <button
+                      onClick={() => setChartView(opt.id)}
+                      className="relative flex items-center justify-center"
+                      style={{ width: 28, height: 26 }}
+                    >
+                      {active && (
+                        <motion.div
+                          layoutId="notch-view-indicator"
+                          className="absolute inset-0 bg-neutral-100 rounded-lg"
+                          transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                        />
+                      )}
+                      <Icon
+                        size={14}
+                        strokeWidth={active ? 2.2 : 1.6}
+                        className={`relative z-[1] transition-colors duration-200 ${
+                          active ? "text-neutral-700" : "text-neutral-400 hover:text-neutral-500"
+                        }`}
                       />
-                    )}
-                    <Icon
-                      size={14}
-                      strokeWidth={active ? 2.2 : 1.6}
-                      className={`relative z-[1] transition-colors duration-200 ${
-                        active ? "text-neutral-700" : "text-neutral-400 hover:text-neutral-500"
-                      }`}
-                    />
-                  </button>
+                    </button>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -147,48 +147,58 @@ export function RightPanel() {
         {/* Action button in notch area */}
         <AnimatePresence mode="wait">
           {inPosterMode ? (
-            <motion.button
-              key="poster-download"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={handlePosterDownload}
-              disabled={dlState === "loading"}
-              className={`absolute z-[11] flex items-center justify-center
-                         w-[26px] h-[26px] rounded-full cursor-pointer
-                         transition-colors duration-200
-                         ${dlState === "done"
-                           ? "bg-emerald-500 text-white"
-                           : "bg-neutral-800 text-white hover:bg-neutral-700"
-                         }`}
+            <Tooltip
+              label={dlState === "done" ? "已保存" : "保存海报"}
+              className="absolute z-[11] inline-flex"
               style={{ top: 21 - 13, left: 189 - 13 }}
             >
-              {dlState === "loading" ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : dlState === "done" ? (
-                <Check size={12} />
-              ) : (
-                <Download size={12} />
-              )}
-            </motion.button>
+              <motion.button
+                key="poster-download"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handlePosterDownload}
+                disabled={dlState === "loading"}
+                className={`flex items-center justify-center
+                           w-[26px] h-[26px] rounded-full cursor-pointer
+                           transition-colors duration-200
+                           ${dlState === "done"
+                             ? "bg-emerald-500 text-white"
+                             : "bg-neutral-800 text-white hover:bg-neutral-700"
+                           }`}
+              >
+                {dlState === "loading" ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : dlState === "done" ? (
+                  <Check size={12} />
+                ) : (
+                  <Download size={12} />
+                )}
+              </motion.button>
+            </Tooltip>
           ) : status === "done" && chartView === "map" && mapLevel.startsWith("country:") ? (
-            <motion.button
-              key="map-back"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              onClick={() => setMapLevel("world")}
-              className="absolute z-[11] flex items-center justify-center
-                         w-[26px] h-[26px] rounded-full
-                         text-white hover:text-black
-                         transition-colors cursor-pointer"
+            <Tooltip
+              label="返回世界地图"
+              className="absolute z-[11] inline-flex"
               style={{ top: 21 - 13, left: 189 - 13 }}
             >
-              <ArrowLeft size={16} strokeWidth={2.5} />
-            </motion.button>
+              <motion.button
+                key="map-back"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                onClick={() => setMapLevel("world")}
+                className="flex items-center justify-center
+                           w-[26px] h-[26px] rounded-full
+                           text-white hover:text-black
+                           transition-colors cursor-pointer"
+              >
+                <ArrowLeft size={16} strokeWidth={2.5} />
+              </motion.button>
+            </Tooltip>
           ) : null}
         </AnimatePresence>
 
@@ -231,18 +241,7 @@ export function RightPanel() {
                 <BubbleCluster />
               </motion.div>
             )}
-            {chartView === "artmap" && !hideBackground && (
-              <motion.div
-                key="artmap"
-                className="absolute inset-0 p-3"
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-              >
-                <CountryMapView />
-              </motion.div>
-            )}
+
           </AnimatePresence>
 
           {/* Poster overlay — module bar + preview */}
@@ -555,38 +554,42 @@ export function RightPanel() {
           {/* Module bar toggle — inside content card, top-right */}
           <AnimatePresence>
             {status === "done" && chartView === "map" && favItems.length > 0 && (
-              <motion.button
-                key="module-bar-toggle"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => {
-                  setShowModuleBar((v) => {
-                    const next = !v;
-                    if (next) {
-                      // 开启时默认选中第一个模块，直接进入预览
-                      if (!activePosterModule) {
-                        setActivePosterModule(posterModules[0].id);
-                      }
-                    } else {
-                      // 关闭时清除选中
-                      setActivePosterModule(null);
-                    }
-                    return next;
-                  });
-                }}
-                className={`absolute z-[11] top-2.5 right-2.5 flex items-center justify-center
-                           w-[26px] h-[26px] rounded-full cursor-pointer
-                           transition-colors duration-200
-                           ${showModuleBar
-                             ? "bg-neutral-800 text-white"
-                             : "text-neutral-400 hover:text-neutral-600"
-                           }`}
+              <Tooltip
+                label={showModuleBar ? "关闭海报" : "海报模式"}
+                side="bottom"
+                className="absolute z-[11] top-2.5 right-2.5 inline-flex"
               >
-                <Layers size={12} strokeWidth={2} />
-              </motion.button>
+                <motion.button
+                  key="module-bar-toggle"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => {
+                    setShowModuleBar((v) => {
+                      const next = !v;
+                      if (next) {
+                        if (!activePosterModule) {
+                          setActivePosterModule(posterModules[0].id);
+                        }
+                      } else {
+                        setActivePosterModule(null);
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`flex items-center justify-center
+                             w-[26px] h-[26px] rounded-full cursor-pointer
+                             transition-colors duration-200
+                             ${showModuleBar
+                               ? "bg-neutral-800 text-white"
+                               : "text-neutral-400 hover:text-neutral-600"
+                             }`}
+                >
+                  <Layers size={12} strokeWidth={2} />
+                </motion.button>
+              </Tooltip>
             )}
           </AnimatePresence>
 

@@ -4,7 +4,7 @@ import type { MujiPosterConfig } from "../components/poster-modules/MujiPosterDe
 
 type ViewMode = "all" | "city";
 export type MapLevel = "world" | `country:${string}`;
-export type ChartView = "map" | "grid" | "bubble" | "artmap";
+export type ChartView = "map" | "grid" | "bubble";
 
 export interface RouteNode {
   name: string;
