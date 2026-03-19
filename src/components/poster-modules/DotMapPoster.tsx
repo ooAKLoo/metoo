@@ -367,13 +367,14 @@ function DotMapPoster({
             {topCities.map((c, i) => {
               const ly =
                 legendBottomY - (topCities.length - 1 - i) * legendGap;
-              const textW = c.name.length * legendFS * 0.9;
               return (
                 <Group key={c.name} x={legendX} y={ly}>
                   {/* City name */}
                   <Text
-                    x={-legendBarW - 16 - textW}
+                    x={-legendBarW - 16 - 120}
                     y={-legendFS / 2}
+                    width={120}
+                    align="right"
                     text={c.name}
                     fontSize={legendFS}
                     fontStyle="500"
@@ -398,8 +399,10 @@ function DotMapPoster({
                 y={legendBottomY + legendGap}
               >
                 <Text
-                  x={-legendBarW - 16 - 80}
+                  x={-legendBarW - 16 - 120}
                   y={-legendFS / 2}
+                  width={120}
+                  align="right"
                   text={`其他 ${totalCities - 6} 城`}
                   fontSize={legendFS}
                   fontStyle="500"

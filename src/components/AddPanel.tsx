@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowUp, Loader2, Merge, X, Utensils } from "lucide-react";
+import { ArrowUp, Loader2, Merge, X, Utensils, MapPin } from "lucide-react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import { isXhsHtml, XHS_COLLECT_SCRIPT } from "../lib/xhs-parser";
+import { classifyCollection } from "./poster-modules/MujiPoster";
 
 const TABS = [
   { key: "bilibili" as const, label: "B 站" },
@@ -18,10 +19,12 @@ export function AddPanel() {
     savedLists, mergeMode, setMergeMode, items,
   } = useFavoriteStore();
 
+  const listTitle = useFavoriteStore((s) => s.listTitle);
   const routePath = useMapStore((s) => s.routePath);
   const generateRoute = useMapStore((s) => s.generateRoute);
   const clearRoute = useMapStore((s) => s.clearRoute);
   const { entries } = useCityAggregation();
+  const isTravel = classifyCollection(listTitle, items) === "travel";
 
   const [value, setValue] = useState("");
   const [scriptCopied, setScriptCopied] = useState(false);
@@ -153,8 +156,8 @@ export function AddPanel() {
                                  : "bg-white text-neutral-500 hover:text-neutral-700"
                                }`}
                   >
-                    {routePath ? <X size={10} /> : <Utensils size={10} />}
-                    {routePath ? "清除路线" : "吃一遍"}
+                    {routePath ? <X size={10} /> : isTravel ? <MapPin size={10} /> : <Utensils size={10} />}
+                    {routePath ? "清除路线" : isTravel ? "游一遍" : "吃一遍"}
                   </motion.button>
                 )}
               </div>

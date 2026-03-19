@@ -32,9 +32,9 @@ interface MapState {
   mosaicThemeIdx: number;
   mosaicHue: number;
   mosaicStyleIdx: number;
-  dataPostcardHue: number;
-  dataPostcardStyleIdx: number;
   keyboardStyleIdx: number;
+  gridBlankHue: number;
+  setGridBlankHue: (hue: number) => void;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -56,8 +56,6 @@ interface MapState {
   setMosaicThemeIdx: (idx: number) => void;
   setMosaicHue: (hue: number) => void;
   setMosaicStyleIdx: (idx: number) => void;
-  setDataPostcardHue: (hue: number) => void;
-  setDataPostcardStyleIdx: (idx: number) => void;
   setKeyboardStyleIdx: (idx: number) => void;
 }
 
@@ -121,11 +119,10 @@ export const useMapStore = create<MapState>((set, get) => ({
   mujiTemplateIdx: -1,
   mujiHue: 30,
   mosaicThemeIdx: 0,
-  mosaicHue: 0,
+  mosaicHue: 250,
   mosaicStyleIdx: 0,
-  dataPostcardHue: 35,
-  dataPostcardStyleIdx: 0,
   keyboardStyleIdx: 0,
+  gridBlankHue: 245,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -163,7 +160,6 @@ export const useMapStore = create<MapState>((set, get) => ({
   setMosaicThemeIdx: (idx) => set({ mosaicThemeIdx: idx }),
   setMosaicHue: (hue) => set({ mosaicHue: hue }),
   setMosaicStyleIdx: (idx) => set({ mosaicStyleIdx: idx }),
-  setDataPostcardHue: (hue) => set({ dataPostcardHue: hue }),
-  setDataPostcardStyleIdx: (idx) => set({ dataPostcardStyleIdx: idx }),
   setKeyboardStyleIdx: (idx) => set({ keyboardStyleIdx: idx }),
+  setGridBlankHue: (hue) => set({ gridBlankHue: hue }),
 }));

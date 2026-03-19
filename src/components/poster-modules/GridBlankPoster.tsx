@@ -13,6 +13,8 @@ import {
   POSE_CATEGORIES,
   BODY_TYPES,
 } from "../poster-generators/CharacterGenerator";
+import { useMapStore } from "../../stores/useMapStore";
+import { hslToHex } from "./PopBoardPoster";
 
 const BASE_W = 1100;
 const BASE_CELL = 54;
@@ -20,7 +22,6 @@ const BASE_GAP = 6;
 const COLS = 15;
 const ROWS = 10;
 const SW = 1.2;
-const STROKE = "#333";
 
 const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
 
@@ -53,9 +54,9 @@ function buildCellIconElement(
   type: IconType,
   seed: number,
   size: number,
+  color: string,
 ): React.ReactElement | null {
   const rng = mulberry32(seed);
-  const color = STROKE;
 
   if (type === "pixel") {
     const idx = Math.floor(rng() * SPRITE_NAMES.length);
@@ -174,6 +175,10 @@ function GridBlankPoster({
   posterWidth: W,
   posterHeight: H,
 }: PosterModuleProps) {
+  /* Hue-driven stroke color — S/L fixed at #4338ca levels (s=58,l=51) */
+  const gridBlankHue = useMapStore((s) => s.gridBlankHue);
+  const STROKE = hslToHex(gridBlankHue, 58, 51);
+
   /* Scale grid dimensions proportionally to poster width */
   const ratio = W / BASE_W;
   const GAP = Math.round(BASE_GAP * ratio);
@@ -204,7 +209,7 @@ function GridBlankPoster({
       for (const c of city.covers) {
         const src = coverSrc(c);
         if (src) out.push(src);
-        if (out.length >= 10) break;
+        if (out.length >= 30) break;
       }
       if (out.length >= 10) break;
     }
@@ -246,16 +251,16 @@ function GridBlankPoster({
       map.set(statSlots[i], { kind: "stat", ...item });
     });
 
-    // 2) Cover cells
-    const coverCount = Math.min(covers.length, 8);
+    // 2) Cover cells — fill generously
+    const coverCount = Math.min(covers.length, 30);
     const coverSlots = take(coverCount);
     coverSlots.forEach((idx, i) => {
       map.set(idx, { kind: "cover", src: covers[i] });
     });
 
-    // 3) Doodle cells — 3/4 of remaining
+    // 3) Doodle cells — half of remaining (rest stay empty)
     const remaining = COLS * ROWS - cursor;
-    const doodleCount = Math.round(remaining * 0.75);
+    const doodleCount = Math.round(remaining * 0.5);
     const doodleSlots = take(doodleCount);
     doodleSlots.forEach((idx) => {
       const iconType = ICON_TYPES[Math.floor(rng() * ICON_TYPES.length)];
@@ -278,12 +283,12 @@ function GridBlankPoster({
     for (const [idx, cell] of cellMap.entries()) {
       if (cell.kind === "doodle") {
         const iconSize = Math.min(cellW, cellH) * 0.7;
-        const el = buildCellIconElement(cell.iconType, cell.seed, iconSize);
+        const el = buildCellIconElement(cell.iconType, cell.seed, iconSize, STROKE);
         if (el) out.set(idx, el);
       }
     }
     return out;
-  }, [cellMap, cellW, cellH]);
+  }, [cellMap, cellW, cellH, STROKE]);
 
   /* ── Build grid outline rects ── */
   const gridRects = useMemo(() => {

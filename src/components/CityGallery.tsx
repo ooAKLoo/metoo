@@ -1,7 +1,9 @@
-import { X, Route } from "lucide-react";
+import { X, Route, MapPin } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import { useMapStore } from "../stores/useMapStore";
+import { useFavoriteStore } from "../stores/useFavoriteStore";
+import { classifyCollection } from "./poster-modules/MujiPoster";
 
 function coverSrc(cover: string) {
   if (!cover) return "";
@@ -12,6 +14,8 @@ function coverSrc(cover: string) {
 
 export function CityGallery() {
   const { entries } = useCityAggregation();
+  const { items, listTitle } = useFavoriteStore();
+  const isTravel = classifyCollection(listTitle, items) === "travel";
   const selectedCity = useMapStore((s) => s.selectedCity);
   const routePath = useMapStore((s) => s.routePath);
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
@@ -56,8 +60,8 @@ export function CityGallery() {
                     : "text-secondary hover:text-[var(--accent-cyan)]"
                 }`}
               >
-                <Route size={10} />
-                {routePath ? "清除路线" : "吃一遍"}
+                {isTravel ? <MapPin size={10} /> : <Route size={10} />}
+                {routePath ? "清除路线" : isTravel ? "游一遍" : "吃一遍"}
               </button>
             )}
             {selectedCity && (

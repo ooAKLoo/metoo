@@ -1,12 +1,14 @@
 import { motion } from "motion/react";
-import { Utensils, X } from "lucide-react";
+import { Utensils, X, MapPin } from "lucide-react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
+import { classifyCollection } from "./poster-modules/MujiPoster";
 
 export function FloatingCards() {
-  const { items, status } = useFavoriteStore();
+  const { items, status, listTitle } = useFavoriteStore();
   const routePath = useMapStore((s) => s.routePath);
+  const isTravel = classifyCollection(listTitle, items) === "travel";
   const generateRoute = useMapStore((s) => s.generateRoute);
   const clearRoute = useMapStore((s) => s.clearRoute);
   const { entries } = useCityAggregation();
@@ -37,11 +39,13 @@ export function FloatingCards() {
         >
           {routePath ? (
             <X size={10} strokeWidth={2.5} />
+          ) : isTravel ? (
+            <MapPin size={10} />
           ) : (
             <Utensils size={10} />
           )}
           <span className="font-playful text-[11px] tracking-wide">
-            {routePath ? "清除" : "吃一遍"}
+            {routePath ? "清除" : isTravel ? "游一遍" : "吃一遍"}
           </span>
         </motion.button>
       </div>

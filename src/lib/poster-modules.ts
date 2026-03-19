@@ -84,15 +84,6 @@ export const posterModules: PosterModule[] = [
     canvasBased: true,
   },
   {
-    id: "data-postcard",
-    name: "足迹 · 数据报告",
-    thumbnail: "◧",
-    description: "四宫格数据可视化明信片，极简现代风",
-    component: lazy(() => import("../components/poster-modules/DataPostcardPoster")),
-    opaqueBackground: true,
-    canvasBased: true,
-  },
-  {
     id: "grid-blank",
     name: "方格 · 留白",
     thumbnail: "▦",

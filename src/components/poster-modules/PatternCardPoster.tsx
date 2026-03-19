@@ -73,11 +73,11 @@ function CityCircleCell({
 
   return (
     <Group x={cx - radius} y={cy - radius}>
-      {/* Brutalism shadow offset rect (circle approximation) */}
+      {/* Brutalism shadow offset */}
       {isBrutal && (
         <Circle
-          x={radius + 3}
-          y={radius + 3}
+          x={radius + 6}
+          y={radius + 6}
           radius={radius}
           fill="#000"
         />
@@ -94,12 +94,21 @@ function CityCircleCell({
 
         {/* Cover image or fallback character */}
         {img ? (
-          <KImage
-            image={img}
-            width={d}
-            height={d}
-            // cover-fit: crop from center
-          />
+          (() => {
+            // object-fit: cover
+            const nw = img.naturalWidth || d;
+            const nh = img.naturalHeight || d;
+            const imgRatio = nw / nh;
+            let iw = d, ih = d, ix = 0, iy = 0;
+            if (imgRatio > 1) {
+              iw = d * imgRatio;
+              ix = (d - iw) / 2;
+            } else {
+              ih = d / imgRatio;
+              iy = (d - ih) / 2;
+            }
+            return <KImage image={img} x={ix} y={iy} width={iw} height={ih} />;
+          })()
         ) : cell.name ? (
           <Text
             x={0}
@@ -142,18 +151,24 @@ function CityCircleCell({
 export default function PatternCardPoster({
   items,
   cityEntries,
-  posterWidth: W,
-  posterHeight: H,
+  posterWidth: PW,
+  posterHeight: PH,
 }: PosterModuleProps) {
   const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
   const cardStyle = PATTERN_STYLES[patternStyleIdx % PATTERN_STYLES.length].id;
   const isBrutal = cardStyle === "brutalism";
 
+  /* ── Brutalism: card sits inset on grid bg with solid depth shadow ── */
+  const CARD_MARGIN = isBrutal ? 20 : 0;
+  const SHADOW_DEPTH = isBrutal ? 12 : 0;
+  const W = PW - CARD_MARGIN * 2 - SHADOW_DEPTH;
+  const H = PH - CARD_MARGIN * 2 - SHADOW_DEPTH;
+
   const totalCities = cityEntries.length;
   const totalItems = items.length;
   const topCity = cityEntries[0];
 
-  const borderWidth = 4;
+  const borderWidth = 5;
   const brRadius = 16;
   const accentColor = CITY_COLORS[1];
   const primaryColor = CITY_COLORS[0];
@@ -186,7 +201,7 @@ export default function PatternCardPoster({
   const HEADER_H = 72;
   const FOOTER_STATS_H = 120;
   const LABEL_H = 28;
-  const FOOTER_STRIP_H = isBrutal ? 24 : 4;
+  const FOOTER_STRIP_H = isBrutal ? 28 : 4;
 
   /* ── Compute cell size to fit both W and H ── */
   const availW = W - GRID_PAD * 2;
@@ -225,7 +240,35 @@ export default function PatternCardPoster({
   }, [cityEntries, isBrutal]);
 
   return (
-    <KonvaPosterStage width={W} height={H}>
+    <KonvaPosterStage width={PW} height={PH}>
+      {/* ── Brutalism: stacked card shadow ── */}
+      {isBrutal && (
+        <>
+          <Rect width={PW} height={PH} fill="#FDFDFD" />
+          {/* Stacked solid shadow (depth = 12) */}
+          <Shape
+            sceneFunc={(ctx, shape) => {
+              ctx.fillStyle = "#000";
+              const r = brRadius;
+              for (let d = 1; d <= SHADOW_DEPTH; d++) {
+                const x = CARD_MARGIN + d, y = CARD_MARGIN + d;
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + W, y, x + W, y + H, r);
+                ctx.arcTo(x + W, y + H, x, y + H, r);
+                ctx.arcTo(x, y + H, x, y, r);
+                ctx.arcTo(x, y, x + W, y, r);
+                ctx.closePath();
+                ctx.fill();
+              }
+              ctx.fillStrokeShape(shape);
+            }}
+          />
+        </>
+      )}
+
+      {/* ── Card content ── */}
+      <Group x={CARD_MARGIN} y={CARD_MARGIN}>
       {/* Rounded-corner clip */}
       <Group
         clipFunc={(ctx) => {
@@ -241,14 +284,6 @@ export default function PatternCardPoster({
       >
         {/* Background */}
         <Rect width={W} height={H} fill="#FDFDFD" />
-
-        {/* ── Brutalism outer border shadow ── */}
-        {isBrutal && (
-          <>
-            {/* Inset highlight is not easily replicated; skip the inset part.
-                The solid shadow is approximated by the outer clip + border below. */}
-          </>
-        )}
 
         {/* ══════════ HEADER ══════════ */}
         {isBrutal ? (
@@ -290,15 +325,18 @@ export default function PatternCardPoster({
             />
 
             {/* Small square icon in accent box */}
-            {/* Shadow offset */}
-            <Rect
-              x={W - 72 / 2 - 16 + 4}
-              y={(HEADER_H - borderWidth) / 2 - 16 + 4}
-              width={32}
-              height={32}
-              cornerRadius={brRadius / 2}
-              fill="#000"
-            />
+            {/* Stacked solid shadow (1..4px offsets, matches ovideo CSS box-shadow) */}
+            {[1, 2, 3, 4].map(d => (
+              <Rect
+                key={d}
+                x={W - 72 / 2 - 16 + d}
+                y={(HEADER_H - borderWidth) / 2 - 16 + d}
+                width={32}
+                height={32}
+                cornerRadius={brRadius / 2}
+                fill="#000"
+              />
+            ))}
             {/* Icon square */}
             <Rect
               x={W - 72 / 2 - 16}
@@ -478,7 +516,7 @@ export default function PatternCardPoster({
             x={0}
             y={24}
             width={W - 64}
-            height={isBrutal ? 3 : 1}
+            height={isBrutal ? borderWidth : 1}
             fill={isBrutal ? "#000" : "#e5e5e5"}
           />
 
@@ -530,7 +568,7 @@ export default function PatternCardPoster({
                 ctx.clip();
 
                 // Draw repeating diagonal stripes
-                const stripeW = 8;
+                const stripeW = 11;
                 const totalStripes = Math.ceil((w + h) / stripeW) * 2;
                 for (let i = 0; i < totalStripes; i++) {
                   const x0 = i * stripeW - h;
@@ -560,19 +598,20 @@ export default function PatternCardPoster({
           />
         )}
 
-        {/* ── Brutalism outer border ── */}
+        {/* ── Brutalism outer border (inset so full stroke visible inside clip) ── */}
         {isBrutal && (
           <Rect
-            x={0}
-            y={0}
-            width={W}
-            height={H}
+            x={borderWidth / 2}
+            y={borderWidth / 2}
+            width={W - borderWidth}
+            height={H - borderWidth}
             stroke="#000"
             strokeWidth={borderWidth}
-            cornerRadius={brRadius}
+            cornerRadius={brRadius - borderWidth / 2}
             listening={false}
           />
         )}
+      </Group>
       </Group>
     </KonvaPosterStage>
   );

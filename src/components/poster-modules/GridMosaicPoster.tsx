@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Rect, Text, Line, Group, Circle, Image as KImage } from "react-konva";
+import { Rect, Text, Line, Group, Circle, Image as KImage, Shape } from "react-konva";
 import useImage from "use-image";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
@@ -43,15 +43,9 @@ export const MOSAIC_STYLES: MosaicStylePreset[] = [
     borderWidth: 3, shadowOffset: 6, shadowBlur: 0, borderRadius: 14,
     insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: true,
   },
-  {
-    id: "clay", label: "黏土",
-    borderWidth: 0, shadowOffset: 0, shadowBlur: 18, borderRadius: 22,
-    insetShadow: "inset 2px 2px 8px rgba(255,255,255,0.6), inset -2px -2px 6px rgba(0,0,0,0.06)",
-    textStroke: "", noiseOverlay: false, crosshatch: false,
-  },
-  {
+{
     id: "flat", label: "扁平",
-    borderWidth: 1, shadowOffset: 0, shadowBlur: 0, borderRadius: 8,
+    borderWidth: 0, shadowOffset: 0, shadowBlur: 0, borderRadius: 14,
     insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: false,
   },
   {
@@ -64,11 +58,6 @@ export const MOSAIC_STYLES: MosaicStylePreset[] = [
     borderWidth: 2, shadowOffset: 0, shadowBlur: 14, borderRadius: 14,
     insetShadow: "", textStroke: "2px", noiseOverlay: false, crosshatch: false,
   },
-  {
-    id: "stacked", label: "3D层叠",
-    borderWidth: 2, shadowOffset: 4, shadowBlur: 0, borderRadius: 10,
-    insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: true,
-  },
 ];
 
 /* ── Grid dimensions (base at 800×1100, scales proportionally) ── */
@@ -79,32 +68,109 @@ import { hslToHex } from "./PopBoardPoster";
 
 interface MosaicPalette { bg: string; cells: string[]; ink: string; accent: string }
 
-export function deriveMosaicPalette(hue: number): MosaicPalette {
-  return {
-    bg:     hslToHex(hue, 12, 97),
-    ink:    hslToHex(hue + 210, 35, 12),
-    accent: hslToHex(hue, 85, 58),
-    cells: [
-      hslToHex(hue,       80, 62),
-      hslToHex(hue + 45,  75, 58),
-      hslToHex(hue + 90,  70, 55),
-      hslToHex(hue + 135, 65, 60),
-      hslToHex(hue + 180, 75, 55),
-      hslToHex(hue + 225, 70, 60),
-      hslToHex(hue + 270, 80, 58),
-      hslToHex(hue + 315, 75, 62),
-    ],
-  };
+export function deriveMosaicPalette(hue: number, styleId?: string): MosaicPalette {
+  const h = hue;
+
+  switch (styleId) {
+    /* ── 野兽派: 高对比、宽色相、浓烈 ── */
+    case "brutalism":
+      return {
+        bg:     "#ffffff",
+        ink:    hslToHex(h + 210, 40, 10),
+        accent: hslToHex(h, 90, 55),
+        cells: [
+          hslToHex(h,        85, 60),
+          hslToHex(h + 50,   80, 56),
+          hslToHex(h + 100,  75, 53),
+          hslToHex(h + 150,  70, 58),
+          hslToHex(h + 200,  80, 54),
+          hslToHex(h + 250,  75, 58),
+          hslToHex(h + 300,  85, 56),
+          hslToHex(h + 30,   78, 62),
+        ],
+      };
+
+/* ── 扁平: 三色分裂互补 — 主色深/浅 + 近互补色，暖底 ── */
+    case "flat":
+      return {
+        bg:     "#ffffff",                        // 纯白底
+        ink:    hslToHex(h, 40, 18),             // 极深主色调
+        accent: hslToHex(h, 72, 58),             // 深主色（info card）
+        cells: [
+          hslToHex(h,       72, 60),   // [0] 主色深 A
+          hslToHex(h,       45, 80),   // [1] 主色浅 A
+          hslToHex(h + 170, 60, 55),   // [2] 对比色 A
+          hslToHex(h,       68, 57),   // [3] 主色深 B
+          hslToHex(h,       42, 82),   // [4] 主色浅 B
+          hslToHex(h + 170, 55, 58),   // [5] 对比色 B
+          hslToHex(h,       75, 63),   // [6] 主色深 C
+          hslToHex(h,       48, 78),   // [7] 主色浅 C
+        ],
+      };
+
+    /* ── 手绘: 吉卜力风 — 清透明亮、天空/草地/花朵 ── */
+    case "sketch":
+      return {
+        bg:     "#ffffff",
+        ink:    "#3a4a5c",           // 蓝灰墨色（轻盈不沉重）
+        accent: hslToHex(h, 55, 62),
+        cells: [
+          hslToHex(h,        52, 86),  // 主色淡彩
+          hslToHex(200,      50, 88),  // 天空蓝
+          hslToHex(h + 60,   48, 85),  // 邻近色
+          hslToHex(45,       55, 88),  // 暖阳黄
+          hslToHex(150,      42, 86),  // 薄荷绿
+          hslToHex(h + 180,  45, 87),  // 互补淡彩
+          hslToHex(340,      48, 88),  // 樱花粉
+          hslToHex(270,      40, 90),  // 薰衣草
+        ],
+      };
+
+    /* ── 霓虹: 赛博暗底 — 高饱和发光色、近黑底 ── */
+    case "neon":
+      return {
+        bg:     "#08080f",
+        ink:    "#e0e0f0",           // 浅色文字（info卡片等）
+        accent: hslToHex(h, 100, 58),
+        cells: [
+          hslToHex(h,       100, 58), // 主色 — 最亮
+          hslToHex(h + 60,  95,  55), // 邻近色
+          hslToHex(h + 180, 90,  52), // 互补色
+          hslToHex(h + 300, 92,  56), // 三角色
+          hslToHex(h + 120, 88,  50), // 三角色2
+          hslToHex(h + 30,  95,  60), // 暖偏移
+          hslToHex(h + 240, 85,  54), // 冷偏移
+          hslToHex(h - 30,  90,  52), // 反向偏移
+        ],
+      };
+
+    /* ── 默认 fallback ── */
+    default:
+      return {
+        bg:     "#ffffff",
+        ink:    hslToHex(h, 15, 18),
+        accent: hslToHex(h, 60, 55),
+        cells: [
+          hslToHex(h,       50, 70),
+          hslToHex(h + 15,  45, 74),
+          hslToHex(h - 15,  42, 68),
+          hslToHex(h + 25,  38, 76),
+          hslToHex(h - 25,  40, 72),
+          hslToHex(h + 10,  35, 78),
+          hslToHex(h - 10,  44, 70),
+          hslToHex(h + 5,   30, 80),
+        ],
+      };
+  }
 }
 
-export const MOSAIC_HUE_PRESETS = [
-  { name: "珊瑚", hue: 0 },
-  { name: "橙黄", hue: 30 },
-  { name: "翠绿", hue: 155 },
-  { name: "宝蓝", hue: 220 },
-  { name: "紫罗", hue: 280 },
-  { name: "玫红", hue: 340 },
-];
+/* ── Perceived-luminance check — adaptive text/icon on monochrome cells ── */
+function isLightColor(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+}
 
 /* ── Cell color index — ensures adjacent cells get different colors ── */
 const COLOR_IDX = [
@@ -315,53 +381,125 @@ function CrosshatchBackground({ ink }: { ink: string }) {
   );
 }
 
-/* ── Cell background with rounded corners + optional border + shadow ── */
+/* ── Wobbly rect — hand-drawn border using bezier curves ── */
+function WobblyRect({
+  x, y, w, h, fill, stroke, strokeWidth, seed, opacity,
+}: {
+  x: number; y: number; w: number; h: number;
+  fill?: string; stroke?: string; strokeWidth?: number;
+  seed: number; opacity?: number;
+}) {
+  const wb = (n: number) => (Math.sin(seed * n * 1.7) * 0.5 + 0.5) * 5 - 2.5;
+  return (
+    <Shape
+      opacity={opacity}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      sceneFunc={(ctx, shape) => {
+        ctx.beginPath();
+        ctx.moveTo(x + wb(1), y + wb(2));
+        ctx.quadraticCurveTo(x + w * 0.35 + wb(3), y + wb(4) - 1.5, x + w * 0.65 + wb(17), y + wb(18) + 1);
+        ctx.quadraticCurveTo(x + w * 0.85 + wb(5), y + wb(6) - 0.5, x + w + wb(7), y + wb(8));
+        ctx.quadraticCurveTo(x + w + wb(9) + 1.5, y + h * 0.5 + wb(10), x + w + wb(11), y + h + wb(12));
+        ctx.quadraticCurveTo(x + w * 0.5 + wb(13), y + h + wb(14) + 1.5, x + wb(15), y + h + wb(16));
+        ctx.quadraticCurveTo(x + wb(19) - 1.5, y + h * 0.5 + wb(20), x + wb(1), y + wb(2));
+        ctx.closePath();
+        ctx.fillStrokeShape(shape);
+      }}
+    />
+  );
+}
+
+/* ── Scribble lines — hand-drawn marks under a cell ── */
+function ScribbleLines({
+  x, y, w, seed, ink, strokeW,
+}: {
+  x: number; y: number; w: number; seed: number; ink: string; strokeW: number;
+}) {
+  return (
+    <Group>
+      {[0, 1, 2].map((i) => {
+        const lineW = w * (0.25 + (Math.sin(seed + i * 3.7) * 0.5 + 0.5) * 0.45);
+        const ox = (Math.sin(seed * (i + 1) * 2.3) * 0.5 + 0.5) * w * 0.35;
+        const oy = i * (strokeW * 2.2);
+        const wobY = Math.cos(seed + i * 5.1) * 1.5;
+        return (
+          <Line key={i}
+            points={[x + ox, y + oy, x + ox + lineW, y + oy + wobY]}
+            stroke={ink} strokeWidth={strokeW * 0.65}
+            opacity={0.65} lineCap="round" />
+        );
+      })}
+    </Group>
+  );
+}
+
+/* ── Cell background — style-aware rendering ── */
 function CellBackground({
   x, y, size, fill, sty, ink,
 }: {
   x: number; y: number; size: number; fill: string;
   sty: MosaicStylePreset; ink: string;
 }) {
+  /* ── 扁平: 纯色块、微圆角、无阴影、无描边 ── */
+  if (sty.id === "flat") {
+    return (
+      <Rect x={x} y={y} width={size} height={size}
+        fill={fill} cornerRadius={sty.borderRadius} />
+    );
+  }
+
+/* ── 手绘: 摇摆边框 + 粗描边 + 涂鸦装饰 ── */
+  if (sty.id === "sketch") {
+    const seed = x * 7 + y * 13; // deterministic per cell
+    return (
+      <Group>
+        {/* Pencil shadow — wobbly */}
+        <WobblyRect x={x + 3} y={y + 3} w={size} h={size}
+          fill={ink} seed={seed + 99} opacity={0.1} />
+        {/* Main fill — wobbly border */}
+        <WobblyRect x={x} y={y} w={size} h={size}
+          fill={fill} stroke={ink} strokeWidth={2.5} seed={seed} />
+      </Group>
+    );
+  }
+
+  /* ── 霓虹: 暗底 + 发光描边 + 光晕 ── */
+  if (sty.id === "neon") {
+    return (
+      <Group>
+        {/* Outer glow halo */}
+        <Rect x={x - 2} y={y - 2} width={size + 4} height={size + 4}
+          cornerRadius={16} stroke={fill} strokeWidth={4}
+          shadowColor={fill} shadowBlur={24} shadowOpacity={0.5} />
+        {/* Dark cell fill */}
+        <Rect x={x} y={y} width={size} height={size}
+          fill="rgba(8,8,18,0.92)" cornerRadius={14}
+          stroke={fill} strokeWidth={2} />
+      </Group>
+    );
+  }
+
+  /* ── Default (brutalism / clay / others) ── */
   const hasShadow = sty.shadowOffset > 0;
   const hasBlur = sty.shadowBlur > 0;
   return (
     <Group>
-      {/* Drop shadow (offset-based) */}
       {hasShadow && (
-        <Rect
-          x={x + sty.shadowOffset}
-          y={y + sty.shadowOffset}
-          width={size}
-          height={size}
-          fill={ink}
-          cornerRadius={sty.borderRadius}
-        />
+        <Rect x={x + sty.shadowOffset} y={y + sty.shadowOffset}
+          width={size} height={size} fill={ink}
+          cornerRadius={sty.borderRadius} />
       )}
-      {/* Blur shadow */}
       {hasBlur && (
-        <Rect
-          x={x}
-          y={y}
-          width={size}
-          height={size}
-          fill={fill}
-          cornerRadius={sty.borderRadius}
-          shadowColor={ink}
-          shadowBlur={sty.shadowBlur}
-          shadowOpacity={0.25}
-        />
+        <Rect x={x} y={y} width={size} height={size}
+          fill={fill} cornerRadius={sty.borderRadius}
+          shadowColor={fill} shadowBlur={sty.shadowBlur} shadowOpacity={0.4} />
       )}
-      {/* Main fill */}
-      <Rect
-        x={x}
-        y={y}
-        width={size}
-        height={size}
-        fill={fill}
-        cornerRadius={sty.borderRadius}
+      <Rect x={x} y={y} width={size} height={size}
+        fill={fill} cornerRadius={sty.borderRadius}
         stroke={sty.borderWidth > 0 ? ink : undefined}
-        strokeWidth={sty.borderWidth > 0 ? sty.borderWidth : undefined}
-      />
+        strokeWidth={sty.borderWidth > 0 ? sty.borderWidth : undefined} />
     </Group>
   );
 }
@@ -372,13 +510,20 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
   const mosaicThemeIdx = useMapStore((s) => s.mosaicThemeIdx);
   const themeId = MOSAIC_THEMES[mosaicThemeIdx]?.id ?? "solid";
 
-  /* Scale grid dimensions proportionally to poster width */
-  const ratio = POSTER_W / BASE_W;
-  const CELL = Math.round(138 * ratio);
-  const GAP = Math.round(14 * ratio);
+  /* Scale grid to fit both width and height */
+  const GRID_Y = 48;
+  const BOTTOM_H = 110 + 30 + 32; // INFO_H + gap + brand footer
+  const GAP_RATIO = 14 / 138;
+
+  const availW = POSTER_W - 64;
+  const availH = POSTER_H - GRID_Y - BOTTOM_H - 16;
+
+  const maxByW = availW / (4 + 3 * GAP_RATIO);
+  const maxByH = availH / (5 + 4 * GAP_RATIO);
+  const CELL = Math.round(Math.min(maxByW, maxByH));
+  const GAP = Math.round(CELL * GAP_RATIO);
   const GRID_W = CELL * 4 + GAP * 3;
   const GRID_X = Math.round((POSTER_W - GRID_W) / 2);
-  const GRID_Y = 48;
 
   /* ── Derive grid text from city names ── */
   const gridChars = useMemo(() => {
@@ -402,16 +547,16 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
         const src = coverSrc(c);
         if (src) out.push(src);
       }
-      if (out.length >= 3) break;
+      if (out.length >= 10) break;
     }
     return out;
   }, [cityEntries]);
 
   /* ── Pick palette & style ── */
   const mosaicHue = useMapStore((s) => s.mosaicHue);
-  const pal = useMemo(() => deriveMosaicPalette(mosaicHue), [mosaicHue]);
   const mosaicStyleIdx = useMapStore((s) => s.mosaicStyleIdx);
   const sty = MOSAIC_STYLES[mosaicStyleIdx] ?? MOSAIC_STYLES[0];
+  const pal = useMemo(() => deriveMosaicPalette(mosaicHue, sty.id), [mosaicHue, sty.id]);
 
   /* ── Stats ── */
   const cityCount = cityEntries.length;
@@ -429,21 +574,23 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
     for (let ri = 0; ri < LAYOUT.length; ri++) {
       for (let ci = 0; ci < LAYOUT[ri].length; ci++) {
         const cell = LAYOUT[ri][ci];
+        const cellBg = pal.cells[COLOR_IDX[ri][ci]];
+        const iconColor = sty.id === "flat" && !isLightColor(cellBg) ? pal.bg : pal.ink;
         if (cell.startsWith("I")) {
           const iIdx = parseInt(cell.substring(1));
-          elements[cell] = generatedIconElement(iIdx, 70, pal.ink, iconSeed);
+          elements[cell] = generatedIconElement(iIdx, Math.round(CELL * 0.5), iconColor, iconSeed);
         }
         // Fallback cover → icon
         if (cell.startsWith("C")) {
           const cIdx = parseInt(cell.substring(1));
           if (!covers[cIdx]) {
-            elements[cell] = generatedIconElement(ri * 2 + ci, 70, pal.ink, iconSeed);
+            elements[cell] = generatedIconElement(ri * 2 + ci, Math.round(CELL * 0.5), iconColor, iconSeed);
           }
         }
       }
     }
     return elements;
-  }, [pal.ink, iconSeed, covers]);
+  }, [pal.ink, pal.bg, pal.cells, sty.id, iconSeed, covers, CELL]);
 
   /* ── Bottom info card layout ── */
   const INFO_PAD_X = 28;
@@ -476,12 +623,25 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
           ctx.closePath();
         }}
       >
-        {/* White background */}
-        <Rect width={POSTER_W} height={POSTER_H} fill="#FFFFFF" />
+        {/* Background */}
+        <Rect width={POSTER_W} height={POSTER_H} fill={pal.bg} />
 
-        {/* Crosshatch background (conditional) */}
-        {sty.crosshatch && (
-          <CrosshatchBackground ink={pal.ink} />
+        {/* Style-specific background treatments */}
+        {sty.crosshatch && <CrosshatchBackground ink={pal.ink} />}
+
+
+        {/* Neon: subtle grid lines */}
+        {sty.id === "neon" && (
+          <Group opacity={0.08}>
+            {Array.from({ length: Math.ceil(POSTER_W / 60) }, (_, i) => (
+              <Line key={`v${i}`} points={[i * 60, 0, i * 60, POSTER_H]}
+                stroke={pal.accent} strokeWidth={0.5} />
+            ))}
+            {Array.from({ length: Math.ceil(POSTER_H / 60) }, (_, i) => (
+              <Line key={`h${i}`} points={[0, i * 60, POSTER_W, i * 60]}
+                stroke={pal.accent} strokeWidth={0.5} />
+            ))}
+          </Group>
         )}
 
         {/* ── Grid cells ── */}
@@ -491,28 +651,49 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
             const cx = GRID_X + ci * (CELL + GAP);
             const cy = GRID_Y + ri * (CELL + GAP);
             const key = `${ri}-${ci}`;
+            // Neon: bright text on dark cells; Flat: adaptive per luminance; others: ink
+            const cellTextColor = sty.id === "neon" ? bg
+              : sty.id === "flat" && !isLightColor(bg) ? "#ffffff"
+              : pal.ink;
+            const cellTextStroke = sty.id === "neon"
+              ? { stroke: bg, strokeWidth: 1.5, shadowColor: bg, shadowBlur: 12 }
+              : textStrokeProps;
 
             /* Text cell — bold city character */
             if (cell.startsWith("T")) {
               const idx = parseInt(cell.substring(1));
+              const isSketch = sty.id === "sketch";
               return (
                 <Group key={key}>
                   <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
-                  <CellPatternOverlay theme={themeId} ink={pal.ink} x={cx} y={cy} size={CELL} cornerRadius={sty.borderRadius} />
+                  {!isSketch && (
+                    <CellPatternOverlay theme={themeId} ink={pal.ink} x={cx} y={cy} size={CELL} cornerRadius={sty.borderRadius} />
+                  )}
                   <Text
                     x={cx}
                     y={cy}
                     width={CELL}
-                    height={CELL}
+                    height={isSketch ? CELL * 0.75 : CELL}
                     text={gridChars[idx]}
-                    fontSize={72}
+                    fontSize={Math.round(CELL * 0.52)}
                     fontStyle="900"
-                    fill={pal.ink}
+                    fill={cellTextColor}
                     fontFamily={FONT_CN}
                     align="center"
                     verticalAlign="middle"
-                    {...textStrokeProps}
+                    {...cellTextStroke}
                   />
+                  {/* Sketch: scribble caption lines */}
+                  {isSketch && (
+                    <ScribbleLines
+                      x={cx + CELL * 0.15}
+                      y={cy + CELL * 0.78}
+                      w={CELL * 0.7}
+                      seed={cx * 3 + cy * 7}
+                      ink={pal.ink}
+                      strokeW={2.5}
+                    />
+                  )}
                 </Group>
               );
             }
@@ -524,7 +705,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
               if (!src) {
                 /* Fallback → icon */
                 const iconEl = iconElements[cell];
-                const iconSize = 70;
+                const iconSize = Math.round(CELL * 0.5);
                 return (
                   <Group key={key}>
                     <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
@@ -550,7 +731,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
 
             /* Icon cell — generated SVG icon */
             const iconEl = iconElements[cell];
-            const iconSize = 70;
+            const iconSize = Math.round(CELL * 0.5);
             return (
               <Group key={key}>
                 <CellBackground x={cx} y={cy} size={CELL} fill={bg} sty={sty} ink={pal.ink} />
@@ -568,97 +749,62 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
           })
         )}
 
-        {/* ── Bottom info card — inverted color scheme ── */}
+        {/* ── Bottom info card ── */}
         <Group x={INFO_X} y={INFO_Y}>
-          {/* Shadow (offset or blur based) */}
-          {sty.shadowOffset > 0 && (
-            <Rect
-              x={sty.shadowOffset}
-              y={sty.shadowOffset}
-              width={INFO_W}
-              height={INFO_H}
-              fill={pal.accent}
+          {/* Style-specific info card background */}
+          {sty.id === "neon" ? (<>
+            {/* Neon glow border card */}
+            <Rect width={INFO_W} height={INFO_H} cornerRadius={14}
+              stroke={pal.accent} strokeWidth={2}
+              shadowColor={pal.accent} shadowBlur={20} shadowOpacity={0.5} />
+            <Rect width={INFO_W} height={INFO_H} fill="rgba(8,8,18,0.92)"
+              cornerRadius={14} stroke={pal.accent} strokeWidth={1.5} />
+          </>) : sty.id === "flat" ? (
+            <Rect width={INFO_W} height={INFO_H} fill={pal.accent} cornerRadius={16} />
+          ) : sty.id === "sketch" ? (<>
+            <WobblyRect x={4} y={4} w={INFO_W} h={INFO_H}
+              fill={pal.ink} seed={777} opacity={0.1} />
+            <WobblyRect x={0} y={0} w={INFO_W} h={INFO_H}
+              fill={pal.ink} stroke={pal.ink} strokeWidth={2.5} seed={888} />
+          </>) : (<>
+            {sty.shadowOffset > 0 && (
+              <Rect x={sty.shadowOffset} y={sty.shadowOffset}
+                width={INFO_W} height={INFO_H} fill={pal.accent}
+                cornerRadius={sty.borderRadius} />
+            )}
+            <Rect width={INFO_W} height={INFO_H} fill={pal.ink}
               cornerRadius={sty.borderRadius}
-            />
-          )}
-          {sty.shadowBlur > 0 && (
-            <Rect
-              width={INFO_W}
-              height={INFO_H}
-              fill={pal.ink}
-              cornerRadius={sty.borderRadius}
-              shadowColor={pal.accent}
-              shadowBlur={sty.shadowBlur}
-              shadowOpacity={0.25}
-            />
-          )}
-          {/* Background */}
-          <Rect
-            width={INFO_W}
-            height={INFO_H}
-            fill={pal.ink}
-            cornerRadius={sty.borderRadius}
-            stroke={sty.borderWidth > 0 ? pal.accent : undefined}
-            strokeWidth={sty.borderWidth > 0 ? sty.borderWidth : undefined}
-          />
+              stroke={sty.borderWidth > 0 ? pal.accent : undefined}
+              strokeWidth={sty.borderWidth > 0 ? sty.borderWidth : undefined} />
+          </>)}
 
           {/* Big number */}
-          <Text
-            x={INFO_PAD_X}
-            y={INFO_PAD_Y}
-            text={String(cityCount)}
-            fontSize={60}
-            fontStyle="900"
-            fill={pal.accent}
-            fontFamily={FONT_CN}
-            lineHeight={1}
-          />
-          <Text
-            x={INFO_PAD_X}
-            y={INFO_PAD_Y + 62}
-            text="CITIES"
-            fontSize={10}
-            fontStyle="800"
-            fill={pal.bg}
-            opacity={0.6}
-            letterSpacing={10 * 0.15}
-            fontFamily={FONT_UI}
-          />
-
-          {/* Divider */}
-          <Rect
-            x={INFO_PAD_X + 80}
-            y={INFO_PAD_Y + 4}
-            width={3}
-            height={INFO_H - INFO_PAD_Y * 2 - 8}
-            fill={pal.accent}
-            opacity={0.4}
-            cornerRadius={2}
-          />
-
-          {/* Text content */}
-          <Text
-            x={INFO_PAD_X + 100}
-            y={INFO_PAD_Y + 4}
-            text={subtitle}
-            fontSize={22}
-            fontStyle="900"
-            fill={pal.bg}
-            letterSpacing={22 * -0.02}
-            fontFamily={FONT_CN}
-            width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X}
-          />
-          <Text
-            x={INFO_PAD_X + 100}
-            y={INFO_PAD_Y + 36}
-            text={description}
-            fontSize={12}
-            fill={pal.bg}
-            opacity={0.7}
-            lineHeight={1.6}
-            fontFamily={FONT_CN}
-            width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X}
-          />
+          {(() => {
+            const isFlat = sty.id === "flat";
+            const infoText = sty.id === "neon" ? "#e8e8f4" : pal.bg;
+            const numberColor = isFlat ? pal.bg : pal.accent;
+            const dividerColor = isFlat ? pal.bg : pal.accent;
+            return (<>
+              <Text x={INFO_PAD_X} y={INFO_PAD_Y}
+                text={String(cityCount)} fontSize={60} fontStyle="900"
+                fill={numberColor} fontFamily={FONT_CN} lineHeight={1} />
+              <Text x={INFO_PAD_X} y={INFO_PAD_Y + 62}
+                text="CITIES" fontSize={10} fontStyle="800"
+                fill={infoText} opacity={0.6}
+                letterSpacing={10 * 0.15} fontFamily={FONT_UI} />
+              <Rect x={INFO_PAD_X + 80} y={INFO_PAD_Y + 4} width={3}
+                height={INFO_H - INFO_PAD_Y * 2 - 8}
+                fill={dividerColor} opacity={isFlat ? 0.3 : 0.4} cornerRadius={2} />
+              <Text x={INFO_PAD_X + 100} y={INFO_PAD_Y + 4}
+                text={subtitle} fontSize={22} fontStyle="900"
+                fill={infoText} letterSpacing={22 * -0.02}
+                fontFamily={FONT_CN} width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X} />
+              <Text x={INFO_PAD_X + 100} y={INFO_PAD_Y + 36}
+                text={description} fontSize={12}
+                fill={infoText} opacity={0.7} lineHeight={1.6}
+                fontFamily={FONT_CN} width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X} />
+            </>);
+          })()}
         </Group>
 
         {/* ── Brand footer ── */}
@@ -669,8 +815,8 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
           text="METOO · 城市拼贴"
           fontSize={13}
           fontStyle="900"
-          fill={pal.ink}
-          opacity={0.35}
+          fill={sty.id === "neon" ? pal.accent : pal.ink}
+          opacity={sty.id === "neon" ? 0.5 : 0.35}
           letterSpacing={13 * 0.2}
           fontFamily={FONT_CN}
           align="center"

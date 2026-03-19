@@ -12,15 +12,14 @@ import { PosterPreview } from "./PosterPreview";
 import { useMapStore, type ChartView } from "../stores/useMapStore";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { invoke } from "@tauri-apps/api/core";
-import { posterStageRef, saveKonvaPosterToDownloads } from "../lib/poster-stage";
+import { posterStageRef, saveKonvaPosterToDownloads, posterFilename } from "../lib/poster-stage";
 import { getPosterModule, posterModules, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
 import { MujiPosterDevPanel, DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
 import { KEYBOARD_THEMES, KEYBOARD_STYLES } from "./poster-modules/KeyboardPoster";
 import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
-import { MUJI_TEMPLATES, getDefaultTemplateIdx } from "./poster-modules/MujiPoster";
+import { MUJI_TEMPLATES, getDefaultTemplateIdx, classifyCollection, getVisibleTemplateIndices, templateConfigId } from "./poster-modules/MujiPoster";
 import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
 import { derivePopBoardPalette, hslToHex } from "./poster-modules/PopBoardPoster";
-import { DATA_POSTCARD_STYLES } from "./poster-modules/DataPostcardPoster";
 import { deriveMujiColors } from "./poster-modules/MujiPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
@@ -58,24 +57,32 @@ export function RightPanel() {
   const setMosaicHue = useMapStore((s) => s.setMosaicHue);
   const mosaicStyleIdx = useMapStore((s) => s.mosaicStyleIdx);
   const setMosaicStyleIdx = useMapStore((s) => s.setMosaicStyleIdx);
-  const dataPostcardHue = useMapStore((s) => s.dataPostcardHue);
-  const setDataPostcardHue = useMapStore((s) => s.setDataPostcardHue);
-  const dataPostcardStyleIdx = useMapStore((s) => s.dataPostcardStyleIdx);
-  const setDataPostcardStyleIdx = useMapStore((s) => s.setDataPostcardStyleIdx);
   const keyboardStyleIdx = useMapStore((s) => s.keyboardStyleIdx);
   const setKeyboardStyleIdx = useMapStore((s) => s.setKeyboardStyleIdx);
+  const gridBlankHue = useMapStore((s) => s.gridBlankHue);
+  const setGridBlankHue = useMapStore((s) => s.setGridBlankHue);
   const status = useFavoriteStore((s) => s.status);
   const favItems = useFavoriteStore((s) => s.items);
+  const listTitle = useFavoriteStore((s) => s.listTitle);
 
+  const collectionType = useMemo(
+    () => classifyCollection(listTitle, favItems),
+    [listTitle, favItems],
+  );
+  const visibleMujiIndices = useMemo(
+    () => getVisibleTemplateIndices(collectionType),
+    [collectionType],
+  );
   const effectiveMujiIdx = useMemo(
-    () => mujiTemplateIdx < 0 ? getDefaultTemplateIdx(favItems) : mujiTemplateIdx % MUJI_TEMPLATES.length,
-    [mujiTemplateIdx, favItems],
+    () => mujiTemplateIdx < 0 ? getDefaultTemplateIdx(listTitle, favItems) : mujiTemplateIdx % MUJI_TEMPLATES.length,
+    [mujiTemplateIdx, favItems, listTitle],
   );
   const currentMujiTemplate = MUJI_TEMPLATES[effectiveMujiIdx];
   const currentMujiDefault = currentMujiTemplate.defaultConfig
     ? { ...DEFAULT_CONFIG, ...currentMujiTemplate.defaultConfig }
     : DEFAULT_CONFIG;
-  const currentMujiConfig = mujiConfigs[currentMujiTemplate.id] ?? currentMujiDefault;
+  const currentMujiCfgKey = templateConfigId(currentMujiTemplate);
+  const currentMujiConfig = mujiConfigs[currentMujiCfgKey] ?? currentMujiDefault;
 
   const posterRef = useRef<HTMLDivElement>(null);
   const [dlState, setDlState] = useState<"idle" | "loading" | "done">("idle");
@@ -88,13 +95,9 @@ export function RightPanel() {
 
     setDlState("loading");
     try {
-      const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `觅途-${mod.name}-${timestamp}.png`;
+      const filename = posterFilename(mod.name);
 
       if (activePosterModule === "muji" && posterRef.current) {
-        // MujiPoster = DOM dot-matrix map (watermark) + Konva (text).
-        // Direct canvas compositing — avoids html2canvas which is extremely
-        // slow on the complex SVG/canvas WorldMap DOM.
         const rect = posterRef.current.getBoundingClientRect();
         const W = rect.width;
         const H = rect.height;
@@ -106,25 +109,18 @@ export function RightPanel() {
         const ctx = output.getContext("2d")!;
         ctx.scale(dpr, dpr);
 
-        // White background
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, W, H);
 
-        // Replicate CSS `opacity: 0.18` on the parent: composite dots + avatars
-        // at full opacity on an offscreen canvas, then stamp it at 0.18.
         const offscreen = document.createElement("canvas");
         offscreen.width = output.width;
         offscreen.height = output.height;
         const oCtx = offscreen.getContext("2d")!;
         oCtx.scale(dpr, dpr);
 
-        // 1) Dot-matrix map (full opacity on offscreen)
         const dotCanvas = posterRef.current.querySelector(".muji-map-bg canvas") as HTMLCanvasElement | null;
-        if (dotCanvas) {
-          oCtx.drawImage(dotCanvas, 0, 0, W, H);
-        }
+        if (dotCanvas) oCtx.drawImage(dotCanvas, 0, 0, W, H);
 
-        // 2) City avatars on top of dots (white border + circular clip)
         const avatarEls = posterRef.current.querySelectorAll<HTMLElement>(".muji-map-bg [data-city]");
         for (const el of avatarEls) {
           const img = el.querySelector("img") as HTMLImageElement | null;
@@ -134,13 +130,11 @@ export function RightPanel() {
           const y = elRect.top - rect.top;
           const s = elRect.width;
           const r = s / 2;
-          // White border (2px visible border)
           oCtx.save();
           oCtx.beginPath();
           oCtx.arc(x + r, y + r, r, 0, Math.PI * 2);
           oCtx.fillStyle = "rgba(255,255,255,0.9)";
           oCtx.fill();
-          // Clip image to slightly smaller circle (inset by border)
           const border = 2;
           oCtx.beginPath();
           oCtx.arc(x + r, y + r, r - border, 0, Math.PI * 2);
@@ -149,24 +143,20 @@ export function RightPanel() {
           oCtx.restore();
         }
 
-        // 3) Stamp offscreen onto output at 0.18 opacity
         ctx.globalAlpha = 0.18;
         ctx.drawImage(offscreen, 0, 0, W, H);
         ctx.globalAlpha = 1;
 
-        // Draw Konva text layer on top
         if (posterStageRef.current) {
           const konvaCanvas = posterStageRef.current.toCanvas({ pixelRatio: dpr });
           ctx.drawImage(konvaCanvas, 0, 0, W, H);
         }
 
-        // Export composite
         const blob = await new Promise<Blob>((res) => output.toBlob((b) => res(b!), "image/png"));
         const buf = await blob.arrayBuffer();
         const data = Array.from(new Uint8Array(buf));
         await invoke("save_image_to_downloads", { data, filename });
       } else if (posterStageRef.current) {
-        // All other modules: Konva native export
         await saveKonvaPosterToDownloads(posterStageRef.current, mod.name);
       }
 
@@ -373,12 +363,15 @@ export function RightPanel() {
                           aspectRatio: `${ratioPreset.w} / ${ratioPreset.h}`,
                           height: "100%",
                           maxWidth: "100%",
+                          ...(activePosterModule === "muji" ? {
+                            backgroundColor: "#fff",
+                            boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+                          } : {}),
                         }}
                         transition={{ layout: { type: "spring", stiffness: 400, damping: 35 } }}
                       >
                         {activePosterModule === "muji" && (
                           <div className="absolute inset-0 pointer-events-none muji-map-bg">
-                            {/* Sharp map at low opacity — watermark on premium paper, colors preserved */}
                             <div
                               className="absolute inset-0"
                               style={{ opacity: 0.18 }}
@@ -604,7 +597,8 @@ export function RightPanel() {
 
                     {activePosterModule === "muji" && (
                       <div className="flex items-center gap-0.5">
-                        {MUJI_TEMPLATES.map((t, i) => {
+                        {visibleMujiIndices.map((i) => {
+                          const t = MUJI_TEMPLATES[i];
                           const isActive = effectiveMujiIdx === i;
                           return (
                             <button
@@ -629,6 +623,15 @@ export function RightPanel() {
                             </button>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {activePosterModule === "grid-blank" && (
+                      <div className="ml-2 pl-2 border-l border-neutral-200">
+                        <input type="range" min={0} max={359} value={gridBlankHue}
+                          onChange={(e) => setGridBlankHue(Number(e.target.value))}
+                          className="hue-slider w-16"
+                          style={{ "--hue-thumb": hslToHex(gridBlankHue, 58, 51) } as React.CSSProperties} />
                       </div>
                     )}
 
@@ -703,29 +706,7 @@ export function RightPanel() {
                       </div>
                     )}
 
-                    {activePosterModule === "data-postcard" && (
-                      <div className="ml-2 pl-2 border-l border-neutral-200">
-                        <input type="range" min={0} max={359} value={dataPostcardHue}
-                          onChange={(e) => setDataPostcardHue(Number(e.target.value))}
-                          className="hue-slider w-16"
-                          style={{ "--hue-thumb": hslToHex(dataPostcardHue, 70, 52) } as React.CSSProperties} />
-                      </div>
-                    )}
 
-                    {activePosterModule === "data-postcard" && (
-                      <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-neutral-200">
-                        {DATA_POSTCARD_STYLES.map((s, i) => {
-                          const isActive = dataPostcardStyleIdx === i;
-                          return (
-                            <button key={s.id} onClick={() => setDataPostcardStyleIdx(i)}
-                              className="relative px-2 py-1 rounded-lg text-[10px] font-medium cursor-pointer z-[1]">
-                              {isActive && <motion.div layoutId="datapc-style-pill" className="absolute inset-0 bg-neutral-800 rounded-lg" transition={{ type: "spring", stiffness: 500, damping: 35 }} />}
-                              <span className={`relative z-[1] transition-colors duration-200 ${isActive ? "text-white" : "text-neutral-500"}`}>{s.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
 
                     {activePosterModule === "muji" && (
                       <div className="ml-2 pl-2 border-l border-neutral-200">
@@ -746,7 +727,7 @@ export function RightPanel() {
               <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
                 <MujiPosterDevPanel
                   config={currentMujiConfig}
-                  onChange={(c) => setMujiConfig(currentMujiTemplate.id, c)}
+                  onChange={(c) => setMujiConfig(currentMujiCfgKey, c)}
                   templateLabel={currentMujiTemplate.label}
                 />
               </div>

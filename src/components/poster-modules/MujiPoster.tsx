@@ -3,7 +3,7 @@ import { Text, Group } from "react-konva";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { DEFAULT_CONFIG, type MujiPosterConfig } from "./MujiPosterDevPanel";
-import type { FavoriteItem } from "../../stores/useFavoriteStore";
+import { useFavoriteStore, type FavoriteItem } from "../../stores/useFavoriteStore";
 import type { CityEntry } from "../../hooks/useCityAggregation";
 import { useMapStore } from "../../stores/useMapStore";
 
@@ -26,26 +26,28 @@ export const MUJI_HUE_PRESETS = [
   { name: "赭石", hue: 25 },
 ];
 
-const WIDESCREEN_CONFIG: MujiPosterConfig = {
-  mainSize: 10.5,
-  mainSpacing: 0,
-  mainWeight: 100,
-  mainStroke: 0,
-  topPos: 5,
-  bottomPos: 7,
-  subSize: 4,
-  subSpacing: 0.44,
-  subWeight: 200,
-  subStroke: 1.4,
-  subOpacity: 0.98,
-  subOffsetX: -3,
-  subOffsetY: -5,
-  subStartX: 88,
-  subEndX: 13,
-  subBaseY: 55,
-  subWaveAmp: 1,
-  lightOpacity: 0.8,
-};
+/**
+ * Adapt a config (designed for 4:3 landscape) to any aspect ratio.
+ *
+ * Vertical positions (topPos, bottomPos, subBaseY, subOffsetY) are % of H,
+ * but text sizes are % of cqmin (= min(W,H)).
+ *
+ * - Landscape (ratio ≥ 1): cqmin = H, so topPos % * H gives correct pixels. No change.
+ * - Portrait  (ratio < 1):  cqmin = W, H > cqmin. Same % * H gives MORE pixels
+ *   than reference → scale by cqmin/H = W/H = ratio to maintain absolute distances.
+ */
+function adaptConfigForRatio(ref: MujiPosterConfig, W: number, H: number): MujiPosterConfig {
+  const vScale = Math.min(W, H) / H; // 1 for landscape, W/H for portrait
+  if (Math.abs(vScale - 1) < 0.01) return ref;
+
+  return {
+    ...ref,
+    topPos: ref.topPos * vScale,
+    bottomPos: ref.bottomPos * vScale,
+    subBaseY: ref.subBaseY * vScale,
+    subOffsetY: ref.subOffsetY * vScale,
+  };
+}
 
 const WAVE_DY = [0, 2, 4, 6, 0, 3, 5, 7, 7, 7];
 
@@ -98,7 +100,20 @@ function getTopFoodLabels(items: FavoriteItem[], mode: "shop" | "food" = "shop")
   return labels;
 }
 
-export function getDefaultTemplateIdx(items: FavoriteItem[]): number {
+export type CollectionType = "food" | "travel" | "mixed";
+
+/** Classify a collection based on title keywords and item content */
+export function classifyCollection(
+  listTitle: string,
+  items: { title: string; intro: string }[],
+): CollectionType {
+  // Priority 1: explicit keywords in collection title
+  const titleFoodKw = ["吃", "食", "美食", "餐", "小吃", "火锅", "烧烤"];
+  const titleTravelKw = ["游", "旅行", "旅游", "出行", "景点", "攻略"];
+  if (titleFoodKw.some((k) => listTitle.includes(k))) return "food";
+  if (titleTravelKw.some((k) => listTitle.includes(k))) return "travel";
+
+  // Priority 2: analyze item content ratio
   let foodCount = 0;
   let sightCount = 0;
   for (const item of items) {
@@ -107,15 +122,34 @@ export function getDefaultTemplateIdx(items: FavoriteItem[]): number {
     if (SIGHT_KW.some((k) => text.includes(k))) sightCount++;
   }
   const total = foodCount + sightCount;
-  if (total === 0) return 0;
-  if (foodCount / total > 0.6) return 1;
-  if (sightCount / total > 0.6) return 3;
-  return 5;
+  if (total === 0) return "mixed";
+  if (foodCount / total > 0.6) return "food";
+  if (sightCount / total > 0.6) return "travel";
+  return "mixed";
+}
+
+/** Visible template indices: food/mixed → 吃 pair, travel → 游 pair */
+export function getVisibleTemplateIndices(type: CollectionType): number[] {
+  // [诗意, themed-pair, 觅·于途]
+  return type === "travel"
+    ? [0, 3, 4, 5] // 诗意, 游·在游, 游·在地, 觅·于途
+    : [0, 1, 2, 5]; // 诗意, 吃·在吃, 食·在地, 觅·于途
+}
+
+export function getDefaultTemplateIdx(listTitle: string, items: FavoriteItem[]): number {
+  const type = classifyCollection(listTitle, items);
+  switch (type) {
+    case "food": return 1;   // 吃·在吃
+    case "travel": return 3; // 游·在游
+    default: return 0;       // 诗意
+  }
 }
 
 /* ── Template definitions ── */
 interface MujiTemplateData {
   id: string;
+  /** Config key shared between eat/travel pairs — defaults to id */
+  configId?: string;
   label: string;
   topText: string;
   bottomText: string;
@@ -124,6 +158,22 @@ interface MujiTemplateData {
   defaultConfig?: Partial<MujiPosterConfig>;
   getSubLabels: (items: FavoriteItem[], cityEntries: CityEntry[]) => string[];
 }
+
+/** Helper: resolve config key (eat/travel pairs share the same config) */
+export function templateConfigId(t: MujiTemplateData): string {
+  return t.configId ?? t.id;
+}
+
+/* Shared configs between eat/travel pairs — adjust once, both sync */
+const AGAIN_CONFIG: Partial<MujiPosterConfig> = { mainSpacing: 0.16, topPos: 22, subOffsetX: -4, subOffsetY: -20 };
+const AT_CONFIG: Partial<MujiPosterConfig> = { mainSize: 10.5, mainSpacing: 0.17, topPos: 7, bottomPos: 19, subOffsetY: 2 };
+
+/* 觅·于途 — reference config designed for 4:3 landscape, auto-adapted at render */
+const DISCOVER_CONFIG: Partial<MujiPosterConfig> = {
+  mainSize: 11, mainSpacing: 0.21, mainWeight: 100, mainStroke: 0,
+  topPos: 16, bottomPos: 9,
+  subWeight: 400, subOffsetY: -7,
+};
 
 export const MUJI_TEMPLATES: MujiTemplateData[] = [
   {
@@ -155,7 +205,7 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
     bottomText: "",
     flatSubs: true,
     subBottom: true,
-    defaultConfig: { mainSpacing: 0.16, topPos: 22, subOffsetX: -4, subOffsetY: -20 },
+    defaultConfig: AGAIN_CONFIG,
     getSubLabels: (items) => getTopFoodLabels(items, "food"),
   },
   {
@@ -164,7 +214,7 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
     topText: "吃，在",
     bottomText: "吃",
     flatSubs: true,
-    defaultConfig: { mainSize: 10.5, mainSpacing: 0.17, topPos: 7, bottomPos: 19, subOffsetY: 2 },
+    defaultConfig: AT_CONFIG,
     getSubLabels: (_, cityEntries) => {
       if (cityEntries.length > 0) return cityEntries.slice(0, 10).map((c) => c.name);
       return ["这里", "那里", "远方", "下一站", "记忆里"];
@@ -172,11 +222,13 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
   },
   {
     id: "travel-again",
+    configId: "eat-again",
     label: "游·在游",
     topText: "游，在游",
     bottomText: "",
     flatSubs: true,
     subBottom: true,
+    defaultConfig: AGAIN_CONFIG,
     getSubLabels: (_, cityEntries) => {
       if (cityEntries.length > 0) return cityEntries.slice(0, 10).map((c) => c.name);
       return ["远方", "山川", "湖海", "下一程", "此刻"];
@@ -184,10 +236,12 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
   },
   {
     id: "travel-at",
+    configId: "eat-at",
     label: "游·在地",
     topText: "游，在",
     bottomText: "游",
     flatSubs: true,
+    defaultConfig: AT_CONFIG,
     getSubLabels: (_, cityEntries) => {
       if (cityEntries.length > 0) return cityEntries.slice(0, 10).map((c) => c.name);
       return ["这里", "那里", "远方", "山川", "湖海"];
@@ -199,6 +253,7 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
     topText: "觅",
     bottomText: "于途",
     flatSubs: true,
+    defaultConfig: DISCOVER_CONFIG,
     getSubLabels: (items, cityEntries) => {
       const foods = getTopFoodLabels(items).slice(0, 5);
       const cities = cityEntries.slice(0, 5).map((c) => c.name);
@@ -302,17 +357,20 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
   const rawTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
   const mujiHue = useMapStore((s) => s.mujiHue);
   const colorPreset = useMemo(() => deriveMujiColors(mujiHue), [mujiHue]);
+  const listTitle = useFavoriteStore((s) => s.listTitle);
 
-  const autoIdx = useMemo(() => getDefaultTemplateIdx(items), [items]);
+  const autoIdx = useMemo(() => getDefaultTemplateIdx(listTitle, items), [listTitle, items]);
   const templateIdx = rawTemplateIdx < 0 ? autoIdx : rawTemplateIdx % MUJI_TEMPLATES.length;
   const template = MUJI_TEMPLATES[templateIdx];
 
   // Fallback chain: store custom -> template-specific default -> global default
+  // eat/travel pairs share the same config key via configId
+  const cfgKey = templateConfigId(template);
   const templateDefault = template.defaultConfig
     ? { ...DEFAULT_CONFIG, ...template.defaultConfig }
     : DEFAULT_CONFIG;
-  const storeConfig = mujiConfigs[template.id] ?? templateDefault;
-  const c = W / H >= 1.5 ? WIDESCREEN_CONFIG : storeConfig;
+  const storeConfig = mujiConfigs[cfgKey] ?? templateDefault;
+  const c = adaptConfigForRatio(storeConfig, W, H);
 
   const subLabels = useMemo(
     () =>
@@ -395,8 +453,6 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
 
   return (
     <KonvaPosterStage width={W} height={H} transparent>
-      {/* Transparent overlay — no background, renders above MapView */}
-
       {/* Top text (vertical) */}
       <VerticalText
         text={template.topText}

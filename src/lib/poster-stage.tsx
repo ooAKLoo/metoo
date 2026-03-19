@@ -100,13 +100,19 @@ export function KonvaPosterStage({ width, height, children, transparent }: Props
   );
 }
 
+/** Generate a standardised poster filename with timestamp down to seconds. */
+export function posterFilename(name: string): string {
+  const d = new Date();
+  const ts = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}_${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}${String(d.getSeconds()).padStart(2, "0")}`;
+  return `觅途-${name}-${ts}.png`;
+}
+
 /** Export a Konva Stage to PNG and save via Tauri. */
 export async function saveKonvaPosterToDownloads(
   stage: Konva.Stage,
   name: string,
 ) {
-  const timestamp = new Date().toISOString().slice(0, 10);
-  const filename = `觅途-${name}-${timestamp}.png`;
+  const filename = posterFilename(name);
 
   // Try Konva native export first (fast, high-quality)
   try {

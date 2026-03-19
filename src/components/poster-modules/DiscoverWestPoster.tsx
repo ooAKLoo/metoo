@@ -103,6 +103,25 @@ function CoverImage({
   gradientH: number;
 }) {
   const [img] = useImage(src, "anonymous");
+
+  // object-fit: cover — maintain aspect ratio, crop to fill
+  let imgX = 0, imgY = 0, imgW = w, imgH = h;
+  if (img && img.naturalWidth && img.naturalHeight) {
+    const imgRatio = img.naturalWidth / img.naturalHeight;
+    const boxRatio = w / h;
+    if (imgRatio > boxRatio) {
+      // image wider than box → fit height, crop width
+      imgH = h;
+      imgW = h * imgRatio;
+      imgX = (w - imgW) / 2;
+    } else {
+      // image taller than box → fit width, crop height
+      imgW = w;
+      imgH = w / imgRatio;
+      imgY = (h - imgH) / 2;
+    }
+  }
+
   return (
     <Group
       x={x}
@@ -120,8 +139,8 @@ function CoverImage({
     >
       {/* Gray placeholder */}
       <Rect width={w} height={h} fill="#e5e7eb" />
-      {/* Cover image */}
-      {img && <KImage image={img} width={w} height={h} />}
+      {/* Cover image (object-fit: cover) */}
+      {img && <KImage image={img} x={imgX} y={imgY} width={imgW} height={imgH} />}
       {/* Gradient overlay */}
       <Rect
         y={h - gradientH}

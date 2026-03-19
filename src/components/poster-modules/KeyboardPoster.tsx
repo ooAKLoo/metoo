@@ -109,7 +109,6 @@ export const KEYBOARD_THEMES: ThemePreset[] = [
 
 /* ── Style definitions (rendering approach) ── */
 export const KEYBOARD_STYLES = [
-  { id: "desktop", label: "桌面" },
   { id: "persp3d", label: "3D透视" },
   { id: "isometric", label: "等距" },
 ];
@@ -209,16 +208,12 @@ function TypographySection({
   totalItems,
   topCity,
   theme,
-  W,
-  H,
 }: {
   layout: ReturnType<typeof useTypographyLayout>;
   cityCount: number;
   totalItems: number;
   topCity: string;
   theme: ThemePreset;
-  W: number;
-  H: number;
 }) {
   return (
     <>
@@ -243,9 +238,6 @@ function TypographySection({
       ))}
       <Rect x={layout.padLeft} y={layout.accentY} width={48} height={layout.accentH}
         fill={theme.accentColor} cornerRadius={2} />
-      <Text x={layout.padLeft} y={H - 26} text="METOO"
-        fontSize={10} fontStyle="600" fill={theme.subtitleColor}
-        letterSpacing={10 * 0.2} fontFamily={FONT_UI} />
     </>
   );
 }
@@ -393,7 +385,7 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
       }}>
         <Rect width={W} height={H} fill={theme.posterBg} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
-          topCity={topCity} theme={theme} W={W} H={H} />
+          topCity={topCity} theme={theme} />
         <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
         {kbData.keys.map((k, i) => (
           <Group key={i}>
@@ -551,7 +543,7 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
       }}>
         <Rect width={W} height={H} fill={theme.posterBg} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
-          topCity={topCity} theme={theme} W={W} H={H} />
+          topCity={topCity} theme={theme} />
         <Line points={kbData.bgPts} closed fill={theme.kbContainerBg} />
         {kbData.keys.map((k, i) => (
           <Group key={i}>
@@ -700,7 +692,7 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
           ctx.restore(); ctx.fillStrokeShape(shape);
         }} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
-          topCity={topCity} theme={theme} W={W} H={H} />
+          topCity={topCity} theme={theme} />
         <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
         {kbData.keys.map((k, i) => (
           <Group key={i}>
@@ -729,9 +721,8 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
 function KeyboardPoster(props: PosterModuleProps) {
   const styleIdx = useMapStore((s) => s.keyboardStyleIdx);
   switch (styleIdx) {
-    case 1: return <Persp3DContent {...props} />;
-    case 2: return <IsometricContent {...props} />;
-    default: return <DesktopContent {...props} />;
+    case 1: return <IsometricContent {...props} />;
+    default: return <Persp3DContent {...props} />;
   }
 }
 
