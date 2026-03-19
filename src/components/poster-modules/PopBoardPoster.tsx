@@ -492,6 +492,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
           const iconS = Math.min(csW, csH) * 0.32;
           const iconX = cx + (csW - iconS) / 2;
           const iconY = cy + csH * 0.15;
+          const labelFS = Math.min(csW, csH) * 0.13;
+          const labelY = cy + csH * 0.55;
           return (
             <Group key={cell.idx}>
               <Rect x={cx} y={cy} width={csW} height={csH} fill={cell.bgColor} />
@@ -499,9 +501,14 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
               {cell.corner.iconType === "coffee" && <KonvaIconCoffee x={iconX} y={iconY} s={iconS} ink={dp.lightInk} />}
               {cell.corner.iconType === "search" && <KonvaIconSearch x={iconX} y={iconY} s={iconS} ink={dp.lightInk} />}
               {cell.corner.iconType === "rocket" && <KonvaIconRocket x={iconX} y={iconY} s={iconS} ink={dp.lightInk} />}
-              <Text x={cx} y={cy + csH * 0.55} width={csW} align="center"
-                text={cell.corner.label} fontSize={14} fontStyle="900" fill="#fff"
-                fontFamily={FONT_CN} stroke={INK} strokeWidth={1} />
+              {[[1, 1], [-1, -1], [1, -1], [-1, 1]].map(([dx, dy], i) => (
+                <Text key={i} x={cx + dx} y={labelY + dy} width={csW} align="center"
+                  text={cell.corner!.label} fontSize={labelFS} fontStyle="900" fill={INK}
+                  fontFamily={FONT_CN} />
+              ))}
+              <Text x={cx} y={labelY} width={csW} align="center"
+                text={cell.corner.label} fontSize={labelFS} fontStyle="900" fill="#fff"
+                fontFamily={FONT_CN} />
             </Group>
           );
         }
