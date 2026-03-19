@@ -8,16 +8,92 @@ const N = 7; // 7×7 grid → 24 edge cells
 const GAP = 3;
 const PAD = 4;
 
-/* ── Pop-Art palette ── */
-const C = {
-  pink: "#FF5CB5",
-  yellow: "#FFEB00",
-  blue: "#3B6BFF",
-  mint: "#00E5FF",
-  orange: "#FF9800",
-};
+/* ═══════════════════════════════════════════════════
+   HSL 色彩推导引擎 — 参考 ThumbnailBanner 思路
+   单一色相 → 自动推导 6 色 + 背景 + 描边
+   ═══════════════════════════════════════════════════ */
 
-const CELL_PALETTE = [C.pink, C.yellow, "#fff", C.mint, C.orange, "#fff"];
+export function hslToHex(h: number, s: number, l: number): string {
+  h = ((h % 360) + 360) % 360;
+  s = Math.max(0, Math.min(100, s)) / 100;
+  l = Math.max(0, Math.min(100, l)) / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  const to = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+export function hexToHsl(hex: string): [number, number, number] {
+  const raw = hex.replace("#", "");
+  const r = parseInt(raw.slice(0, 2), 16) / 255;
+  const g = parseInt(raw.slice(2, 4), 16) / 255;
+  const b = parseInt(raw.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, Math.round(l * 100)];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+  else if (max === g) h = ((b - r) / d + 2) * 60;
+  else h = ((r - g) / d + 4) * 60;
+  return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+}
+
+/**
+ * 从主色色相推导完整 Pop-Art 棋盘配色
+ *
+ * 设计逻辑：
+ *   primary   → HSL(H,   90%, 65%)  主色
+ *   secondary → HSL(H+55°, 95%, 62%) 暖邻近（原 yellow 位）
+ *   tertiary  → HSL(H+180°,85%, 55%) 补色（原 blue 位）
+ *   quad      → HSL(H+150°,80%, 62%) 拆补色（原 mint 位）
+ *   quinary   → HSL(H+30°, 88%, 58%) 近邻（原 orange 位）
+ *   bg        → HSL(H+210°,45%, 7%)  极暗衬底
+ *   ink       → HSL(H+210°,20%, 12%) 暗描边/阴影
+ *   lightInk  → HSL(H+210°,15%, 25%) 浅描边（图标用）
+ */
+export interface DerivedPopPalette {
+  primary: string;
+  secondary: string;
+  tertiary: string;
+  quad: string;
+  quinary: string;
+  bg: string;
+  ink: string;
+  lightInk: string;
+}
+
+export function derivePopBoardPalette(hue: number): DerivedPopPalette {
+  return {
+    primary:   hslToHex(hue,       90, 65),
+    secondary: hslToHex(hue + 55,  95, 62),
+    tertiary:  hslToHex(hue + 180, 85, 55),
+    quad:      hslToHex(hue + 150, 80, 62),
+    quinary:   hslToHex(hue + 30,  88, 58),
+    bg:        hslToHex(hue + 210, 45, 7),
+    ink:       hslToHex(hue + 210, 20, 12),
+    lightInk:  hslToHex(hue + 210, 15, 25),
+  };
+}
+
+/* ── Hue 预设 — 只需定义名字和色相，配色全自动 ── */
+export const POP_BOARD_HUE_PRESETS = [
+  { name: "玫粉", hue: 330 },
+  { name: "橙红", hue: 15 },
+  { name: "金黄", hue: 45 },
+  { name: "翠绿", hue: 155 },
+  { name: "宝蓝", hue: 220 },
+  { name: "靛紫", hue: 275 },
+];
 
 /* ── Hand-drawn SVG corner icons ── */
 const S = 28; // icon size
@@ -56,47 +132,36 @@ function IconFlag() {
   );
 }
 
-function IconCoffee() {
+function IconCoffee({ ink }: { ink: string }) {
   return (
     <svg viewBox="0 0 28 28" style={ICON_STYLE} fill="none">
-      {/* steam */}
-      <path d="M10 6 Q11 3 10 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M15 6 Q16 3 15 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" />
-      {/* cup body */}
-      <path d="M4 9 H20 L18 24 H6 Z" fill="#fff" stroke="#000" strokeWidth="2.5" strokeLinejoin="round" />
-      {/* handle */}
-      <path d="M20 12 Q26 12 26 17 Q26 22 20 22" stroke="#000" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-      {/* liquid */}
-      <rect x="7" y="14" width="10" height="4" rx="1" fill="#000" opacity="0.2" />
+      <path d="M10 6 Q11 3 10 1" stroke={ink} strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M15 6 Q16 3 15 1" stroke={ink} strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M4 9 H20 L18 24 H6 Z" fill="#fff" stroke={ink} strokeWidth="2.5" strokeLinejoin="round" />
+      <path d="M20 12 Q26 12 26 17 Q26 22 20 22" stroke={ink} strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <rect x="7" y="14" width="10" height="4" rx="1" fill={ink} opacity="0.2" />
     </svg>
   );
 }
 
-function IconSearch() {
+function IconSearch({ ink }: { ink: string }) {
   return (
     <svg viewBox="0 0 28 28" style={ICON_STYLE} fill="none">
-      {/* lens */}
-      <circle cx="12" cy="12" r="8" stroke="#000" strokeWidth="2.5" fill="#fff" />
-      {/* inner reflection */}
-      <circle cx="10" cy="10" r="2" fill="#000" opacity="0.15" />
-      {/* handle */}
-      <line x1="18" y1="18" x2="25" y2="25" stroke="#000" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="8" stroke={ink} strokeWidth="2.5" fill="#fff" />
+      <circle cx="10" cy="10" r="2" fill={ink} opacity="0.15" />
+      <line x1="18" y1="18" x2="25" y2="25" stroke={ink} strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }
 
-function IconRocket() {
+function IconRocket({ ink }: { ink: string }) {
   return (
     <svg viewBox="0 0 28 28" style={ICON_STYLE} fill="none">
-      {/* body */}
-      <path d="M14 2 Q22 8 22 18 L18 22 H10 L6 18 Q6 8 14 2Z" fill="#fff" stroke="#000" strokeWidth="2.5" strokeLinejoin="round" />
-      {/* window */}
-      <circle cx="14" cy="12" r="3" fill="#000" opacity="0.25" stroke="#000" strokeWidth="1.5" />
-      {/* fins */}
-      <path d="M6 18 L3 24 L10 22" fill="#000" stroke="#000" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M22 18 L25 24 L18 22" fill="#000" stroke="#000" strokeWidth="1.5" strokeLinejoin="round" />
-      {/* flame */}
-      <path d="M11 22 Q14 28 17 22" fill="#000" opacity="0.3" />
+      <path d="M14 2 Q22 8 22 18 L18 22 H10 L6 18 Q6 8 14 2Z" fill="#fff" stroke={ink} strokeWidth="2.5" strokeLinejoin="round" />
+      <circle cx="14" cy="12" r="3" fill={ink} opacity="0.25" stroke={ink} strokeWidth="1.5" />
+      <path d="M6 18 L3 24 L10 22" fill={ink} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M22 18 L25 24 L18 22" fill={ink} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M11 22 Q14 28 17 22" fill={ink} opacity="0.3" />
     </svg>
   );
 }
@@ -110,12 +175,15 @@ interface CornerDef {
   color: string;
 }
 
-const CORNER_META: Record<number, CornerDef> = {
-  [CORNER_IDX[0]]: { label: "起点", icon: IconFlag, color: C.pink },
-  [CORNER_IDX[1]]: { label: "休息", icon: IconCoffee, color: C.blue },
-  [CORNER_IDX[2]]: { label: "发现", icon: IconSearch, color: C.yellow },
-  [CORNER_IDX[3]]: { label: "传送", icon: IconRocket, color: C.mint },
-};
+function buildCornerMeta(dp: DerivedPopPalette): Record<number, CornerDef> {
+  const ink = dp.lightInk;
+  return {
+    [CORNER_IDX[0]]: { label: "起点", icon: () => <IconFlag />,      color: dp.primary },
+    [CORNER_IDX[1]]: { label: "休息", icon: () => <IconCoffee ink={ink} />, color: dp.tertiary },
+    [CORNER_IDX[2]]: { label: "发现", icon: () => <IconSearch ink={ink} />, color: dp.secondary },
+    [CORNER_IDX[3]]: { label: "传送", icon: () => <IconRocket ink={ink} />, color: dp.quad },
+  };
+}
 
 /* ── Pattern cell indices (decorative breaks) ── */
 const PATTERN_IDX = new Set([3, 15]);
@@ -132,11 +200,12 @@ function buildEdgePath(): Array<[number, number]> {
 
 const EDGE_PATH = buildEdgePath();
 
-/* ── Starburst conic-gradient ── */
-const STARBURST_BG = Array.from({ length: 12 }, (_, i) => {
-  const a = i * 30;
-  return `${C.yellow}40 ${a}deg ${a + 15}deg, transparent ${a + 15}deg ${a + 30}deg`;
-}).join(", ");
+function buildStarburstBg(yellow: string): string {
+  return Array.from({ length: 12 }, (_, i) => {
+    const a = i * 30;
+    return `${yellow}40 ${a}deg ${a + 15}deg, transparent ${a + 15}deg ${a + 30}deg`;
+  }).join(", ");
+}
 
 /* ── Scatter slot type & defaults ── */
 interface ScatterSlot {
@@ -163,6 +232,13 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
   const centerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const mode = useMapStore((s) => s.popBoardMode);
+  const popBoardHue = useMapStore((s) => s.popBoardHue);
+  const dp = useMemo(() => derivePopBoardPalette(popBoardHue), [popBoardHue]);
+  const C = { pink: dp.primary, yellow: dp.secondary, blue: dp.tertiary, mint: dp.quad, orange: dp.quinary };
+  const INK = dp.ink;
+  const CELL_PALETTE = useMemo(() => [C.pink, C.yellow, "#fff", C.mint, C.orange, "#fff"], [C.pink, C.yellow, C.mint, C.orange]);
+  const CORNER_META = useMemo(() => buildCornerMeta(dp), [dp]);
+  const STARBURST_BG = useMemo(() => buildStarburstBg(C.yellow), [C.yellow]);
   const [slots, setSlots] = useState<ScatterSlot[]>(DEFAULT_SCATTER);
 
   /* Drag state (kept in ref to avoid re-renders during move) */
@@ -229,7 +305,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
           : CELL_PALETTE[idx % CELL_PALETTE.length];
       return { row, col, idx, corner, isPattern, city, cover, bgColor };
     });
-  }, [cities]);
+  }, [cities, CORNER_META, CELL_PALETTE]);
 
   /* ── Drag handlers ── */
   const onPointerDown = useCallback(
@@ -285,7 +361,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
           style={{
             width: PW,
             height: PH,
-            backgroundColor: "#000",
+            backgroundColor: dp.bg,
             padding: PAD,
             boxSizing: "border-box",
             fontFamily: '"ZCOOL KuaiLe", system-ui, -apple-system, sans-serif',
@@ -336,7 +412,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                         fontWeight: 900,
                         color: "#fff",
                         textShadow:
-                          "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000",
+                          `1px 1px 0 ${INK}, -1px -1px 0 ${INK}, 1px -1px 0 ${INK}, -1px 1px 0 ${INK}`,
                         marginTop: 2,
                       }}
                     >
@@ -376,7 +452,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                             zIndex: 1,
                             fontSize: 15,
                             fontWeight: 900,
-                            color: showCover ? "#fff" : "#000",
+                            color: showCover ? "#fff" : INK,
                             lineHeight: 1.1,
                             textAlign: "center",
                             whiteSpace: "nowrap",
@@ -386,7 +462,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                             ...(showCover
                               ? {
                                   textShadow:
-                                    "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000",
+                                    `1px 1px 0 ${INK}, -1px -1px 0 ${INK}, 1px -1px 0 ${INK}, -1px 1px 0 ${INK}`,
                                 }
                               : {}),
                           }}
@@ -402,7 +478,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                             color: "#fff",
                             backgroundColor: showCover
                               ? "rgba(0,0,0,0.5)"
-                              : "#000",
+                              : INK,
                             padding: "0 5px",
                             borderRadius: 2,
                             marginTop: 2,
@@ -420,7 +496,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                       height: "100%",
                       opacity: 0.15,
                       background:
-                        "repeating-linear-gradient(45deg, #000, #000 2px, transparent 2px, transparent 8px)",
+                        `repeating-linear-gradient(45deg, ${INK}, ${INK} 2px, transparent 2px, transparent 8px)`,
                     }}
                   />
                 )}
@@ -433,7 +509,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                       width: 5,
                       height: 5,
                       borderRadius: "50%",
-                      border: "1.5px solid #000",
+                      border: `1.5px solid ${INK}`,
                       backgroundColor: "#fff",
                       opacity: 0.5,
                     }}
@@ -488,8 +564,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                         transform: `rotate(${slot.rot}deg)`,
                         zIndex: dragRef.current?.idx === i ? 5 : 1,
                         backgroundColor: "#fff",
-                        border: "4px solid #000",
-                        boxShadow: "5px 5px 0 0 #000",
+                        border: `4px solid ${INK}`,
+                        boxShadow: `5px 5px 0 0 ${INK}`,
                         padding: 4,
                         boxSizing: "border-box",
                         cursor: "grab",
@@ -516,8 +592,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                           left: "50%",
                           transform: "translateX(-50%)",
                           backgroundColor: C.yellow,
-                          border: "2px solid #000",
-                          boxShadow: "2px 2px 0 0 #000",
+                          border: `2px solid ${INK}`,
+                          boxShadow: `2px 2px 0 0 ${INK}`,
                           padding: "1px 8px",
                           fontSize: 10,
                           fontWeight: 900,
@@ -545,8 +621,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                     transform: "rotate(-6deg)",
                     backgroundColor: C.pink,
                     padding: "14px 32px",
-                    border: "4px solid #000",
-                    boxShadow: "6px 6px 0 0 #000",
+                    border: `4px solid ${INK}`,
+                    boxShadow: `6px 6px 0 0 ${INK}`,
                     marginBottom: 14,
                     display: "inline-block",
                   }}
@@ -556,8 +632,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                       fontSize: 42,
                       fontWeight: 900,
                       color: "#fff",
-                      textShadow: "3px 3px 0 #000",
-                      WebkitTextStroke: "2px #000",
+                      textShadow: `3px 3px 0 ${INK}`,
+                      WebkitTextStroke: `2px ${INK}`,
                       letterSpacing: 4,
                     }}
                   >
@@ -576,8 +652,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   <div
                     style={{
                       backgroundColor: "#fff",
-                      border: "3px solid #000",
-                      boxShadow: "3px 3px 0 0 #000",
+                      border: `3px solid ${INK}`,
+                      boxShadow: `3px 3px 0 0 ${INK}`,
                       borderRadius: 999,
                       padding: "4px 14px",
                       transform: "rotate(3deg)",
@@ -596,8 +672,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   <div
                     style={{
                       backgroundColor: C.yellow,
-                      border: "3px solid #000",
-                      boxShadow: "3px 3px 0 0 #000",
+                      border: `3px solid ${INK}`,
+                      boxShadow: `3px 3px 0 0 ${INK}`,
                       borderRadius: 999,
                       padding: "4px 14px",
                       transform: "rotate(-2deg)",
@@ -628,8 +704,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   height: 48,
                   borderRadius: "50%",
                   backgroundColor: C.yellow,
-                  border: "3px solid #000",
-                  boxShadow: "3px 3px 0 0 #000",
+                  border: `3px solid ${INK}`,
+                  boxShadow: `3px 3px 0 0 ${INK}`,
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -642,7 +718,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                     style={{
                       width: 5,
                       height: 7,
-                      backgroundColor: "#000",
+                      backgroundColor: INK,
                       borderRadius: "50%",
                     }}
                   />
@@ -650,7 +726,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                     style={{
                       width: 5,
                       height: 7,
-                      backgroundColor: "#000",
+                      backgroundColor: INK,
                       borderRadius: "50%",
                     }}
                   />
@@ -659,7 +735,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   style={{
                     width: 16,
                     height: 8,
-                    borderBottom: "3px solid #000",
+                    borderBottom: `3px solid ${INK}`,
                     borderRadius: "0 0 50% 50%",
                   }}
                 />
@@ -672,8 +748,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   top: 16,
                   left: 16,
                   backgroundColor: C.orange,
-                  border: "3px solid #000",
-                  boxShadow: "3px 3px 0 0 #000",
+                  border: `3px solid ${INK}`,
+                  boxShadow: `3px 3px 0 0 ${INK}`,
                   padding: 6,
                   transform: "rotate(-12deg)",
                   width: 72,
@@ -692,7 +768,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                       width: 10,
                       height: 10,
                       borderRadius: "50%",
-                      border: "2px solid #000",
+                      border: `2px solid ${INK}`,
                       backgroundColor: "#fff",
                     }}
                   />
@@ -700,7 +776,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                     style={{
                       width: 30,
                       height: 6,
-                      border: "2px solid #000",
+                      border: `2px solid ${INK}`,
                       backgroundColor: "#fff",
                       marginTop: 2,
                     }}
@@ -720,7 +796,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                         width: 20,
                         height: 20,
                         borderRadius: "50%",
-                        border: "3px solid #000",
+                        border: `3px solid ${INK}`,
                         backgroundColor: "#fff",
                         display: "flex",
                         alignItems: "center",
@@ -731,7 +807,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                         style={{
                           width: 5,
                           height: 5,
-                          backgroundColor: "#000",
+                          backgroundColor: INK,
                           borderRadius: "50%",
                         }}
                       />
@@ -749,8 +825,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   width: 36,
                   height: 36,
                   backgroundColor: "#fff",
-                  border: "3px solid #000",
-                  boxShadow: "3px 3px 0 0 #000",
+                  border: `3px solid ${INK}`,
+                  boxShadow: `3px 3px 0 0 ${INK}`,
                   transform: "rotate(15deg)",
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
@@ -765,7 +841,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                     style={{
                       width: 7,
                       height: 7,
-                      backgroundColor: "#000",
+                      backgroundColor: INK,
                       borderRadius: "50%",
                       margin: "auto",
                     }}
@@ -784,10 +860,10 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
                   fontWeight: 900,
                   fontSize: 13,
                   padding: "3px 10px",
-                  border: "3px solid #000",
-                  boxShadow: "3px 3px 0 0 #000",
+                  border: `3px solid ${INK}`,
+                  boxShadow: `3px 3px 0 0 ${INK}`,
                   transform: "rotate(-6deg)",
-                  textShadow: "1px 1px 0 #000",
+                  textShadow: `1px 1px 0 ${INK}`,
                   zIndex: 3,
                 }}
               >

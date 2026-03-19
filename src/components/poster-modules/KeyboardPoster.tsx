@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { useMapStore } from "../../stores/useMapStore";
 
@@ -29,7 +29,7 @@ interface Palette {
 interface ThemePreset {
   id: string;
   label: string;
-  /** "flat" = box-shadow extrusion (KB2), "rounded" = 3D front+top (KB1) */
+  /** "flat" = box-shadow extrusion, "rounded" = 3D front+top */
   style: "flat" | "rounded";
   posterBg: string;
   textColor: string;
@@ -158,18 +158,6 @@ function seededRng(seed: number) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 }
 
-function solidShadow(layers: { color: string; depth: number }[]) {
-  const parts: string[] = [];
-  let offset = 1;
-  for (const { color, depth } of layers) {
-    for (let i = 0; i < depth; i++) {
-      parts.push(`${offset * -1}px ${offset}px 0 ${color}`);
-      offset++;
-    }
-  }
-  return parts.join(", ");
-}
-
 function hexDarken(hex: string, factor: number) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -183,87 +171,32 @@ function luminance(hex: string) {
     parseInt(hex.slice(5, 7), 16) * 0.114;
 }
 
-/* ── Flat-style key (PopArtKeyboard2) ── */
-const FlatKey: React.FC<{
-  data: KeyDef; pal: Palette; capColor: string; baseColor: string; keyH: number;
-}> = React.memo(({ data, pal, capColor, baseColor, keyH }) => {
-  const bigChar = (data.w === 4 && data.l.length === 1 && !data.type) || data.type === "accent";
-  return (
-    <div style={{ position: "relative", gridColumn: `span ${data.w}`, height: keyH }}>
-      <div style={{
-        position: "absolute", inset: 0, backgroundColor: pal.surface,
-        boxShadow: solidShadow([{ color: baseColor, depth: 8 }, { color: pal.shadow, depth: 6 }]),
-      }}>
-        <div style={{
-          position: "absolute", top: 3, right: 3, bottom: 7, left: 7,
-          backgroundColor: capColor,
-          boxShadow: solidShadow([{ color: pal.shadow, depth: 4 }]),
-          color: pal.shadow,
-          display: "flex",
-          alignItems: bigChar ? "center" : "flex-end",
-          justifyContent: bigChar ? "center" : "flex-start",
-          padding: bigChar ? 0 : "3px 0 3px 5px",
-        }}>
-          <span style={{
-            fontWeight: 700, letterSpacing: "0.05em",
-            fontSize: bigChar ? 22 : 8,
-            textTransform: bigChar ? "uppercase" : "lowercase",
-            fontFamily: "ui-sans-serif, system-ui, sans-serif",
-          }}>
-            {data.l}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-});
-FlatKey.displayName = "FlatKey";
+/* ── Perspective projection (replaces CSS 3D transforms) ──
+ *
+ * Equivalent to: perspective(1200px) rotateX(42deg) scale(0.72)
+ * with transform-origin at center-bottom of the keyboard.
+ *
+ * By computing the projection in JS and rendering as SVG polygons,
+ * the keyboard looks identical in both browser preview and
+ * modern-screenshot export (which cannot handle CSS 3D transforms).
+ */
+const PERSP_D = 1200;
+const ROT_RAD = 42 * Math.PI / 180;
+const COS_R = Math.cos(ROT_RAD);
+const SIN_R = Math.sin(ROT_RAD);
+const KB_SCALE = 0.72;
+const BOTTOM_OFFSET = 30; // keyboard extends 30px below poster bottom
 
-/* ── Rounded-style key (PopArtKeyboard) ── */
-const RoundKey: React.FC<{
-  data: KeyDef; capColor: string; keyH: number;
-}> = React.memo(({ data, capColor, keyH }) => {
-  const bigChar = (data.w === 4 && data.l.length === 1 && !data.type) || data.type === "accent";
-  const frontColor = hexDarken(capColor, 0.72);
-  const textColor = luminance(capColor) < 128 ? "#faf3e0" : "#1a1a2e";
-  const depth = 7;
-  const radius = 7;
-
-  return (
-    <div style={{ position: "relative", gridColumn: `span ${data.w}`, height: keyH }}>
-      {/* shadow */}
-      <div style={{
-        position: "absolute", bottom: -2, left: 3, right: -3, height: depth + 2,
-        background: "rgba(0,0,0,0.35)", borderRadius: `0 0 ${radius}px ${radius}px`,
-      }} />
-      {/* front */}
-      <div style={{
-        position: "absolute", left: 0, right: 0, bottom: 0, height: depth + 5,
-        background: frontColor, borderRadius: `0 0 ${radius}px ${radius}px`,
-      }} />
-      {/* top face */}
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, bottom: depth,
-        borderRadius: radius,
-        display: "flex", alignItems: bigChar ? "center" : "flex-end",
-        justifyContent: bigChar ? "center" : "flex-start",
-        padding: bigChar ? 0 : "3px 0 3px 5px",
-        background: capColor, color: textColor,
-        border: "1.5px solid rgba(0,0,0,0.05)",
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-      }}>
-        <span style={{
-          fontWeight: 700, letterSpacing: "0.05em",
-          fontSize: bigChar ? 20 : 8,
-          textTransform: bigChar ? "uppercase" : "lowercase",
-        }}>
-          {data.l}
-        </span>
-      </div>
-    </div>
-  );
-});
-RoundKey.displayName = "RoundKey";
+/* ── SVG key data ── */
+interface SvgKey {
+  layers: { p: string; f: string }[];
+  label: string;
+  lx: number; ly: number;
+  fs: number;
+  tc: string;
+  ta: "middle" | "start";
+  db: "central" | "auto";
+}
 
 /* ── Main Component ── */
 
@@ -271,7 +204,6 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
   const W = posterWidth;
   const H = posterHeight;
 
-  /* Scale keyboard proportionally to poster width */
   const kbW = Math.round(W * (BASE_KB_W / BASE_W));
   const kbRatio = kbW / BASE_KB_W;
   const kbGap = Math.round(8 * kbRatio);
@@ -310,6 +242,120 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
       })),
     );
   }, [cityCount, totalItems, theme]);
+
+  /* ── Compute projected keyboard as SVG geometry ── */
+  const kbSvg = useMemo(() => {
+    const pad = Math.round(20 * kbRatio);
+    const contentW = kbW - 2 * pad;
+    const colW = (contentW - 59 * kbGap) / 60;
+    const totalH = 2 * pad + 5 * kH + 4 * kbGap;
+
+    /** Project a point from flat keyboard space → poster space */
+    const proj = (kx: number, ky: number): [number, number] => {
+      const rx = (kx - kbW / 2) * KB_SCALE;
+      const ry = (ky - totalH) * KB_SCALE;
+      const yr = ry * COS_R;
+      const zr = ry * SIN_R;
+      const w = 1 - zr / PERSP_D;
+      return [rx / w + W / 2, yr / w + H + BOTTOM_OFFSET];
+    };
+
+    /** Corners → SVG polygon points string */
+    const pts = (cs: [number, number][]) =>
+      cs.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+
+    /** Perspective scale factor at a given keyboard y */
+    const pScale = (ky: number) => {
+      const zr = (ky - totalH) * KB_SCALE * SIN_R;
+      return KB_SCALE / (1 - zr / PERSP_D);
+    };
+
+    // Background quad
+    const bg = pts([proj(0, 0), proj(kbW, 0), proj(kbW, totalH), proj(0, totalH)]);
+
+    const keys: SvgKey[] = [];
+
+    for (let ri = 0; ri < KB.length; ri++) {
+      let col = 0;
+      for (let ki = 0; ki < KB[ri].length; ki++) {
+        const kd = KB[ri][ki];
+        const cc = keyColors[ri][ki];
+        const kx = pad + col * (colW + kbGap);
+        const ky = pad + ri * (kH + kbGap);
+        const kw = kd.w * colW + (kd.w - 1) * kbGap;
+        col += kd.w;
+
+        const big = (kd.w === 4 && kd.l.length === 1 && !kd.type) || kd.type === "accent";
+        const layers: { p: string; f: string }[] = [];
+
+        if (theme.style === "flat") {
+          /* ── Flat style: layered extrusion ──
+           * Draw back to front: shadow(14px) → base(8px) → surface → cap-shadow(4px) → cap
+           * Each layer covers its predecessor, leaving only the edge band visible.
+           */
+          // Shadow extrusion (offset -14, +14 in flat keyboard space)
+          layers.push({ p: pts([proj(kx-14,ky+14), proj(kx+kw-14,ky+14), proj(kx+kw-14,ky+kH+14), proj(kx-14,ky+kH+14)]), f: theme.palette.shadow });
+          // Base extrusion (offset -8, +8)
+          layers.push({ p: pts([proj(kx-8,ky+8), proj(kx+kw-8,ky+8), proj(kx+kw-8,ky+kH+8), proj(kx-8,ky+kH+8)]), f: cc.base });
+          // Surface
+          layers.push({ p: pts([proj(kx,ky), proj(kx+kw,ky), proj(kx+kw,ky+kH), proj(kx,ky+kH)]), f: theme.palette.surface });
+          // Cap shadow (4px offset from cap edges)
+          layers.push({ p: pts([proj(kx+3,ky+7), proj(kx+kw-7,ky+7), proj(kx+kw-7,ky+kH-3), proj(kx+3,ky+kH-3)]), f: theme.palette.shadow });
+          // Cap face
+          const capC: [number, number][] = [proj(kx+7,ky+3), proj(kx+kw-3,ky+3), proj(kx+kw-3,ky+kH-7), proj(kx+7,ky+kH-7)];
+          layers.push({ p: pts(capC), f: cc.cap });
+
+          const s = pScale(ky + kH / 2);
+          const fs = (big ? 22 : 8) * s;
+          const tc = theme.palette.shadow;
+          let lx: number, ly: number;
+          let ta: "middle" | "start", db: "central" | "auto";
+
+          if (big) {
+            lx = capC.reduce((a, p) => a + p[0], 0) / 4;
+            ly = capC.reduce((a, p) => a + p[1], 0) / 4;
+            ta = "middle"; db = "central";
+          } else {
+            [lx, ly] = proj(kx + 12, ky + kH - 10);
+            ta = "start"; db = "auto";
+          }
+
+          keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx, ly, fs, tc, ta, db });
+        } else {
+          /* ── Rounded style: shadow → front face → top face ── */
+          const depth = 7;
+
+          // Drop shadow
+          layers.push({ p: pts([proj(kx+3,ky+kH-depth-2), proj(kx+kw+3,ky+kH-depth-2), proj(kx+kw+3,ky+kH+2), proj(kx-3,ky+kH+2)]), f: "rgba(0,0,0,0.35)" });
+          // Front face
+          const fc = hexDarken(cc.cap, 0.72);
+          layers.push({ p: pts([proj(kx,ky+kH-depth-5), proj(kx+kw,ky+kH-depth-5), proj(kx+kw,ky+kH), proj(kx,ky+kH)]), f: fc });
+          // Top face
+          const topC: [number, number][] = [proj(kx,ky), proj(kx+kw,ky), proj(kx+kw,ky+kH-depth), proj(kx,ky+kH-depth)];
+          layers.push({ p: pts(topC), f: cc.cap });
+
+          const tc = luminance(cc.cap) < 128 ? "#faf3e0" : "#1a1a2e";
+          const s = pScale(ky + (kH - depth) / 2);
+          const fs = (big ? 20 : 8) * s;
+          let lx: number, ly: number;
+          let ta: "middle" | "start", db: "central" | "auto";
+
+          if (big) {
+            lx = topC.reduce((a, p) => a + p[0], 0) / 4;
+            ly = topC.reduce((a, p) => a + p[1], 0) / 4;
+            ta = "middle"; db = "central";
+          } else {
+            [lx, ly] = proj(kx + 5, ky + kH - depth - 3);
+            ta = "start"; db = "auto";
+          }
+
+          keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx, ly, fs, tc, ta, db });
+        }
+      }
+    }
+
+    return { bg, keys };
+  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
 
   return (
     <div
@@ -372,46 +418,33 @@ function KeyboardPoster({ items, cityEntries, posterWidth, posterHeight }: Poste
             }} />
           </div>
 
-          {/* ── Bottom: keyboard with perspective ── */}
-          <div style={{
-            position: "absolute", bottom: -30, left: "50%",
-            transform: "translateX(-50%)", perspective: 1200, zIndex: 1,
-          }}>
-            <div style={{
-              transform: "rotateX(42deg) scale(0.72)",
-              transformOrigin: "center bottom",
-            }}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(60, minmax(0, 1fr))",
-                gap: kbGap, width: kbW, padding: Math.round(20 * kbRatio),
-                backgroundColor: theme.kbContainerBg,
-                borderRadius: 12,
-              }}>
-                {KB.map((row, ri) =>
-                  row.map((keyData, ki) =>
-                    theme.style === "flat" ? (
-                      <FlatKey
-                        key={`${ri}-${ki}`}
-                        data={keyData}
-                        pal={theme.palette}
-                        capColor={keyColors[ri][ki].cap}
-                        baseColor={keyColors[ri][ki].base}
-                        keyH={kH}
-                      />
-                    ) : (
-                      <RoundKey
-                        key={`${ri}-${ki}`}
-                        data={keyData}
-                        capColor={keyColors[ri][ki].cap}
-                        keyH={kH}
-                      />
-                    ),
-                  ),
+          {/* ── Keyboard: SVG with pre-computed perspective geometry ── */}
+          <svg
+            style={{ position: "absolute", inset: 0, zIndex: 1 }}
+            viewBox={`0 0 ${W} ${H}`}
+          >
+            {/* Container background */}
+            <polygon points={kbSvg.bg} fill={theme.kbContainerBg} />
+            {/* Keys (drawn top-row first for correct painter's-algorithm overlap) */}
+            {kbSvg.keys.map((k, i) => (
+              <g key={i}>
+                {k.layers.map((l, li) => (
+                  <polygon key={li} points={l.p} fill={l.f} />
+                ))}
+                {k.label && (
+                  <text
+                    x={k.lx} y={k.ly}
+                    fill={k.tc} fontSize={k.fs}
+                    fontWeight={700} letterSpacing="0.05em"
+                    fontFamily="ui-sans-serif, system-ui, sans-serif"
+                    textAnchor={k.ta} dominantBaseline={k.db}
+                  >
+                    {k.label}
+                  </text>
                 )}
-              </div>
-            </div>
-          </div>
+              </g>
+            ))}
+          </svg>
 
           {/* ── Brand mark ── */}
           <div style={{

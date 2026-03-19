@@ -627,9 +627,10 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
 
               {ap.city.count > 1 && (
                 <div
+                  data-no-export
                   className={`absolute flex items-center justify-center rounded-full
                     text-white font-semibold leading-none
-                    ${isActive ? "bg-[var(--accent-cyan)]" : "bg-[var(--text-primary)]/70"}`}
+                    ${isActive ? "bg-[var(--accent-cyan)]" : "bg-[rgba(26,26,26,0.7)]"}`}
                   style={{
                     top: -2,
                     right: -2,

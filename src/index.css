@@ -53,6 +53,48 @@ body {
   font-family: "ZCOOL KuaiLe", cursive;
 }
 
+/* ── Hue slider — coloropus 风格 ── */
+input[type="range"].hue-slider {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].hue-slider::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 10px;
+  background: linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red);
+}
+
+input[type="range"].hue-slider::-moz-range-track {
+  height: 10px;
+  border-radius: 10px;
+  background: linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red);
+}
+
+input[type="range"].hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  width: 14px;
+  margin-top: -2px;
+  background-color: var(--hue-thumb, #fff);
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+input[type="range"].hue-slider::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  background-color: var(--hue-thumb, #fff);
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
 @layer utilities {
   .bg-deep {
     background-color: var(--bg-deep);

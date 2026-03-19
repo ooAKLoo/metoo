@@ -5,6 +5,25 @@ import type { FavoriteItem } from "../../stores/useFavoriteStore";
 import type { CityEntry } from "../../hooks/useCityAggregation";
 import { useMapStore } from "../../stores/useMapStore";
 
+/* ── 色相推导 — 单色相 → 文字色 + 光斑色调 ── */
+import { hslToHex } from "./PopBoardPoster";
+
+export function deriveMujiColors(hue: number): { textColor: string; spotTint: string } {
+  return {
+    textColor: hslToHex(hue, 30, 18),
+    spotTint:  hslToHex(hue, 15, 94),
+  };
+}
+
+export const MUJI_HUE_PRESETS = [
+  { name: "墨色", hue: 30 },
+  { name: "靛蓝", hue: 215 },
+  { name: "朱红", hue: 0 },
+  { name: "松绿", hue: 160 },
+  { name: "紫檀", hue: 300 },
+  { name: "赭石", hue: 25 },
+];
+
 const WIDESCREEN_CONFIG: MujiPosterConfig = {
   mainSize: 10.5,
   mainSpacing: 0,
@@ -38,17 +57,17 @@ const WAVE_DY = [0, 2, 4, 6, 0, 3, 5, 7, 7, 7];
 
 /* ── Food category keywords ── */
 const FOOD_CATS: { label: string; kw: string[] }[] = [
-  { label: "火锅", kw: ["火锅"] },
-  { label: "烧烤", kw: ["烧烤", "撸串", "烤串"] },
-  { label: "咖啡", kw: ["咖啡"] },
-  { label: "奶茶", kw: ["奶茶", "果茶", "茶饮"] },
-  { label: "甜品", kw: ["甜品", "蛋糕", "甜点", "冰淇淋", "面包", "烘焙"] },
-  { label: "面食", kw: ["面馆", "米线", "螺蛳粉", "拉面", "米粉", "面条"] },
-  { label: "小吃", kw: ["小吃", "夜市", "街头"] },
-  { label: "日料", kw: ["日料", "寿司", "刺身", "居酒屋"] },
-  { label: "西餐", kw: ["西餐", "牛排", "披萨", "意面", "汉堡"] },
-  { label: "海鲜", kw: ["海鲜", "生蚝", "龙虾", "螃蟹"] },
-  { label: "早茶", kw: ["早茶", "点心", "茶楼", "粤菜"] },
+  { label: "火锅店", kw: ["火锅"] },
+  { label: "烧烤店", kw: ["烧烤", "撸串", "烤串"] },
+  { label: "咖啡馆", kw: ["咖啡"] },
+  { label: "奶茶店", kw: ["奶茶", "果茶", "茶饮"] },
+  { label: "甜品店", kw: ["甜品", "蛋糕", "甜点", "冰淇淋", "面包", "烘焙"] },
+  { label: "面馆", kw: ["面馆", "米线", "螺蛳粉", "拉面", "米粉", "面条"] },
+  { label: "小吃摊", kw: ["小吃", "夜市", "街头"] },
+  { label: "日料店", kw: ["日料", "寿司", "刺身", "居酒屋"] },
+  { label: "西餐厅", kw: ["西餐", "牛排", "披萨", "意面", "汉堡"] },
+  { label: "海鲜馆", kw: ["海鲜", "生蚝", "龙虾", "螃蟹"] },
+  { label: "茶楼", kw: ["早茶", "点心", "茶楼", "粤菜"] },
 ];
 
 const SIGHT_KW = [
@@ -117,10 +136,21 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
     topText: "再见，在",
     bottomText: "见。",
     flatSubs: true,
-    getSubLabels: () => [
-      "無印良品", "生活里", "下一程", "家", "春夏秋冬",
-      "相聚时", "独处时", "卧室", "厨房", "山川",
-    ],
+    getSubLabels: (items, cityEntries) => {
+      const foods = getTopFoodLabels(items).slice(0, 5);
+      const cities = cityEntries.slice(0, 5).map((c) => c.name);
+      const mixed: string[] = [];
+      const max = Math.max(foods.length, cities.length);
+      for (let i = 0; i < max && mixed.length < 10; i++) {
+        if (i < cities.length) mixed.push(cities[i]);
+        if (i < foods.length) mixed.push(foods[i]);
+      }
+      if (mixed.length < 3) {
+        const fb = ["远方", "美味", "山川", "烟火气", "人间味", "下一程", "归途", "此刻", "记忆里", "旅途"];
+        for (const f of fb) { if (mixed.length >= 10) break; if (!mixed.includes(f)) mixed.push(f); }
+      }
+      return mixed;
+    },
   },
   {
     id: "eat-again",
@@ -190,6 +220,8 @@ export const MUJI_TEMPLATES: MujiTemplateData[] = [
 function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
   const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const rawTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
+  const mujiHue = useMapStore((s) => s.mujiHue);
+  const colorPreset = useMemo(() => deriveMujiColors(mujiHue), [mujiHue]);
 
   const autoIdx = useMemo(() => getDefaultTemplateIdx(items), [items]);
   const templateIdx = rawTemplateIdx < 0 ? autoIdx : rawTemplateIdx % MUJI_TEMPLATES.length;
@@ -217,7 +249,7 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
       style={{
         containerType: "size",
         fontFamily: '"Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif',
-        color: "#2a2825",
+        color: colorPreset.textColor,
       }}
     >
       {/* Light spots */}
@@ -225,12 +257,13 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
         {LIGHT_SPOTS.map((s, i) => (
           <div
             key={i}
-            className="absolute rounded-full bg-white/80"
+            className="absolute rounded-full"
             style={{
               width: s.w, height: s.h,
               top: s.top, left: s.left,
               filter: `blur(${s.blur}px)`,
               opacity: s.op,
+              backgroundColor: colorPreset.spotTint,
             }}
           />
         ))}

@@ -1,5 +1,12 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useMemo, useRef, useState, useEffect, useCallback } from "react";
 import type { PosterModuleProps } from "../../lib/poster-modules";
+import { useMapStore } from "../../stores/useMapStore";
+
+/* ── Palette context — avoids threading props through every sub-component ── */
+interface PalCtx { colors: string[]; muted: string; ink: string; line: string; bg: string }
+const PalCtxDefault: PalCtx = { colors: ["#D4A853", "#2D4A3E", "#C67F6B", "#7A3B4E", "#8B9E78", "#B8926A"], muted: "#C8C0B8", ink: "#2D2D2D", line: "#E8E2DA", bg: "#F7F5F2" };
+const PalContext = createContext<PalCtx>(PalCtxDefault);
+const usePal = () => useContext(PalContext);
 
 /* ── Poster & panel dimensions ── */
 const PAD = 40;
@@ -7,13 +14,86 @@ const GAP = 12;
 const HDR = 64;
 const FTR = 28;
 
-/* ── Earth-tone palette ── */
-const EARTH = ["#D4A853", "#2D4A3E", "#C67F6B", "#7A3B4E", "#8B9E78", "#B8926A"];
-const MUTED = "#C8C0B8";
-const INK = "#2D2D2D";
-const LINE = "#E8E2DA";
-const PBG = "#F7F5F2";
+/* ── 色相推导引擎 — 单色相 → 全套数据配色 ── */
+import { hslToHex } from "./PopBoardPoster";
+
+export function deriveDataPalette(hue: number): PalCtx {
+  return {
+    colors: [
+      hslToHex(hue,       70, 52),
+      hslToHex(hue + 60,  60, 42),
+      hslToHex(hue + 120, 55, 50),
+      hslToHex(hue + 180, 50, 48),
+      hslToHex(hue + 240, 60, 50),
+      hslToHex(hue + 300, 55, 48),
+    ],
+    muted: hslToHex(hue, 10, 75),
+    ink:   hslToHex(hue + 210, 25, 18),
+    line:  hslToHex(hue, 10, 90),
+    bg:    hslToHex(hue, 8, 96),
+  };
+}
+
+export const DATA_HUE_PRESETS = [
+  { name: "大地", hue: 35 },
+  { name: "珊瑚", hue: 0 },
+  { name: "森林", hue: 145 },
+  { name: "海洋", hue: 200 },
+  { name: "薰衣草", hue: 270 },
+  { name: "玫瑰", hue: 340 },
+];
+
 const FT = '"Noto Sans SC","PingFang SC",system-ui,sans-serif';
+
+/* ── Visual style presets ── */
+export interface DataPostcardStylePreset {
+  id: string;
+  label: string;
+  panelRadius: number;
+  panelBorder: number;
+  panelShadowOffset: number;
+  panelShadowBlur: number;
+  /** 内阴影（黏土/浮雕） */
+  insetShadow: string;
+  /** 海报外框圆角 */
+  posterRadius: number;
+  /** 噪点纹理 */
+  noiseOverlay: boolean;
+}
+
+export const DATA_POSTCARD_STYLES: DataPostcardStylePreset[] = [
+  {
+    id: "clean", label: "简约",
+    panelRadius: 16, panelBorder: 0, panelShadowOffset: 0, panelShadowBlur: 0,
+    insetShadow: "", posterRadius: 24, noiseOverlay: false,
+  },
+  {
+    id: "brutalism", label: "野兽派",
+    panelRadius: 8, panelBorder: 3, panelShadowOffset: 5, panelShadowBlur: 0,
+    insetShadow: "", posterRadius: 0, noiseOverlay: false,
+  },
+  {
+    id: "card", label: "卡片",
+    panelRadius: 16, panelBorder: 0, panelShadowOffset: 0, panelShadowBlur: 12,
+    insetShadow: "", posterRadius: 24, noiseOverlay: false,
+  },
+  {
+    id: "outlined", label: "描边",
+    panelRadius: 12, panelBorder: 1.5, panelShadowOffset: 0, panelShadowBlur: 0,
+    insetShadow: "", posterRadius: 16, noiseOverlay: false,
+  },
+  {
+    id: "clay", label: "黏土",
+    panelRadius: 24, panelBorder: 0, panelShadowOffset: 0, panelShadowBlur: 20,
+    insetShadow: "inset 2px 2px 8px rgba(255,255,255,0.7), inset -2px -2px 6px rgba(0,0,0,0.05)",
+    posterRadius: 32, noiseOverlay: false,
+  },
+  {
+    id: "sketch", label: "手绘",
+    panelRadius: 4, panelBorder: 2, panelShadowOffset: 3, panelShadowBlur: 0,
+    insetShadow: "", posterRadius: 8, noiseOverlay: true,
+  },
+];
 
 /* ── Cardinal spline through points ── */
 function spline(pts: [number, number][]): string {
@@ -46,6 +126,7 @@ function Panel({ children, pw, ph }: { children: React.ReactNode; pw: number; ph
 }
 
 function SectionLabel({ text }: { text: string }) {
+  const { muted: MUTED } = usePal();
   return (
     <text x={16} y={28} fontSize={9} fontWeight={700} fill={MUTED}
       letterSpacing="0.15em" fontFamily={FT}>
@@ -59,6 +140,7 @@ function SectionLabel({ text }: { text: string }) {
    ════════════════════════════════════════════════════ */
 
 function PanelPills({ cities, pw: PW, ph: PH }: { cities: { name: string; count: number }[]; pw: number; ph: number }) {
+  const { colors: EARTH, ink: INK, line: LINE } = usePal();
   const top = cities.slice(0, 8);
   if (!top.length) return <EmptyPanel label="CITIES" pw={PW} ph={PH} />;
 
@@ -183,6 +265,7 @@ function detectTheme(items: { title: string; intro: string }[]): "food" | "sight
    ════════════════════════════════════════════════════ */
 
 function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["items"]; pw: number; ph: number }) {
+  const { colors: EARTH, ink: INK } = usePal();
   const { blocks, label } = useMemo(() => {
     const counts = SUBCATS.map(() => 0);
     for (const item of items) {
@@ -273,6 +356,7 @@ function PanelTopics({ items, pw: PW, ph: PH }: { items: PosterModuleProps["item
    ════════════════════════════════════════════════════ */
 
 function PanelWaffle({ cities, total, pw: PW, ph: PH }: { cities: { name: string; count: number }[]; total: number; pw: number; ph: number }) {
+  const { colors: EARTH, muted: MUTED, line: LINE } = usePal();
   const dots = useMemo(() => {
     const out: string[] = [];
     for (const [idx, city] of cities.entries()) {
@@ -343,6 +427,7 @@ function PanelStats({
   pw: number;
   ph: number;
 }) {
+  const { ink: INK, muted: MUTED, line: LINE } = usePal();
   const cx = PW / 2;
   const secH = (PH - 48) / 3;
 
@@ -390,6 +475,7 @@ function PanelStats({
 
 /* ── Empty fallback ── */
 function EmptyPanel({ label, pw: PW, ph: PH }: { label: string; pw: number; ph: number }) {
+  const { muted: MUTED } = usePal();
   return (
     <Panel pw={PW} ph={PH}>
       <SectionLabel text={label} />
@@ -408,6 +494,32 @@ function EmptyPanel({ label, pw: PW, ph: PH }: { label: string; pw: number; ph: 
    ════════════════════════════════════════════════════ */
 
 function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: H }: PosterModuleProps) {
+  const dataPostcardHue = useMapStore((s) => s.dataPostcardHue);
+  const activePal = useMemo(() => deriveDataPalette(dataPostcardHue), [dataPostcardHue]);
+  const dataPostcardStyleIdx = useMapStore((s) => s.dataPostcardStyleIdx);
+  const sty = DATA_POSTCARD_STYLES[dataPostcardStyleIdx] ?? DATA_POSTCARD_STYLES[0];
+  const palCtx = useMemo<PalCtx>(() => ({
+    colors: activePal.colors, muted: activePal.muted, ink: activePal.ink, line: activePal.line, bg: activePal.bg,
+  }), [activePal]);
+  const INK = activePal.ink;
+  const MUTED = activePal.muted;
+  const PBG = activePal.bg;
+
+  const panelFrame: React.CSSProperties = useMemo(() => {
+    const shadow = sty.panelShadowBlur > 0
+      ? `0 ${sty.panelShadowBlur / 3}px ${sty.panelShadowBlur}px rgba(0,0,0,0.08)`
+      : sty.panelShadowOffset > 0
+        ? `${sty.panelShadowOffset}px ${sty.panelShadowOffset}px 0 ${INK}20`
+        : "none";
+    return {
+      backgroundColor: PBG,
+      borderRadius: sty.panelRadius,
+      overflow: "hidden" as const,
+      border: sty.panelBorder > 0 ? `${sty.panelBorder}px solid ${INK}30` : "none",
+      boxShadow: [shadow, sty.insetShadow].filter(Boolean).join(", ") || "none",
+    };
+  }, [sty, INK, PBG]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
 
@@ -438,6 +550,7 @@ function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: 
   const copy = THEME_COPY[theme];
 
   return (
+    <PalContext.Provider value={palCtx}>
     <div
       ref={containerRef}
       className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
@@ -449,15 +562,23 @@ function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: 
             width: W,
             height: H,
             backgroundColor: "#FFFFFF",
-            borderRadius: 24,
+            borderRadius: sty.posterRadius,
             boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
             fontFamily: FT,
             overflow: "hidden",
             padding: PAD,
             display: "flex",
             flexDirection: "column",
+            position: "relative",
           }}
         >
+          {/* Noise overlay for sketch/vintage styles */}
+          {sty.noiseOverlay && (
+            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", mixBlendMode: "multiply", opacity: 0.1, zIndex: 10 }}>
+              <filter id="dp-noise"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3" /></filter>
+              <rect width="100%" height="100%" filter="url(#dp-noise)" />
+            </svg>
+          )}
           {/* Header — theme-aware */}
           <div
             style={{
@@ -494,19 +615,19 @@ function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: 
             }}
           >
             {/* A: City Pills */}
-            <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
+            <div style={panelFrame}>
               <PanelPills cities={cities} pw={PW} ph={PH} />
             </div>
             {/* B: Content Topics */}
-            <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
+            <div style={panelFrame}>
               <PanelTopics items={items} pw={PW} ph={PH} />
             </div>
             {/* C: Waffle Grid */}
-            <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
+            <div style={panelFrame}>
               <PanelWaffle cities={cities} total={items.length} pw={PW} ph={PH} />
             </div>
             {/* D: Key Stats */}
-            <div style={{ backgroundColor: PBG, borderRadius: 16, overflow: "hidden" }}>
+            <div style={panelFrame}>
               <PanelStats
                 cityCount={cityEntries.length}
                 totalItems={items.length}
@@ -541,6 +662,7 @@ function DataPostcardPoster({ items, cityEntries, posterWidth: W, posterHeight: 
         </div>
       </div>
     </div>
+    </PalContext.Provider>
   );
 }
 

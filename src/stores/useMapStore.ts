@@ -26,8 +26,14 @@ interface MapState {
   keyboardThemeIdx: number;
   patternStyleIdx: number;
   popBoardMode: "cells" | "center";
+  popBoardHue: number;
   mujiTemplateIdx: number;
+  mujiHue: number;
   mosaicThemeIdx: number;
+  mosaicHue: number;
+  mosaicStyleIdx: number;
+  dataPostcardHue: number;
+  dataPostcardStyleIdx: number;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -43,8 +49,14 @@ interface MapState {
   setKeyboardThemeIdx: (idx: number) => void;
   setPatternStyleIdx: (idx: number) => void;
   setPopBoardMode: (mode: "cells" | "center") => void;
+  setPopBoardHue: (hue: number) => void;
   setMujiTemplateIdx: (idx: number) => void;
+  setMujiHue: (hue: number) => void;
   setMosaicThemeIdx: (idx: number) => void;
+  setMosaicHue: (hue: number) => void;
+  setMosaicStyleIdx: (idx: number) => void;
+  setDataPostcardHue: (hue: number) => void;
+  setDataPostcardStyleIdx: (idx: number) => void;
 }
 
 /** Haversine distance in km (good enough for greedy NN) */
@@ -103,8 +115,14 @@ export const useMapStore = create<MapState>((set, get) => ({
   keyboardThemeIdx: 0,
   patternStyleIdx: 0,
   popBoardMode: "cells",
+  popBoardHue: 330,
   mujiTemplateIdx: -1,
+  mujiHue: 30,
   mosaicThemeIdx: 0,
+  mosaicHue: 0,
+  mosaicStyleIdx: 0,
+  dataPostcardHue: 35,
+  dataPostcardStyleIdx: 0,
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
@@ -136,6 +154,12 @@ export const useMapStore = create<MapState>((set, get) => ({
   setKeyboardThemeIdx: (idx) => set({ keyboardThemeIdx: idx }),
   setPatternStyleIdx: (idx) => set({ patternStyleIdx: idx }),
   setPopBoardMode: (mode) => set({ popBoardMode: mode }),
+  setPopBoardHue: (hue) => set({ popBoardHue: hue }),
   setMujiTemplateIdx: (idx) => set({ mujiTemplateIdx: idx }),
+  setMujiHue: (hue) => set({ mujiHue: hue }),
   setMosaicThemeIdx: (idx) => set({ mosaicThemeIdx: idx }),
+  setMosaicHue: (hue) => set({ mosaicHue: hue }),
+  setMosaicStyleIdx: (idx) => set({ mosaicStyleIdx: idx }),
+  setDataPostcardHue: (hue) => set({ dataPostcardHue: hue }),
+  setDataPostcardStyleIdx: (idx) => set({ dataPostcardStyleIdx: idx }),
 }));

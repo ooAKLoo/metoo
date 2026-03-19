@@ -39,7 +39,7 @@ export const DEFAULT_CONFIG: MujiPosterConfig = {
   subStroke: 1.4,
   subOpacity: 0.98,
   subOffsetX: -3,
-  subOffsetY: -6,
+  subOffsetY: 2,
   subStartX: 88,
   subEndX: 12,
   subBaseY: 55,

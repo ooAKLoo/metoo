@@ -797,9 +797,10 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
               </div>
               {ap.city.count > 1 && (
                 <div
+                  data-no-export
                   className={`absolute flex items-center justify-center rounded-full
                     text-white font-semibold leading-none
-                    ${isActive ? "bg-[var(--accent-cyan)]" : "bg-[var(--text-primary)]/70"}`}
+                    ${isActive ? "bg-[var(--accent-cyan)]" : "bg-[rgba(26,26,26,0.7)]"}`}
                   style={{
                     top: -2, right: -2,
                     minWidth: s * 0.38, height: s * 0.38,
@@ -810,6 +811,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
                 </div>
               )}
               <div
+                data-no-export
                 className="absolute left-1/2 -translate-x-1/2 opacity-0
                             group-hover:opacity-100 transition-opacity duration-150
                             pointer-events-none whitespace-nowrap"

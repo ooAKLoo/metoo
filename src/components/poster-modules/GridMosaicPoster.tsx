@@ -15,49 +15,91 @@ export const MOSAIC_THEMES: { id: MosaicThemeId; label: string }[] = [
   { id: "dot", label: "圆点" },
 ];
 
+/* ── Visual style presets — from ovideo design system ── */
+export interface MosaicStylePreset {
+  id: string;
+  label: string;
+  borderWidth: number;
+  shadowOffset: number;
+  shadowBlur: number;
+  borderRadius: number;
+  /** 内阴影（黏土/浮雕感） */
+  insetShadow: string;
+  /** 文字描边 */
+  textStroke: string;
+  /** 噪点纹理叠加 */
+  noiseOverlay: boolean;
+  /** 背景十字格纹 */
+  crosshatch: boolean;
+}
+
+export const MOSAIC_STYLES: MosaicStylePreset[] = [
+  {
+    id: "brutalism", label: "野兽派",
+    borderWidth: 3, shadowOffset: 6, shadowBlur: 0, borderRadius: 14,
+    insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: true,
+  },
+  {
+    id: "clay", label: "黏土",
+    borderWidth: 0, shadowOffset: 0, shadowBlur: 18, borderRadius: 22,
+    insetShadow: "inset 2px 2px 8px rgba(255,255,255,0.6), inset -2px -2px 6px rgba(0,0,0,0.06)",
+    textStroke: "", noiseOverlay: false, crosshatch: false,
+  },
+  {
+    id: "flat", label: "扁平",
+    borderWidth: 1, shadowOffset: 0, shadowBlur: 0, borderRadius: 8,
+    insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: false,
+  },
+  {
+    id: "sketch", label: "手绘",
+    borderWidth: 2, shadowOffset: 3, shadowBlur: 0, borderRadius: 4,
+    insetShadow: "", textStroke: "1.5px", noiseOverlay: true, crosshatch: false,
+  },
+  {
+    id: "neon", label: "霓虹",
+    borderWidth: 2, shadowOffset: 0, shadowBlur: 14, borderRadius: 14,
+    insetShadow: "", textStroke: "2px", noiseOverlay: false, crosshatch: false,
+  },
+  {
+    id: "stacked", label: "3D层叠",
+    borderWidth: 2, shadowOffset: 4, shadowBlur: 0, borderRadius: 10,
+    insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: true,
+  },
+];
+
 /* ── Grid dimensions (base at 800×1100, scales proportionally) ── */
 const BASE_W = 800;
-const BORDER_W = 3;
-const SHADOW = 6;
 
-/* ── Neo-brutalist palettes — clashing, high-contrast colors ── */
-const PALETTES = [
-  {
-    bg: "#FFF8F0",
-    cells: ["#FF6B6B", "#4ECDC4", "#FFE66D", "#FF8A5C", "#A8E6CE", "#FF6F91", "#845EC2", "#FFC75F"],
-    ink: "#1A1A2E",
-    accent: "#FF6B6B",
-  },
-  {
-    bg: "#F0FFF4",
-    cells: ["#00C9A7", "#FF6B6B", "#FFD93D", "#6BCB77", "#FF8066", "#4D96FF", "#9B59B6", "#F39C12"],
-    ink: "#1A1A2E",
-    accent: "#00C9A7",
-  },
-  {
-    bg: "#FFF0F5",
-    cells: ["#FF4081", "#7C4DFF", "#00BCD4", "#FF9100", "#4CAF50", "#E040FB", "#FF5252", "#00E5FF"],
-    ink: "#2C003E",
-    accent: "#FF4081",
-  },
-  {
-    bg: "#FFFDE7",
-    cells: ["#FF5722", "#2196F3", "#4CAF50", "#FF9800", "#9C27B0", "#00BCD4", "#E91E63", "#8BC34A"],
-    ink: "#1B1B1B",
-    accent: "#FF5722",
-  },
-  {
-    bg: "#1A1A2E",
-    cells: ["#E94560", "#0F3460", "#16C79A", "#E07C24", "#9B59B6", "#2E86AB", "#D63031", "#00897B"],
-    ink: "#F8F8F8",
-    accent: "#E94560",
-  },
-  {
-    bg: "#F5F0FF",
-    cells: ["#FF3F00", "#00B4D8", "#FFEA00", "#D500F9", "#00F5D4", "#FE6D73", "#118AB2", "#FFD166"],
-    ink: "#111111",
-    accent: "#FF3F00",
-  },
+/* ── 色相推导引擎 — 单一色相 → 全套配色 ── */
+import { hslToHex } from "./PopBoardPoster";
+
+interface MosaicPalette { bg: string; cells: string[]; ink: string; accent: string }
+
+export function deriveMosaicPalette(hue: number): MosaicPalette {
+  return {
+    bg:     hslToHex(hue, 12, 97),
+    ink:    hslToHex(hue + 210, 35, 12),
+    accent: hslToHex(hue, 85, 58),
+    cells: [
+      hslToHex(hue,       80, 62),
+      hslToHex(hue + 45,  75, 58),
+      hslToHex(hue + 90,  70, 55),
+      hslToHex(hue + 135, 65, 60),
+      hslToHex(hue + 180, 75, 55),
+      hslToHex(hue + 225, 70, 60),
+      hslToHex(hue + 270, 80, 58),
+      hslToHex(hue + 315, 75, 62),
+    ],
+  };
+}
+
+export const MOSAIC_HUE_PRESETS = [
+  { name: "珊瑚", hue: 0 },
+  { name: "橙黄", hue: 30 },
+  { name: "翠绿", hue: 155 },
+  { name: "宝蓝", hue: 220 },
+  { name: "紫罗", hue: 280 },
+  { name: "玫红", hue: 340 },
 ];
 
 /* ── Cell color index — ensures adjacent cells get different colors ── */
@@ -228,8 +270,11 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
     return out;
   }, [cityEntries]);
 
-  /* ── Pick palette ── */
-  const pal = PALETTES[cityEntries.length % PALETTES.length];
+  /* ── Pick palette & style ── */
+  const mosaicHue = useMapStore((s) => s.mosaicHue);
+  const pal = useMemo(() => deriveMosaicPalette(mosaicHue), [mosaicHue]);
+  const mosaicStyleIdx = useMapStore((s) => s.mosaicStyleIdx);
+  const sty = MOSAIC_STYLES[mosaicStyleIdx] ?? MOSAIC_STYLES[0];
 
   /* ── Stats ── */
   const cityCount = cityEntries.length;
@@ -241,13 +286,18 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
     ? `收藏了 ${totalItems} 条内容，足迹遍布 ${cityNames}${cityCount > 3 ? ` 等 ${cityCount} 座城市` : ""}`
     : "开始收藏，记录你的城市足迹";
 
-  /* ── Shared cell base style ── */
+  /* ── Shared cell base style (driven by sty preset) ── */
+  const shadowStr = sty.shadowBlur > 0
+    ? `0 0 ${sty.shadowBlur}px ${pal.ink}40`
+    : sty.shadowOffset > 0
+      ? `${sty.shadowOffset}px ${sty.shadowOffset}px 0 ${pal.ink}`
+      : "none";
   const cellBase: React.CSSProperties = {
     width: CELL,
     height: CELL,
-    borderRadius: 14,
-    border: `${BORDER_W}px solid ${pal.ink}`,
-    boxShadow: `${SHADOW}px ${SHADOW}px 0 ${pal.ink}`,
+    borderRadius: sty.borderRadius,
+    border: sty.borderWidth > 0 ? `${sty.borderWidth}px solid ${pal.ink}` : "none",
+    boxShadow: [shadowStr, sty.insetShadow].filter(Boolean).join(", ") || "none",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -274,24 +324,34 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
             overflow: "hidden",
           }}
         >
-          {/* Background cross-hatch pattern */}
-          <svg
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-            viewBox={`0 0 ${POSTER_W} ${POSTER_H}`}
-          >
-            {Array.from({ length: 180 }, (_, i) => {
-              const col = i % 18;
-              const row = Math.floor(i / 18);
-              const x = 30 + col * 44;
-              const y = 30 + row * 110;
-              return (
-                <g key={i} opacity={0.06}>
-                  <line x1={x - 3} y1={y} x2={x + 3} y2={y} stroke={pal.ink} strokeWidth={1.5} />
-                  <line x1={x} y1={y - 3} x2={x} y2={y + 3} stroke={pal.ink} strokeWidth={1.5} />
-                </g>
-              );
-            })}
-          </svg>
+          {/* Background cross-hatch pattern (only for styles that use it) */}
+          {sty.crosshatch && (
+            <svg
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+              viewBox={`0 0 ${POSTER_W} ${POSTER_H}`}
+            >
+              {Array.from({ length: 180 }, (_, i) => {
+                const col = i % 18;
+                const row = Math.floor(i / 18);
+                const x = 30 + col * 44;
+                const y = 30 + row * 110;
+                return (
+                  <g key={i} opacity={0.06}>
+                    <line x1={x - 3} y1={y} x2={x + 3} y2={y} stroke={pal.ink} strokeWidth={1.5} />
+                    <line x1={x} y1={y - 3} x2={x} y2={y + 3} stroke={pal.ink} strokeWidth={1.5} />
+                  </g>
+                );
+              })}
+            </svg>
+          )}
+
+          {/* Noise overlay (sketch / vintage styles) */}
+          {sty.noiseOverlay && (
+            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", mixBlendMode: "multiply", opacity: 0.12 }}>
+              <filter id="mosaic-noise"><feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" /></filter>
+              <rect width="100%" height="100%" filter="url(#mosaic-noise)" />
+            </svg>
+          )}
 
           {/* Content layer */}
           <div
@@ -334,6 +394,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                             userSelect: "none",
                             position: "relative",
                             zIndex: 1,
+                            ...(sty.textStroke ? { WebkitTextStroke: `${sty.textStroke} ${pal.ink}`, paintOrder: "stroke fill" } : {}),
                           }}
                         >
                           {gridChars[idx]}
@@ -403,9 +464,13 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                 width: GRID_W,
                 padding: "22px 28px",
                 backgroundColor: pal.ink,
-                border: `${BORDER_W}px solid ${pal.accent}`,
-                boxShadow: `${SHADOW}px ${SHADOW}px 0 ${pal.accent}`,
-                borderRadius: 14,
+                border: sty.borderWidth > 0 ? `${sty.borderWidth}px solid ${pal.accent}` : "none",
+                boxShadow: sty.shadowBlur > 0
+                  ? `0 0 ${sty.shadowBlur}px ${pal.accent}40`
+                  : sty.shadowOffset > 0
+                    ? `${sty.shadowOffset}px ${sty.shadowOffset}px 0 ${pal.accent}`
+                    : "none",
+                borderRadius: sty.borderRadius,
                 display: "flex",
                 alignItems: "center",
                 gap: 24,

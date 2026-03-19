@@ -17,7 +17,10 @@ import { MujiPosterDevPanel, DEFAULT_CONFIG } from "./poster-modules/MujiPosterD
 import { KEYBOARD_THEMES } from "./poster-modules/KeyboardPoster";
 import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
 import { MUJI_TEMPLATES, getDefaultTemplateIdx } from "./poster-modules/MujiPoster";
-import { MOSAIC_THEMES } from "./poster-modules/GridMosaicPoster";
+import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
+import { derivePopBoardPalette, hslToHex } from "./poster-modules/PopBoardPoster";
+import { DATA_POSTCARD_STYLES } from "./poster-modules/DataPostcardPoster";
+import { deriveMujiColors } from "./poster-modules/MujiPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
@@ -46,6 +49,18 @@ export function RightPanel() {
   const setMujiTemplateIdx = useMapStore((s) => s.setMujiTemplateIdx);
   const mosaicThemeIdx = useMapStore((s) => s.mosaicThemeIdx);
   const setMosaicThemeIdx = useMapStore((s) => s.setMosaicThemeIdx);
+  const popBoardHue = useMapStore((s) => s.popBoardHue);
+  const setPopBoardHue = useMapStore((s) => s.setPopBoardHue);
+  const mujiHue = useMapStore((s) => s.mujiHue);
+  const setMujiHue = useMapStore((s) => s.setMujiHue);
+  const mosaicHue = useMapStore((s) => s.mosaicHue);
+  const setMosaicHue = useMapStore((s) => s.setMosaicHue);
+  const mosaicStyleIdx = useMapStore((s) => s.mosaicStyleIdx);
+  const setMosaicStyleIdx = useMapStore((s) => s.setMosaicStyleIdx);
+  const dataPostcardHue = useMapStore((s) => s.dataPostcardHue);
+  const setDataPostcardHue = useMapStore((s) => s.setDataPostcardHue);
+  const dataPostcardStyleIdx = useMapStore((s) => s.dataPostcardStyleIdx);
+  const setDataPostcardStyleIdx = useMapStore((s) => s.setDataPostcardStyleIdx);
   const status = useFavoriteStore((s) => s.status);
   const favItems = useFavoriteStore((s) => s.items);
 
@@ -534,6 +549,74 @@ export function RightPanel() {
                         </div>
                       );
                     })()}
+
+                    {/* ── Color palette selectors ── */}
+                    {/* ── Hue sliders ── */}
+                    {activePosterModule === "pop-board" && (
+                      <div className="ml-2 pl-2 border-l border-neutral-200">
+                        <input type="range" min={0} max={359} value={popBoardHue}
+                          onChange={(e) => setPopBoardHue(Number(e.target.value))}
+                          className="hue-slider w-16"
+                          style={{ "--hue-thumb": derivePopBoardPalette(popBoardHue).primary } as React.CSSProperties} />
+                      </div>
+                    )}
+
+                    {activePosterModule === "grid-mosaic" && (
+                      <div className="ml-2 pl-2 border-l border-neutral-200">
+                        <input type="range" min={0} max={359} value={mosaicHue}
+                          onChange={(e) => setMosaicHue(Number(e.target.value))}
+                          className="hue-slider w-16"
+                          style={{ "--hue-thumb": deriveMosaicPalette(mosaicHue).accent } as React.CSSProperties} />
+                      </div>
+                    )}
+
+                    {activePosterModule === "grid-mosaic" && (
+                      <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-neutral-200">
+                        {MOSAIC_STYLES.map((s, i) => {
+                          const isActive = mosaicStyleIdx === i;
+                          return (
+                            <button key={s.id} onClick={() => setMosaicStyleIdx(i)}
+                              className="relative px-2 py-1 rounded-lg text-[10px] font-medium cursor-pointer z-[1]">
+                              {isActive && <motion.div layoutId="mosaic-style-pill" className="absolute inset-0 bg-neutral-800 rounded-lg" transition={{ type: "spring", stiffness: 500, damping: 35 }} />}
+                              <span className={`relative z-[1] transition-colors duration-200 ${isActive ? "text-white" : "text-neutral-500"}`}>{s.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {activePosterModule === "data-postcard" && (
+                      <div className="ml-2 pl-2 border-l border-neutral-200">
+                        <input type="range" min={0} max={359} value={dataPostcardHue}
+                          onChange={(e) => setDataPostcardHue(Number(e.target.value))}
+                          className="hue-slider w-16"
+                          style={{ "--hue-thumb": hslToHex(dataPostcardHue, 70, 52) } as React.CSSProperties} />
+                      </div>
+                    )}
+
+                    {activePosterModule === "data-postcard" && (
+                      <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-neutral-200">
+                        {DATA_POSTCARD_STYLES.map((s, i) => {
+                          const isActive = dataPostcardStyleIdx === i;
+                          return (
+                            <button key={s.id} onClick={() => setDataPostcardStyleIdx(i)}
+                              className="relative px-2 py-1 rounded-lg text-[10px] font-medium cursor-pointer z-[1]">
+                              {isActive && <motion.div layoutId="datapc-style-pill" className="absolute inset-0 bg-neutral-800 rounded-lg" transition={{ type: "spring", stiffness: 500, damping: 35 }} />}
+                              <span className={`relative z-[1] transition-colors duration-200 ${isActive ? "text-white" : "text-neutral-500"}`}>{s.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {activePosterModule === "muji" && (
+                      <div className="ml-2 pl-2 border-l border-neutral-200">
+                        <input type="range" min={0} max={359} value={mujiHue}
+                          onChange={(e) => setMujiHue(Number(e.target.value))}
+                          className="hue-slider w-16"
+                          style={{ "--hue-thumb": deriveMujiColors(mujiHue).textColor } as React.CSSProperties} />
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
