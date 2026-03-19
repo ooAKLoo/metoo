@@ -128,6 +128,72 @@ function cellSize(totalLen: number) { return (totalLen - PAD * 2 - GAP * (N - 1)
 function cellX(col: number, cs: number) { return PAD + col * (cs + GAP); }
 function cellY(row: number, cs: number) { return PAD + row * (cs + GAP); }
 
+/* ── Mini doodle icons for board game cells ── */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function drawCellDoodle(ctx: any, type: number, s: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.8; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  switch (((type % 6) + 6) % 6) {
+    case 0: { // Heart
+      const hw = s / 2;
+      ctx.beginPath();
+      ctx.moveTo(hw, s * 0.22);
+      ctx.bezierCurveTo(hw, 0, 0, 0, 0, s * 0.32);
+      ctx.bezierCurveTo(0, s * 0.65, hw, s * 0.88, hw, s);
+      ctx.bezierCurveTo(hw, s * 0.88, s, s * 0.65, s, s * 0.32);
+      ctx.bezierCurveTo(s, 0, hw, 0, hw, s * 0.22);
+      ctx.closePath();
+      ctx.globalAlpha = 0.13; ctx.fill(); ctx.globalAlpha = 0.28; ctx.stroke();
+      break;
+    }
+    case 1: { // 4-pointed star
+      const r = s / 2, ir = r * 0.35;
+      ctx.beginPath();
+      for (let j = 0; j < 8; j++) {
+        const a = (j * Math.PI) / 4 - Math.PI / 2;
+        const rad = j % 2 === 0 ? r : ir;
+        j === 0 ? ctx.moveTo(r + Math.cos(a) * rad, r + Math.sin(a) * rad) : ctx.lineTo(r + Math.cos(a) * rad, r + Math.sin(a) * rad);
+      }
+      ctx.closePath();
+      ctx.globalAlpha = 0.13; ctx.fill(); ctx.globalAlpha = 0.28; ctx.stroke();
+      break;
+    }
+    case 2: { // Diamond
+      ctx.beginPath();
+      ctx.moveTo(s / 2, 0); ctx.lineTo(s, s / 2); ctx.lineTo(s / 2, s); ctx.lineTo(0, s / 2);
+      ctx.closePath();
+      ctx.globalAlpha = 0.13; ctx.fill(); ctx.globalAlpha = 0.28; ctx.stroke();
+      break;
+    }
+    case 3: { // Crown
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.85); ctx.lineTo(0, s * 0.3); ctx.lineTo(s * 0.25, s * 0.5);
+      ctx.lineTo(s * 0.5, s * 0.15); ctx.lineTo(s * 0.75, s * 0.5);
+      ctx.lineTo(s, s * 0.3); ctx.lineTo(s, s * 0.85); ctx.closePath();
+      ctx.globalAlpha = 0.13; ctx.fill(); ctx.globalAlpha = 0.28; ctx.stroke();
+      break;
+    }
+    case 4: { // Lightning
+      ctx.beginPath();
+      ctx.moveTo(s * 0.55, 0); ctx.lineTo(s * 0.15, s * 0.45); ctx.lineTo(s * 0.45, s * 0.45);
+      ctx.lineTo(s * 0.4, s); ctx.lineTo(s * 0.85, s * 0.5); ctx.lineTo(s * 0.55, s * 0.5);
+      ctx.closePath();
+      ctx.globalAlpha = 0.13; ctx.fill(); ctx.globalAlpha = 0.28; ctx.stroke();
+      break;
+    }
+    case 5: { // Target
+      ctx.globalAlpha = 0.13;
+      ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.45, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.28; ctx.stroke();
+      ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.25, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.08, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+}
+
 /* ── Konva icon shapes ── */
 
 function KonvaIconFlag({ x, y, s }: { x: number; y: number; s: number }) {
@@ -400,7 +466,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
       const city = !corner && !isPattern && ci < cities.length ? cities[ci++] : null;
       const cover = city?.covers[0] ? coverSrc(city.covers[0]) : "";
       const bgColor = corner ? corner.color : isPattern ? "#fff" : CELL_PALETTE[idx % CELL_PALETTE.length];
-      return { row, col, idx, corner, isPattern, city, cover, bgColor };
+      return { row, col, idx, corner, isPattern, city, cover, bgColor, cityStep: city ? ci : 0 };
     });
   }, [cities, CORNER_META, CELL_PALETTE]);
 
@@ -459,16 +525,55 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
         }
 
         if (cell.city) {
+          const doodleS = Math.min(csW, csH) * 0.16;
+          const dir = cell.idx < N ? 0 : cell.idx < 2 * (N - 1) ? 1 : cell.idx < 3 * (N - 1) ? 2 : 3;
+          const chevronPos = [
+            [cx + csW - 8, cy + csH / 2],
+            [cx + csW / 2, cy + csH - 8],
+            [cx + 8, cy + csH / 2],
+            [cx + csW / 2, cy + 8],
+          ][dir];
           return (
-            <CoverImageCell key={cell.idx} src={cell.cover} x={cx} y={cy} w={csW} h={csH}
-              name={cell.city.name} count={cell.city.count} ink={INK} mode={mode} bgColor={cell.bgColor}
-              outline={outlineMap.get(cell.city.name)} />
+            <Group key={cell.idx}>
+              <CoverImageCell src={cell.cover} x={cx} y={cy} w={csW} h={csH}
+                name={cell.city.name} count={cell.city.count} ink={INK} mode={mode} bgColor={cell.bgColor}
+                outline={outlineMap.get(cell.city.name)} />
+              {mode === "center" && (
+                <>
+                  {/* Step number — top-right */}
+                  <Group x={cx + csW - 18} y={cy + 3}>
+                    <Circle x={8} y={8} radius={8} fill="#fff" stroke={INK} strokeWidth={2} />
+                    <Text x={0} y={cell.cityStep >= 10 ? 3 : 2.5} width={16} align="center"
+                      text={`${cell.cityStep}`} fontSize={cell.cityStep >= 10 ? 7.5 : 9}
+                      fontStyle="900" fill={INK} fontFamily={FONT_CN} />
+                  </Group>
+                  {/* Mini doodle — bottom center */}
+                  <Shape x={cx + (csW - doodleS) / 2} y={cy + csH - doodleS - 6}
+                    sceneFunc={(ctx, shape) => {
+                      drawCellDoodle(ctx, cell.cityStep - 1, doodleS, INK);
+                      ctx.fillStrokeShape(shape);
+                    }} />
+                  {/* Path direction chevron */}
+                  <Shape x={chevronPos[0]} y={chevronPos[1]} rotation={dir * 90}
+                    sceneFunc={(ctx, shape) => {
+                      ctx.beginPath();
+                      ctx.moveTo(-3, -4); ctx.lineTo(3, 0); ctx.lineTo(-3, 4);
+                      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+                      ctx.globalAlpha = 0.2; ctx.stroke();
+                      ctx.fillStrokeShape(shape);
+                    }} />
+                </>
+              )}
+            </Group>
           );
         }
 
         return (
           <Group key={cell.idx}>
             <Rect x={cx} y={cy} width={csW} height={csH} fill={cell.bgColor} />
+            <Text x={cx} y={cy + csH * 0.28} width={csW} align="center"
+              text="?" fontSize={Math.min(csW, csH) * 0.38} fontStyle="900"
+              fill={INK} fontFamily={FONT_CN} opacity={0.06} />
             <Shape x={cx} y={cy} sceneFunc={(ctx, shape) => {
               ctx.save(); ctx.beginPath(); ctx.rect(0, 0, csW, csH); ctx.clip();
               ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.globalAlpha = 0.15;
@@ -581,6 +686,115 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
           <Text x={0} y={4} width={76} align="center" text="Good Time!"
             fontSize={13} fontStyle="900" fill="#fff" fontFamily={FONT_CN} stroke={INK} strokeWidth={1} />
         </Group>
+
+        {/* 指南针 — 左侧中部 */}
+        <Group x={10} y={centerH * 0.42} rotation={-8}>
+          <Circle x={22 + 3} y={22 + 3} radius={22} fill={INK} />
+          <Circle x={22} y={22} radius={22} fill="#fff" stroke={INK} strokeWidth={3} />
+          <Shape sceneFunc={(ctx, shape) => {
+            ctx.beginPath();
+            ctx.moveTo(22, 3); ctx.lineTo(26, 22); ctx.lineTo(22, 18); ctx.lineTo(18, 22);
+            ctx.closePath(); ctx.fillStyle = C.pink; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(22, 41); ctx.lineTo(26, 22); ctx.lineTo(22, 26); ctx.lineTo(18, 22);
+            ctx.closePath(); ctx.fillStyle = "#ddd"; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.stroke();
+            ctx.beginPath(); ctx.arc(22, 22, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = INK; ctx.fill();
+            ctx.fillStrokeShape(shape);
+          }} />
+          <Text x={16} y={3} text="N" fontSize={7} fontStyle="900" fill={INK} fontFamily={FONT_CN} />
+        </Group>
+
+        {/* 纸飞机 — 右侧中部 */}
+        <Group x={centerW - 52} y={centerH * 0.43} rotation={22}>
+          <Shape sceneFunc={(ctx, shape) => {
+            ctx.save(); ctx.lineJoin = "round";
+            ctx.beginPath();
+            ctx.moveTo(3, 3 + 14); ctx.lineTo(3 + 40, 3); ctx.lineTo(3 + 36, 3 + 30); ctx.lineTo(3 + 14, 3 + 18);
+            ctx.closePath(); ctx.fillStyle = INK; ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(0, 14); ctx.lineTo(40, 0); ctx.lineTo(36, 30); ctx.lineTo(14, 18);
+            ctx.closePath(); ctx.fillStyle = C.mint; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, 14); ctx.lineTo(36, 10); ctx.lineTo(14, 18);
+            ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+            ctx.restore(); ctx.fillStrokeShape(shape);
+          }} />
+        </Group>
+
+        {/* 命运卡 "?" — 下方偏左 */}
+        <Group x={centerW * 0.2} y={centerH * 0.7} rotation={-15}>
+          <Rect x={4} y={4} width={36} height={48} fill={INK} cornerRadius={4} />
+          <Rect x={0} y={0} width={36} height={48} fill={C.blue} stroke={INK} strokeWidth={3} cornerRadius={4} />
+          <Text x={0} y={6} width={36} align="center"
+            text="?" fontSize={32} fontStyle="900" fill="#fff" fontFamily={FONT_CN}
+            stroke={INK} strokeWidth={1.5} />
+        </Group>
+
+        {/* 金币 — 下方偏右 */}
+        <Group x={centerW * 0.67} y={centerH * 0.69} rotation={8}>
+          <Circle x={12 + 3} y={14 + 3} radius={14} fill={INK} />
+          <Circle x={12} y={14} radius={14} fill={C.yellow} stroke={INK} strokeWidth={3} />
+          <Text x={-2} y={6} width={28} align="center"
+            text="$" fontSize={16} fontStyle="900" fill={INK} fontFamily={FONT_CN} />
+          <Circle x={28 + 3} y={8 + 3} radius={11} fill={INK} />
+          <Circle x={28} y={8} radius={11} fill={C.orange} stroke={INK} strokeWidth={3} />
+          <Text x={17} y={2} width={22} align="center"
+            text="★" fontSize={12} fontStyle="900" fill="#fff" fontFamily={FONT_CN} />
+        </Group>
+
+        {/* 地图标记 — 上方中央偏右 */}
+        <Group x={centerW * 0.42} y={centerH * 0.13} rotation={12}>
+          <Shape sceneFunc={(ctx, shape) => {
+            ctx.save(); ctx.lineJoin = "round";
+            ctx.beginPath();
+            ctx.moveTo(14 + 3, 0 + 3);
+            ctx.bezierCurveTo(22 + 3, 0 + 3, 28 + 3, 6 + 3, 28 + 3, 14 + 3);
+            ctx.bezierCurveTo(28 + 3, 22 + 3, 14 + 3, 34 + 3, 14 + 3, 34 + 3);
+            ctx.bezierCurveTo(14 + 3, 34 + 3, 0 + 3, 22 + 3, 0 + 3, 14 + 3);
+            ctx.bezierCurveTo(0 + 3, 6 + 3, 6 + 3, 0 + 3, 14 + 3, 0 + 3);
+            ctx.fillStyle = INK; ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(14, 0);
+            ctx.bezierCurveTo(22, 0, 28, 6, 28, 14);
+            ctx.bezierCurveTo(28, 22, 14, 34, 14, 34);
+            ctx.bezierCurveTo(14, 34, 0, 22, 0, 14);
+            ctx.bezierCurveTo(0, 6, 6, 0, 14, 0);
+            ctx.fillStyle = C.pink; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.stroke();
+            ctx.beginPath(); ctx.arc(14, 13, 6, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff"; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+            ctx.restore(); ctx.fillStrokeShape(shape);
+          }} />
+        </Group>
+
+        {/* 散落星星 × 3 */}
+        {[
+          { x: centerW * 0.13, y: centerH * 0.58, r: 8, rot: 15, c: C.yellow },
+          { x: centerW * 0.82, y: centerH * 0.28, r: 7, rot: -20, c: C.orange },
+          { x: centerW * 0.55, y: centerH * 0.82, r: 6, rot: 30, c: C.pink },
+        ].map((st, i) => (
+          <Shape key={`star-${i}`} x={st.x} y={st.y} rotation={st.rot}
+            sceneFunc={(ctx, shape) => {
+              const r = st.r; const ir = r * 0.35;
+              const pts = Array.from({ length: 8 }, (_, j) => {
+                const a = (j * Math.PI) / 4 - Math.PI / 2;
+                return [Math.cos(a) * (j % 2 === 0 ? r : ir), Math.sin(a) * (j % 2 === 0 ? r : ir)] as const;
+              });
+              ctx.beginPath();
+              pts.forEach(([px, py], j) => j === 0 ? ctx.moveTo(2 + r + px, 2 + r + py) : ctx.lineTo(2 + r + px, 2 + r + py));
+              ctx.closePath(); ctx.fillStyle = INK; ctx.fill();
+              ctx.beginPath();
+              pts.forEach(([px, py], j) => j === 0 ? ctx.moveTo(r + px, r + py) : ctx.lineTo(r + px, r + py));
+              ctx.closePath(); ctx.fillStyle = st.c; ctx.fill();
+              ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+              ctx.fillStrokeShape(shape);
+            }} />
+        ))}
       </Group>
     </KonvaPosterStage>
   );

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Rect, Text, Line, Group, Shape, Path, Ellipse } from "react-konva";
+import { Rect, Text, Line, Group, Shape, Path } from "react-konva";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { useMapStore } from "../../stores/useMapStore";
@@ -267,10 +267,10 @@ function kbBoundsFromPts(pts: number[], W: number, H: number, pad = 3): AvoidZon
 }
 
 function ScatteredFigures({
-  W, H, seed, figureColor, shadowColor, avoidZones,
+  W, H, seed, figureColor, groundColor, avoidZones,
 }: {
   W: number; H: number; seed: number;
-  figureColor: string; shadowColor: string;
+  figureColor: string; groundColor: string;
   avoidZones: AvoidZone[];
 }) {
   const figures = useMemo(
@@ -287,19 +287,21 @@ function ScatteredFigures({
         const s = baseScale * fig.scale;
         const fx = (fig.x / 100) * W;
         const fy = (fig.y / 100) * H;
-        /* 大气透视：远处人物微微变淡 */
-        const atmosOpacity = 0.55 + fig.scale * 0.45;
-        /* 影子浓淡随深度：近处深、远处淡 */
-        const shadowOpacity = 0.35 + fig.scale * 0.65;
+        /* 大气透视：远处人物显著变淡，近处清晰 */
+        const atmosOpacity = 0.35 + fig.scale * 0.65;
+        /* 线宽随深度递减：近处粗、远处细 */
+        const strokeW = 1.4 + fig.scale * 1.6;
+        /* 地面接触标记宽度 */
+        const groundW = fig.person.shadowW * 0.45;
         return (
           <Group key={i} x={fx} y={fy} scaleX={s} scaleY={s}>
-            {/* Shadow — 紧贴脚底，宽度匹配人物轮廓 */}
-            <Ellipse
-              x={0} y={1}
-              radiusX={fig.person.shadowW * 0.7}
-              radiusY={1.8 + fig.person.shadowW * 0.06}
-              fill={shadowColor}
-              opacity={shadowOpacity}
+            {/* 地面接触标记 — 脚下短横线锚定人物 */}
+            <Line
+              points={[-groundW, 0, groundW, 0]}
+              stroke={groundColor}
+              strokeWidth={1.2}
+              opacity={atmosOpacity * 0.5}
+              lineCap="round"
             />
             {/* Figure — offset so feet are at origin */}
             <Group offsetX={50} offsetY={fig.person.totalH} opacity={atmosOpacity}>
@@ -309,7 +311,7 @@ function ScatteredFigures({
                   data={p.d}
                   fill={p.fill ? figureColor : undefined}
                   stroke={p.stroke ? figureColor : undefined}
-                  strokeWidth={2.5}
+                  strokeWidth={strokeW}
                   lineCap="round"
                   lineJoin="round"
                 />
@@ -319,7 +321,7 @@ function ScatteredFigures({
                   key={`s${j}`}
                   data={p.d}
                   stroke={figureColor}
-                  strokeWidth={2.5}
+                  strokeWidth={strokeW}
                   lineCap="round"
                   lineJoin="round"
                 />
@@ -336,7 +338,7 @@ function useFigureColors(theme: ThemePreset) {
   const isLight = luminance(theme.posterBg) > 140;
   return useMemo(() => ({
     figureColor: isLight ? "rgb(40,40,38)" : "rgb(210,210,208)",
-    shadowColor: isLight ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.22)",
+    groundColor: isLight ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.15)",
   }), [isLight]);
 }
 
@@ -468,7 +470,7 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
 
   const layout = useTypographyLayout(H, topCity, topCities, 0.52);
-  const { figureColor, shadowColor } = useFigureColors(theme);
+  const { figureColor, groundColor } = useFigureColors(theme);
   const figureSeed = useMapStore((s) => s.figureSeed);
   const desktopAvoid = useMemo<AvoidZone[]>(() => [
     { x1: 0, y1: 0, x2: 22, y2: 55 },
@@ -485,7 +487,7 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
       }}>
         <Rect width={W} height={H} fill={theme.posterBg} />
         <ScatteredFigures W={W} H={H} seed={figureSeed}
-          figureColor={figureColor} shadowColor={shadowColor} avoidZones={desktopAvoid} />
+          figureColor={figureColor} groundColor={groundColor} avoidZones={desktopAvoid} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
           topCity={topCity} theme={theme} />
         <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
@@ -632,7 +634,7 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors]);
 
   const layout = useTypographyLayout(H, topCity, topCities, 0.48);
-  const { figureColor, shadowColor } = useFigureColors(theme);
+  const { figureColor, groundColor } = useFigureColors(theme);
   const figureSeed = useMapStore((s) => s.figureSeed);
   const perspAvoid = useMemo<AvoidZone[]>(() => [
     { x1: 0, y1: 0, x2: 22, y2: 50 },
@@ -649,7 +651,7 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
       }}>
         <Rect width={W} height={H} fill={theme.posterBg} />
         <ScatteredFigures W={W} H={H} seed={figureSeed}
-          figureColor={figureColor} shadowColor={shadowColor} avoidZones={perspAvoid} />
+          figureColor={figureColor} groundColor={groundColor} avoidZones={perspAvoid} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
           topCity={topCity} theme={theme} />
         <Line points={kbData.bgPts} closed fill={theme.kbContainerBg} />
@@ -774,7 +776,7 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
 
   const layout = useTypographyLayout(H, topCity, topCities, 0.28);
-  const { figureColor, shadowColor } = useFigureColors(theme);
+  const { figureColor, groundColor } = useFigureColors(theme);
   const figureSeed = useMapStore((s) => s.figureSeed);
   const isoAvoid = useMemo<AvoidZone[]>(() => [
     { x1: 0, y1: 0, x2: 22, y2: 32 },
@@ -804,7 +806,7 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
           ctx.restore(); ctx.fillStrokeShape(shape);
         }} />
         <ScatteredFigures W={W} H={H} seed={figureSeed}
-          figureColor={figureColor} shadowColor={shadowColor} avoidZones={isoAvoid} />
+          figureColor={figureColor} groundColor={groundColor} avoidZones={isoAvoid} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
           topCity={topCity} theme={theme} />
         <Line points={kbData.bg} closed fill={theme.kbContainerBg} />

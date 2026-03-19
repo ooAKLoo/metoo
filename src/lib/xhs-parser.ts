@@ -326,6 +326,8 @@ export const XHS_COLLECT_SCRIPT = `(async () => {
   const delay = ms => new Promise(r => setTimeout(r, ms));
   const notes = new Map();
   let stale = 0;
+  let lastHeight = 0;
+  let iter = 0;
   const nameEl = document.querySelector('.board-info .name') || document.querySelector('.board-owner .title');
   const boardName = nameEl ? nameEl.textContent.trim().split('\\n')[0].trim() : '小红书收藏';
   let boardId = '';
@@ -335,7 +337,8 @@ export const XHS_COLLECT_SCRIPT = `(async () => {
   const cm = countEl?.textContent?.match(/(\\d+)/);
   const total = cm ? parseInt(cm[1]) : 0;
   console.log('🔍 开始收集「' + boardName + '」' + (total ? '（约 ' + total + ' 条）' : '') + '...');
-  while (stale < 8) {
+  while (stale < 25 && iter < 500) {
+    iter++;
     let found = 0;
     document.querySelectorAll('section.note-item, section[data-index]').forEach(el => {
       const a = el.querySelector('a[href*="/board/"], a[href*="/explore/"]');
@@ -355,10 +358,15 @@ export const XHS_COLLECT_SCRIPT = `(async () => {
     });
     if (found > 0) { stale = 0; console.log('📦 ' + notes.size + (total ? ' / ' + total : '') + ' 条'); }
     else stale++;
-    window.scrollBy(0, 600);
-    await delay(350);
+    const curHeight = document.documentElement.scrollHeight;
+    if (curHeight > lastHeight) { lastHeight = curHeight; stale = Math.min(stale, 3); }
+    window.scrollBy(0, 800);
+    await delay(500);
     const ld = document.querySelector('.feeds-loading');
-    if (ld && ld.offsetParent !== null) await delay(800);
+    if (ld && ld.offsetParent !== null) await delay(1500);
+  }
+  if (total > 0 && notes.size < total) {
+    console.log('⚠️ 页面显示共 ' + total + ' 条，实际收集到 ' + notes.size + ' 条');
   }
   window.scrollTo(0, 0);
   const json = JSON.stringify({ _metoo_xhs: true, board: { boardName, boardId, noteCount: notes.size }, notes: [...notes.values()] });
