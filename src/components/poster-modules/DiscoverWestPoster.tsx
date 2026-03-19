@@ -45,16 +45,20 @@ function buildTransitNodes(
 
 /* ── TransitMap component ── */
 
-const TransitMap: React.FC<{ cities: { name: string; count: number }[] }> = ({
+const TransitMap: React.FC<{ cities: { name: string; count: number }[]; scale?: number }> = ({
   cities,
+  scale = 1,
 }) => {
   const nodes = useMemo(() => buildTransitNodes(cities), [cities]);
   const hasBranch = cities.length > 7;
   const mainRight = 480;
   const mainLeft = nodes.length > 0 ? Math.min(...nodes.filter((n) => n.y === 60).map((n) => n.x)) - 20 : 0;
+  const baseW = 480;
+  const baseH = 160;
 
   return (
-    <div className="relative mr-4 select-none" style={{ width: 480, height: 160 }}>
+    <div className="relative mr-4 select-none" style={{ width: baseW * scale, height: baseH * scale }}>
+      <div style={{ width: baseW, height: baseH, transform: `scale(${scale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}>
       <svg
         width="100%"
         height="100%"
@@ -158,6 +162,7 @@ const TransitMap: React.FC<{ cities: { name: string; count: number }[] }> = ({
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 };
@@ -492,7 +497,7 @@ function DiscoverWestPoster({ items, cityEntries, posterWidth: POSTER_W, posterH
               </div>
 
               {/* ── Bottom: footer text + transit map ── */}
-              <div className="flex items-end justify-between pt-8 pb-4" style={{ height: 180 }}>
+              <div className="flex items-end justify-between pt-8 pb-4" style={{ height: isWide ? 240 : 180 }}>
                 <div
                   className="text-gray-900 pb-2"
                   style={{ width: footerTextW, fontSize: footerFs, lineHeight: 1.6, letterSpacing: "0.1em" }}
@@ -511,7 +516,7 @@ function DiscoverWestPoster({ items, cityEntries, posterWidth: POSTER_W, posterH
                 </div>
 
                 <div className="flex items-end justify-end gap-6 relative" style={{ width: footerMapW }}>
-                  <TransitMap cities={transitCities} />
+                  <TransitMap cities={transitCities} scale={isWide ? 1.35 : 1} />
                   {brandingMark}
                 </div>
               </div>

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
-import * as echarts from "echarts/core";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import {
-  ensureWorldGeo, coverSrc, hasCountryGeo,
+  ensureWorldGeo, ensureWorldGeoJson, buildGeoSvg, useSvgRoam,
+  coverSrc, hasCountryGeo,
   AVATAR_MIN, AVATAR_MAX,
-  type AvatarPos,
+  type AvatarPos, type GeoSvgData,
 } from "./map-shared";
 
 // ── Dot Matrix constants ──
@@ -15,14 +15,14 @@ const DOT_LAND_DEFAULT = "#d0d0d0";
 const DOT_LAND_ACTIVE = "#E63946";
 const DOT_COLS = 90;
 const DOT_RADIUS_RATIO = 2.5 / (1000 / DOT_COLS);
-// World map effective aspect ratio: 360° / (145° × aspectScale 0.9) ≈ 2.76
-const MAP_W_H_RATIO = 360 / (145 * 0.9);
 
 // ── Geometry helpers ──
 
 interface DotInfo {
   lng: number;
   lat: number;
+  svgX: number;
+  svgY: number;
   countryIdx: number;
 }
 
@@ -68,7 +68,12 @@ function extractCountryPolygons(
 
 type GeoFeature = { geometry: { type: string; coordinates: unknown }; properties?: { name?: string } };
 
-function buildWorldDotGrid(features: GeoFeature[]) {
+function buildWorldDotGrid(
+  features: GeoFeature[],
+  svgToGeo: (sx: number, sy: number) => [number, number],
+  svgW: number,
+  svgH: number,
+) {
   const validFeatures = features.filter((f) => f.geometry?.coordinates);
   const countryPolygons = validFeatures.map((f) =>
     extractCountryPolygons(f.geometry as { type: string; coordinates: number[][][][] | number[][][][][] }),
@@ -80,15 +85,19 @@ function buildWorldDotGrid(features: GeoFeature[]) {
     if (f.properties?.name) nameToIdx.set(f.properties.name, i);
   });
 
-  const BOUNDS = { minLng: -180, maxLng: 180, minLat: -60, maxLat: 85 };
-  const spacing = (BOUNDS.maxLng - BOUNDS.minLng) / DOT_COLS;
-  const rows = Math.ceil((BOUNDS.maxLat - BOUNDS.minLat) / spacing);
+  // Place dots on a uniform grid in SVG coordinate space (not geographic space)
+  // This ensures visually even spacing regardless of Mercator distortion
+  const svgSpacing = svgW / DOT_COLS;
+  const rows = Math.ceil(svgH / svgSpacing);
 
   const dots: DotInfo[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < DOT_COLS; c++) {
-      const lng = BOUNDS.minLng + c * spacing + spacing / 2;
-      const lat = BOUNDS.maxLat - r * spacing - spacing / 2;
+      const svgX = c * svgSpacing + svgSpacing / 2;
+      const svgY = r * svgSpacing + svgSpacing / 2;
+      // Inverse-project to geographic coordinates for point-in-polygon
+      const [lng, lat] = svgToGeo(svgX, svgY);
+      if (lat < -60 || lat > 85) continue; // skip extreme latitudes
       let countryIdx = -1;
       for (let ci = 0; ci < countryPolygons.length; ci++) {
         const ct = countryPolygons[ci];
@@ -99,7 +108,9 @@ function buildWorldDotGrid(features: GeoFeature[]) {
         }
         if (countryIdx >= 0) break;
       }
-      if (countryIdx >= 0) dots.push({ lng, lat, countryIdx });
+      if (countryIdx >= 0) {
+        dots.push({ lng, lat, svgX, svgY, countryIdx });
+      }
     }
   }
   return { dots, countryPolygons, nameToIdx };
@@ -112,9 +123,8 @@ interface WorldMapProps {
 }
 
 export function WorldMap({ onDrillDown }: WorldMapProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const instanceRef = useRef<echarts.ECharts | null>(null);
-  const [ready, setReady] = useState(false);
+  const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
+  const svgCallbackRef = useCallback((node: SVGSVGElement | null) => setSvgEl(node), []);
 
   const items = useFavoriteStore((s) => s.items);
   const selectedCity = useMapStore((s) => s.selectedCity);
@@ -122,107 +132,72 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
   const { entries } = useCityAggregation();
 
-  // ── Hover animation (driven directly from ECharts events via refs) ──
+  // ── Geo data state ──
+  const [geoSvgData, setGeoSvgData] = useState<GeoSvgData | null>(null);
+  const [worldFeatures, setWorldFeatures] = useState<GeoFeature[] | null>(null);
+
+  // ── Pan/Zoom ──
+  const roam = useSvgRoam(svgEl, geoSvgData?.svgW ?? 0, geoSvgData?.svgH ?? 0, {
+    minZoom: 0.8,
+    maxZoom: 10,
+  });
+
+  // ── Hover state ──
+  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
+
+  // ── Hover animation refs ──
   const hoverAnimRef = useRef({ countryIdx: -1, dotOpacity: 1, rafId: 0 });
   const nameToIdxRef = useRef(new Map<string, number>());
   const drawDotMatrixRef = useRef(() => {});
+
+  // ── Canvas ref ──
+  const dotCanvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const svgSpacingRef = useRef(0);
 
   // ── Avatar overlay ──
   const [avatarPositions, setAvatarPositions] = useState<AvatarPos[]>([]);
   const avatarPosRef = useRef<AvatarPos[]>([]);
   const avatarContainerRef = useRef<HTMLDivElement>(null);
 
-  const computeAvatarPositions = useCallback((): AvatarPos[] => {
-    const chart = instanceRef.current;
-    if (!chart || entries.length === 0) return [];
+  // Stable ref for drill-down callback
+  const drillDownRef = useRef(onDrillDown);
+  drillDownRef.current = onDrillDown;
 
-    const w = chart.getWidth();
-    const h = chart.getHeight();
-    if (!w || !h) return [];
-
-    const geoOpt = (chart.getOption() as { geo?: { zoom?: number }[] })?.geo;
-    const zoom = geoOpt?.[0]?.zoom ?? 1;
-    const zoomScale = Math.pow(zoom, 0.4);
-    const effectiveMin = Math.max(18, AVATAR_MIN * zoomScale);
-    const effectiveMax = Math.min(72, AVATAR_MAX * zoomScale);
-    const maxCount = Math.max(...entries.map((e) => e.count), 1);
-    const maxSize = effectiveMax;
-
-    const raw: AvatarPos[] = [];
-    for (const city of entries) {
-      if (city.covers.length === 0) continue;
-      const px = chart.convertToPixel("geo", city.coord);
-      if (!px || !isFinite(px[0]) || !isFinite(px[1])) continue;
-      // Skip avatars outside viewport
-      if (px[0] < -maxSize || px[0] > w + maxSize) continue;
-      if (px[1] < -maxSize || px[1] > h + maxSize) continue;
-      const t = Math.sqrt(city.count / maxCount);
-      const size = effectiveMin + t * (effectiveMax - effectiveMin);
-      raw.push({ city, x: px[0], y: px[1], size, visible: true });
-    }
-
-    for (let i = 0; i < raw.length; i++) {
-      if (!raw[i].visible) continue;
-      for (let j = i + 1; j < raw.length; j++) {
-        if (!raw[j].visible) continue;
-        const dx = raw[i].x - raw[j].x;
-        const dy = raw[i].y - raw[j].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < (raw[i].size + raw[j].size) * 0.5) raw[j].visible = false;
+  // ── Load GeoJSON ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [features, geoJson] = await Promise.all([
+        ensureWorldGeo(),
+        ensureWorldGeoJson(),
+      ]);
+      if (cancelled) return;
+      if (features) setWorldFeatures(features);
+      if (geoJson) {
+        const svgData = buildGeoSvg(geoJson);
+        setGeoSvgData(svgData);
       }
-    }
-    return raw;
-  }, [entries]);
-
-  const updateAvatarPositions = useCallback(() => {
-    const positions = computeAvatarPositions();
-    avatarPosRef.current = positions;
-    setAvatarPositions(positions);
-  }, [computeAvatarPositions]);
-
-  const syncAvatarDOM = useCallback(() => {
-    const chart = instanceRef.current;
-    const container = avatarContainerRef.current;
-    if (!chart || !container) return;
-
-    const w = chart.getWidth();
-    const h = chart.getHeight();
-
-    for (const ap of avatarPosRef.current) {
-      if (!ap.visible) continue;
-      const el = container.querySelector(`[data-city="${CSS.escape(ap.city.name)}"]`) as HTMLElement | null;
-      if (!el) continue;
-      const px = chart.convertToPixel("geo", ap.city.coord);
-      if (!px || !isFinite(px[0]) || !isFinite(px[1])) {
-        el.style.display = "none";
-        continue;
-      }
-      // Hide avatars outside viewport
-      if (w && h && (px[0] < -ap.size || px[0] > w + ap.size || px[1] < -ap.size || px[1] > h + ap.size)) {
-        el.style.display = "none";
-        continue;
-      }
-      el.style.display = "";
-      el.style.transform = `translate3d(${px[0] - ap.size / 2}px, ${px[1] - ap.size / 2}px, 0)`;
-      ap.x = px[0];
-      ap.y = px[1];
-    }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  // ── World features & dot grid ──
-  const [worldFeatures, setWorldFeatures] = useState<GeoFeature[] | null>(null);
-  const dotCanvasRef = useRef<HTMLCanvasElement>(null);
+  // ── Build dot grid with pre-computed SVG coordinates ──
+  const worldDotData = useMemo(() => {
+    if (!worldFeatures || !geoSvgData) {
+      return { dots: [] as DotInfo[], countryPolygons: [] as CountryPolygons[], nameToIdx: new Map<string, number>() };
+    }
+    const data = buildWorldDotGrid(worldFeatures, geoSvgData.svgToGeo, geoSvgData.svgW, geoSvgData.svgH);
+    // SVG spacing is uniform: svgW / DOT_COLS
+    svgSpacingRef.current = geoSvgData.svgW / DOT_COLS;
+    return data;
+  }, [worldFeatures, geoSvgData]);
 
-  const worldDotData = useMemo(
-    () => (worldFeatures
-      ? buildWorldDotGrid(worldFeatures)
-      : { dots: [], countryPolygons: [], nameToIdx: new Map<string, number>() }),
-    [worldFeatures],
-  );
   const dotGrid = worldDotData.dots;
   const nameToIdx = worldDotData.nameToIdx;
   nameToIdxRef.current = nameToIdx;
 
+  // ── Country data counts ──
   const countryDataCounts = useMemo(() => {
     const counts = new Map<number, number>();
     if (worldDotData.countryPolygons.length === 0) return counts;
@@ -247,11 +222,88 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     return counts;
   }, [items, worldDotData.countryPolygons]);
 
+  // ── Avatar position computation ──
+  const computeAvatarPositions = useCallback((): AvatarPos[] => {
+    if (!geoSvgData || !svgEl || entries.length === 0) return [];
+
+    const zoomScale = Math.pow(roam.zoom, 0.4);
+    const effectiveMin = Math.max(18, AVATAR_MIN * zoomScale);
+    const effectiveMax = Math.min(72, AVATAR_MAX * zoomScale);
+    const maxCount = Math.max(...entries.map((e) => e.count), 1);
+    const maxSize = effectiveMax;
+
+    const rect = svgEl.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (!w || !h) return [];
+
+    const raw: AvatarPos[] = [];
+    for (const city of entries) {
+      if (city.covers.length === 0) continue;
+      const [svgX, svgY] = geoSvgData.geoToSvg(city.coord[0], city.coord[1]);
+      const [px, py] = roam.svgToScreen(svgX, svgY);
+      if (!isFinite(px) || !isFinite(py)) continue;
+      if (px < -maxSize || px > w + maxSize) continue;
+      if (py < -maxSize || py > h + maxSize) continue;
+      const t = Math.sqrt(city.count / maxCount);
+      const size = effectiveMin + t * (effectiveMax - effectiveMin);
+      raw.push({ city, x: px, y: py, size, visible: true });
+    }
+
+    // Collision detection
+    for (let i = 0; i < raw.length; i++) {
+      if (!raw[i].visible) continue;
+      for (let j = i + 1; j < raw.length; j++) {
+        if (!raw[j].visible) continue;
+        const dx = raw[i].x - raw[j].x;
+        const dy = raw[i].y - raw[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < (raw[i].size + raw[j].size) * 0.5) raw[j].visible = false;
+      }
+    }
+    return raw;
+  }, [entries, geoSvgData, svgEl, roam.zoom, roam.svgToScreen]);
+
+  const updateAvatarPositions = useCallback(() => {
+    const positions = computeAvatarPositions();
+    avatarPosRef.current = positions;
+    setAvatarPositions(positions);
+  }, [computeAvatarPositions]);
+
+  const syncAvatarDOM = useCallback(() => {
+    if (!geoSvgData || !svgEl) return;
+    const container = avatarContainerRef.current;
+    if (!container) return;
+
+    const rect = svgEl.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
+    for (const ap of avatarPosRef.current) {
+      if (!ap.visible) continue;
+      const el = container.querySelector(`[data-city="${CSS.escape(ap.city.name)}"]`) as HTMLElement | null;
+      if (!el) continue;
+      const [svgX, svgY] = geoSvgData.geoToSvg(ap.city.coord[0], ap.city.coord[1]);
+      const [px, py] = roam.svgToScreen(svgX, svgY);
+      if (!isFinite(px) || !isFinite(py)) {
+        el.style.display = "none";
+        continue;
+      }
+      if (w && h && (px < -ap.size || px > w + ap.size || py < -ap.size || py > h + ap.size)) {
+        el.style.display = "none";
+        continue;
+      }
+      el.style.display = "";
+      el.style.transform = `translate3d(${px - ap.size / 2}px, ${py - ap.size / 2}px, 0)`;
+      ap.x = px;
+      ap.y = py;
+    }
+  }, [geoSvgData, svgEl, roam.svgToScreen]);
+
   // ── Dot matrix canvas rendering ──
   const drawDotMatrix = useCallback(() => {
     const canvas = dotCanvasRef.current;
-    const chart = instanceRef.current;
-    if (!canvas || !chart || dotGrid.length === 0) {
+    if (!canvas || dotGrid.length === 0) {
       if (canvas) {
         const ctx = canvas.getContext("2d");
         if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -266,48 +318,49 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
 
-    const cw = chart.getWidth();
-    const ch = chart.getHeight();
-    if (!cw || !ch) return;
+    const canvasW = rect.width;
+    const canvasH = rect.height;
+    if (canvasW <= 0 || canvasH <= 0) return;
 
-    const geoSpacing = 360 / DOT_COLS;
-    const p0 = chart.convertToPixel("geo", [0, 0]);
-    const p1 = chart.convertToPixel("geo", [geoSpacing, 0]);
-    if (!p0 || !p1 || !isFinite(p0[0]) || !isFinite(p1[0])) return;
-    const spacingPx = Math.abs(p1[0] - p0[0]);
+    // Read viewBox from ref for immediate access during drag
+    const vb = roam.vbRef.current;
+
+    // Match SVG preserveAspectRatio="xMidYMid meet": uniform scale + centering
+    const scX = canvasW / vb.w;
+    const scY = canvasH / vb.h;
+    const scale = Math.min(scX, scY);
+    const offX = (canvasW - vb.w * scale) / 2;
+    const offY = (canvasH - vb.h * scale) / 2;
+
+    // Dot radius from pre-computed SVG spacing
+    const svgSpacing = svgSpacingRef.current;
+    if (svgSpacing <= 0) return;
+    const spacingPx = svgSpacing * scale;
     const baseR = spacingPx * DOT_RADIUS_RATIO;
     if (baseR < 0.3) return;
 
-    // Pre-calculate visible geographic bounds to skip off-screen dots early
-    const pad = geoSpacing * 2;
-    const geoTL = chart.convertFromPixel("geo", [0, 0]);
-    const geoBR = chart.convertFromPixel("geo", [rect.width, rect.height]);
-    let visMinLng = -180, visMaxLng = 180, visMinLat = -90, visMaxLat = 90;
-    if (geoTL && geoBR && isFinite(geoTL[0]) && isFinite(geoBR[0])
-        && isFinite(geoTL[1]) && isFinite(geoBR[1])) {
-      visMinLng = Math.min(geoTL[0], geoBR[0]) - pad;
-      visMaxLng = Math.max(geoTL[0], geoBR[0]) + pad;
-      visMaxLat = Math.max(geoTL[1], geoBR[1]) + pad;
-      visMinLat = Math.min(geoTL[1], geoBR[1]) - pad;
-    }
+    // Visible area in SVG coordinates with padding
+    const padSvg = svgSpacing * 2;
+    const visMinX = vb.x - padSvg;
+    const visMaxX = vb.x + vb.w + padSvg;
+    const visMinY = vb.y - padSvg;
+    const visMaxY = vb.y + vb.h + padSvg;
 
     const maxCount = countryDataCounts.size > 0 ? Math.max(...countryDataCounts.values()) : 1;
     const defaultDots: { x: number; y: number }[] = [];
     const activeBuckets = new Map<number, { x: number; y: number }[]>();
-    // Hovered country dots separated for fade animation
     const hoverIdx = hoverAnimRef.current.countryIdx;
     const hoverDefaultDots: { x: number; y: number }[] = [];
     const hoverActiveBuckets = new Map<number, { x: number; y: number }[]>();
 
     for (const dot of dotGrid) {
-      // Fast geographic bounds check — skip dots outside visible area
-      if (dot.lng < visMinLng || dot.lng > visMaxLng) continue;
-      if (dot.lat < visMinLat || dot.lat > visMaxLat) continue;
+      // Cull dots outside visible SVG area
+      if (dot.svgX < visMinX || dot.svgX > visMaxX) continue;
+      if (dot.svgY < visMinY || dot.svgY > visMaxY) continue;
 
-      const px = chart.convertToPixel("geo", [dot.lng, dot.lat]);
-      if (!px || !isFinite(px[0]) || !isFinite(px[1])) continue;
-      if (px[0] < -baseR * 2 || px[0] > rect.width + baseR * 2) continue;
-      if (px[1] < -baseR * 2 || px[1] > rect.height + baseR * 2) continue;
+      // Convert SVG coords to canvas pixels (uniform scale + offset, matching SVG meet)
+      const screenX = (dot.svgX - vb.x) * scale + offX;
+      const screenY = (dot.svgY - vb.y) * scale + offY;
 
       const isHovered = hoverIdx >= 0 && dot.countryIdx === hoverIdx;
       const targetDefault = isHovered ? hoverDefaultDots : defaultDots;
@@ -318,9 +371,9 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
         const t = Math.sqrt(count / maxCount);
         const opacity = Math.round((0.45 + t * 0.55) * 10) / 10;
         if (!targetActive.has(opacity)) targetActive.set(opacity, []);
-        targetActive.get(opacity)!.push({ x: px[0], y: px[1] });
+        targetActive.get(opacity)!.push({ x: screenX, y: screenY });
       } else {
-        targetDefault.push({ x: px[0], y: px[1] });
+        targetDefault.push({ x: screenX, y: screenY });
       }
     }
 
@@ -369,10 +422,10 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       }
     }
     ctx.globalAlpha = 1;
-  }, [dotGrid, countryDataCounts]);
+  }, [dotGrid, countryDataCounts, roam.vbRef]);
   drawDotMatrixRef.current = drawDotMatrix;
 
-  // ── Hover animation trigger (called directly from ECharts events) ──
+  // ── Hover animation trigger ──
   const startHoverAnim = useCallback((newIdx: number) => {
     const anim = hoverAnimRef.current;
     if (newIdx === anim.countryIdx) return;
@@ -404,143 +457,50 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const startHoverAnimRef = useRef(startHoverAnim);
   startHoverAnimRef.current = startHoverAnim;
 
-  // ── Contain-fit: compute layoutSize so full map fills the container ──
-  const getContainSize = useCallback((): number | string => {
-    const el = chartRef.current;
-    if (!el) return "100%";
-    const { width, height } = el.getBoundingClientRect();
-    if (width <= 0 || height <= 0) return "100%";
-    // layoutSize constrains map width; choose largest size where map still fits
-    // World map: 360° wide, ~145° tall, aspectScale 0.9 → W:H ≈ 2.76
-    const fitByWidth = width;
-    const fitByHeight = height * MAP_W_H_RATIO;
-    return Math.min(fitByWidth, fitByHeight);
-  }, []);
+  // ── SVG event handlers ──
+  const handleCountryMouseEnter = useCallback((name: string) => {
+    setHoveredProvince(name);
+    setHoveredCountry(name);
+    const idx = nameToIdxRef.current.get(name) ?? -1;
+    startHoverAnimRef.current(idx);
+  }, [setHoveredProvince]);
 
-  // ── Build chart option ──
-  const buildOption = useCallback((): echarts.EChartsCoreOption => ({
-    geo: {
-      map: "world",
-      roam: true,
-      aspectScale: 0.9,
-      layoutCenter: ["50%", "50%"],
-      layoutSize: getContainSize(),
-      scaleLimit: { min: 1, max: 10 },
-      animationDurationUpdate: 500,
-      animationEasingUpdate: "cubicInOut",
-      itemStyle: {
-        areaColor: "rgba(0,0,0,0)",
-        borderColor: "rgba(0,0,0,0)",
-        borderWidth: 0,
-        borderType: "solid" as const,
-        shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, shadowColor: "transparent",
-      },
-      emphasis: {
-        itemStyle: {
-          areaColor: "rgba(0,0,0,0.02)",
-          borderColor: "rgba(0,0,0,0.2)",
-          borderWidth: 1.5,
-          shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0,
-        },
-        label: {
-          show: true,
-          formatter: (params: { name: string }) => params.name,
-          color: "#333",
-          fontSize: 11, fontWeight: 500,
-        },
-      },
-      select: { itemStyle: { areaColor: "rgba(0,0,0,0)" } },
-      label: { show: false },
-      regions: [],
-    },
-    tooltip: {
-      trigger: "item",
-      backgroundColor: "rgba(255,255,255,0.95)",
-      borderColor: "#e0e0e0",
-      borderWidth: 1,
-      textStyle: { color: "#1a1a1a", fontSize: 12 },
-      extraCssText: "box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-radius: 10px; padding: 10px 12px;",
-    },
-    series: [],
-  }), [getContainSize]);
+  const handleCountryMouseLeave = useCallback(() => {
+    setHoveredProvince(null);
+    setHoveredCountry(null);
+    startHoverAnimRef.current(-1);
+  }, [setHoveredProvince]);
 
-  // Stable ref for drill-down callback
-  const drillDownRef = useRef(onDrillDown);
-  drillDownRef.current = onDrillDown;
+  const handleCountryClick = useCallback((name: string) => {
+    // Don't drill down if user was dragging
+    if (roam.isDragging.current) return;
+    if (hasCountryGeo(name)) {
+      drillDownRef.current(name);
+    }
+  }, [roam.isDragging]);
 
-  // ── Init chart ──
+  // ── Redraw canvas on viewBox change ──
   useEffect(() => {
-    if (!chartRef.current) return;
-    let disposed = false;
+    drawDotMatrix();
+    syncAvatarDOM();
+  }, [roam.viewBox, drawDotMatrix, syncAvatarDOM]);
 
-    const init = async () => {
-      const features = await ensureWorldGeo();
-      if (features) setWorldFeatures(features);
-      if (disposed) return;
-
-      if (!instanceRef.current) {
-        instanceRef.current = echarts.init(chartRef.current!, undefined, { renderer: "canvas" });
-
-        instanceRef.current.on("mouseover", (params: unknown) => {
-          const p = params as { componentType?: string; name?: string };
-          if (p.componentType === "geo") {
-            setHoveredProvince(p.name || null);
-            const idx = p.name ? (nameToIdxRef.current.get(p.name) ?? -1) : -1;
-            startHoverAnimRef.current(idx);
-          }
-        });
-        instanceRef.current.on("mouseout", (params: unknown) => {
-          const p = params as { componentType?: string; name?: string };
-          if (p.componentType === "geo") {
-            setHoveredProvince(null);
-            startHoverAnimRef.current(-1);
-          }
-        });
-
-        instanceRef.current.on("click", (params: unknown) => {
-          const p = params as { componentType?: string; name?: string };
-          if (p.componentType === "geo" && p.name && hasCountryGeo(p.name)) {
-            drillDownRef.current(p.name);
-          }
-        });
-
-        setReady(true);
-      }
-      instanceRef.current.setOption(buildOption(), true);
-    };
-    init();
-
-    return () => { disposed = true; };
-  }, [buildOption, setHoveredProvince]);
-
-  // ── Georoam → redraw dot matrix + sync avatars ──
+  // ── Update avatar positions on zoom or data change ──
   useEffect(() => {
-    const chart = instanceRef.current;
-    if (!chart || !ready) return;
-    let idleTimer: ReturnType<typeof setTimeout>;
-    const onRoam = () => {
-      syncAvatarDOM();
-      drawDotMatrix();
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(updateAvatarPositions, 200);
-    };
-    chart.on("georoam", onRoam);
-    return () => {
-      chart.off("georoam", onRoam);
-      clearTimeout(idleTimer);
-    };
-  }, [ready, drawDotMatrix, syncAvatarDOM, updateAvatarPositions]);
+    updateAvatarPositions();
+  }, [updateAvatarPositions]);
+
+  // ── Debounced avatar recalc after zoom/pan settles ──
+  useEffect(() => {
+    const timer = setTimeout(updateAvatarPositions, 200);
+    return () => clearTimeout(timer);
+  }, [roam.viewBox, updateAvatarPositions]);
 
   // ── ResizeObserver ──
   useEffect(() => {
-    const el = chartRef.current;
-    const chart = instanceRef.current;
-    if (!el || !chart || !ready) return;
+    const el = containerRef.current;
+    if (!el) return;
     const ro = new ResizeObserver(() => {
-      // Recompute contain-fit layout size for new container dimensions
-      const size = getContainSize();
-      chart.setOption({ geo: { layoutSize: size } }, false);
-      chart.resize();
       requestAnimationFrame(() => {
         drawDotMatrix();
         updateAvatarPositions();
@@ -548,21 +508,19 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ready, getContainSize, drawDotMatrix, updateAvatarPositions]);
+  }, [drawDotMatrix, updateAvatarPositions]);
 
   // ── Redraw when data changes ──
   useEffect(() => {
-    if (!ready) return;
     const timer = setTimeout(() => {
-      instanceRef.current?.resize();
       drawDotMatrix();
       updateAvatarPositions();
     }, 120);
     return () => clearTimeout(timer);
-  }, [ready, buildOption, drawDotMatrix, updateAvatarPositions]);
+  }, [dotGrid, countryDataCounts, drawDotMatrix, updateAvatarPositions]);
 
   return (
-    <div className="absolute inset-0" style={{ background: DOT_BG }}>
+    <div ref={containerRef} className="absolute inset-0" style={{ background: DOT_BG }}>
       {/* Radial vignette */}
       <div
         className="absolute inset-0 pointer-events-none"
@@ -574,10 +532,56 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       {/* Dot matrix canvas */}
       <canvas ref={dotCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
 
-      {/* ECharts container (transparent geo for roam/click) */}
-      <div className="absolute inset-0 z-[2]">
-        <div ref={chartRef} className="absolute inset-0" />
-      </div>
+      {/* SVG overlay for event detection (transparent paths) */}
+      {geoSvgData && (
+        <svg
+          ref={svgCallbackRef}
+          className="absolute inset-0 w-full h-full z-[2]"
+          viewBox={roam.viewBox}
+          preserveAspectRatio="xMidYMid meet"
+          onPointerDown={roam.onPointerDown}
+          onPointerMove={roam.onPointerMove}
+          onPointerUp={roam.onPointerUp}
+          style={{ touchAction: "none", cursor: "grab" }}
+        >
+          {geoSvgData.provinces.map((prov) => {
+            const isHovered = hoveredCountry === prov.name;
+            return (
+              <g
+                key={prov.name}
+                onMouseEnter={() => handleCountryMouseEnter(prov.name)}
+                onMouseLeave={handleCountryMouseLeave}
+                onClick={() => handleCountryClick(prov.name)}
+                style={{ cursor: hasCountryGeo(prov.name) ? "pointer" : "default" }}
+              >
+                {prov.paths.map((d, i) => (
+                  <path
+                    key={i}
+                    d={d}
+                    fill={isHovered ? "rgba(0,0,0,0.045)" : "transparent"}
+                    stroke="none"
+                  />
+                ))}
+                {isHovered && (
+                  <text
+                    x={prov.center[0]}
+                    y={prov.center[1]}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="#333"
+                    fontSize={14 / roam.zoom}
+                    fontWeight={500}
+                    fontFamily="system-ui, sans-serif"
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {prov.name}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      )}
 
       {/* City avatar overlay */}
       <div ref={avatarContainerRef} className="absolute inset-0 pointer-events-none z-[5]">

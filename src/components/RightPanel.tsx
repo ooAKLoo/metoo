@@ -1,9 +1,10 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Map as MapIcon, LayoutGrid, Shapes, ArrowLeft, Download, Loader2, Check } from "lucide-react";
+import { Map as MapIcon, LayoutGrid, Shapes, Palette, ArrowLeft, Download, Loader2, Check } from "lucide-react";
 import { MapView } from "./MapView";
 import { GridView } from "./GridView";
 import { BubbleCluster } from "./BubbleCluster";
+import { CountryMapView } from "./CountryMapView";
 import { StatusBar } from "./StatusBar";
 import { RouteStopList } from "./RouteStopList";
 import { PosterModuleBar } from "./PosterModuleBar";
@@ -20,6 +21,7 @@ const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
   { id: "grid", icon: LayoutGrid, label: "网格" },
   { id: "bubble", icon: Shapes, label: "气泡" },
+  { id: "artmap", icon: Palette, label: "风格" },
 ];
 
 export function RightPanel() {
@@ -83,17 +85,17 @@ export function RightPanel() {
         {/* Concave top-left notch */}
         <div
           className="absolute top-0 left-0 z-10"
-          style={{ width: 160, height: 52 }}
+          style={{ width: 192, height: 52 }}
         >
           <svg
             className="absolute inset-0 pointer-events-none"
-            width="160"
+            width="192"
             height="52"
-            viewBox="0 0 160 52"
+            viewBox="0 0 192 52"
             fill="none"
           >
             <path
-              d="M0 0H160C128 0 143 35.5 118 35.5H15.9714C7.13487 35.5 0 42.6635 0 51.5V0Z"
+              d="M0 0H192C160 0 175 35.5 150 35.5H15.9714C7.13487 35.5 0 42.6635 0 51.5V0Z"
               fill="white"
             />
           </svg>
@@ -101,7 +103,7 @@ export function RightPanel() {
           {status === "done" && (
             <div
               className="absolute flex items-center justify-evenly"
-              style={{ left: 16, top: 6, width: 100, height: 26 }}
+              style={{ left: 16, top: 6, width: 128, height: 26 }}
             >
               {VIEW_OPTIONS.map((opt) => {
                 const Icon = opt.icon;
@@ -153,7 +155,7 @@ export function RightPanel() {
                            ? "bg-emerald-500 text-white"
                            : "bg-neutral-800 text-white hover:bg-neutral-700"
                          }`}
-              style={{ top: 21 - 13, left: 157 - 13 }}
+              style={{ top: 21 - 13, left: 189 - 13 }}
             >
               {dlState === "loading" ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -163,7 +165,7 @@ export function RightPanel() {
                 <Download size={12} />
               )}
             </motion.button>
-          ) : status === "done" && chartView === "map" && mapLevel === "china" ? (
+          ) : status === "done" && chartView === "map" && mapLevel.startsWith("country:") ? (
             <motion.button
               key="map-back"
               initial={{ opacity: 0, scale: 0.8 }}
@@ -175,7 +177,7 @@ export function RightPanel() {
                          w-[26px] h-[26px] rounded-full
                          text-white hover:text-black
                          transition-colors cursor-pointer"
-              style={{ top: 21 - 13, left: 157 - 13 }}
+              style={{ top: 21 - 13, left: 189 - 13 }}
             >
               <ArrowLeft size={16} strokeWidth={2.5} />
             </motion.button>
@@ -219,6 +221,18 @@ export function RightPanel() {
                 transition={{ duration: 0.25, ease: "easeOut" }}
               >
                 <BubbleCluster />
+              </motion.div>
+            )}
+            {chartView === "artmap" && !hideBackground && (
+              <motion.div
+                key="artmap"
+                className="absolute inset-0 p-3"
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              >
+                <CountryMapView />
               </motion.div>
             )}
           </AnimatePresence>

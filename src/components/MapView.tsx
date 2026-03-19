@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState, lazy, Suspense } from "react";
 import { useMapStore, type MapLevel } from "../stores/useMapStore";
 import { WorldMap } from "./WorldMap";
-import { ChinaMap } from "./ChinaMap";
 
 const CountryMap = lazy(() => import("./CountryMap"));
 
@@ -35,8 +34,7 @@ export function MapView() {
 
   const drillDown = useCallback(
     (countryName?: string) => {
-      const level = countryName === "China" ? "china" : `country:${countryName}`;
-      transitionTo(level as MapLevel);
+      transitionTo(`country:${countryName}` as MapLevel);
     },
     [transitionTo],
   );
@@ -47,7 +45,6 @@ export function MapView() {
 
   const renderMap = () => {
     if (mapLevel === "world") return <WorldMap onDrillDown={drillDown} />;
-    if (mapLevel === "china") return <ChinaMap />;
     if (mapLevel.startsWith("country:")) {
       const name = mapLevel.slice("country:".length);
       return (

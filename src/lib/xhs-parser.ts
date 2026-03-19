@@ -346,7 +346,7 @@ export const XHS_COLLECT_SCRIPT = `(async () => {
       notes.set(id, {
         id,
         title: (el.querySelector('[class*="title"] span') || el.querySelector('a.title span'))?.textContent?.trim() || '',
-        cover: ((el.querySelector('[class*="cover"] img') || el.querySelector('a.cover img'))?.getAttribute('src') || '').replace(/xhscdn\\.com\\/\\d+\\/[a-f0-9]+\\//, 'xhscdn.com/'),
+        cover: (el.querySelector('[class*="cover"] img') || el.querySelector('a.cover img'))?.getAttribute('src') || '',
         author: (el.querySelector('[class*="author"] [class*="name"]') || el.querySelector('a.author .name'))?.textContent?.trim() || '',
         likes: (el.querySelector('[class*="count"]') || el.querySelector('span.count'))?.textContent?.trim() || '0',
         noteUrl: '/explore/' + id,

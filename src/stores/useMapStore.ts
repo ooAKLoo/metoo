@@ -3,8 +3,8 @@ import type { PosterRatio } from "../lib/poster-modules";
 import type { MujiPosterConfig } from "../components/poster-modules/MujiPosterDevPanel";
 
 type ViewMode = "all" | "city";
-export type MapLevel = "world" | "china" | `country:${string}`;
-export type ChartView = "map" | "grid" | "bubble";
+export type MapLevel = "world" | `country:${string}`;
+export type ChartView = "map" | "grid" | "bubble" | "artmap";
 
 export interface RouteNode {
   name: string;
