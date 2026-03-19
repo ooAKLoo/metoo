@@ -59,6 +59,7 @@ export function RightPanel() {
   const setMosaicStyleIdx = useMapStore((s) => s.setMosaicStyleIdx);
   const keyboardStyleIdx = useMapStore((s) => s.keyboardStyleIdx);
   const setKeyboardStyleIdx = useMapStore((s) => s.setKeyboardStyleIdx);
+  const shuffleFigures = useMapStore((s) => s.shuffleFigures);
   const gridBlankHue = useMapStore((s) => s.gridBlankHue);
   const setGridBlankHue = useMapStore((s) => s.setGridBlankHue);
   const status = useFavoriteStore((s) => s.status);
@@ -491,6 +492,13 @@ export function RightPanel() {
                             </button>
                           );
                         })}
+                        {/* Shuffle figures button */}
+                        <button
+                          onClick={shuffleFigures}
+                          className="ml-1.5 pl-1.5 border-l border-neutral-200 px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer text-neutral-500 hover:bg-neutral-100 active:scale-95 transition-all"
+                        >
+                          随机
+                        </button>
                       </div>
                     )}
 

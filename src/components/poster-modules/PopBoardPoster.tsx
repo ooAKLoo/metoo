@@ -12,6 +12,7 @@ import type { PosterModuleProps } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { useMapStore } from "../../stores/useMapStore";
+import { getRegionOutline } from "../../lib/region-outline";
 
 /* ══════════════════════════════════════════════════════
    Shared Utilities
@@ -52,6 +53,7 @@ export function hexToHsl(hex: string): [number, number, number] {
   else h = ((r - g) / d + 4) * 60;
   return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
 }
+
 
 export interface DerivedPopPalette {
   primary: string;
@@ -228,10 +230,11 @@ function buildCornerMeta(dp: DerivedPopPalette): Record<number, CornerDef> {
 
 /* ── Cover image sub-component ── */
 function CoverImageCell({
-  src, x, y, w, h, name, count, ink, mode, bgColor,
+  src, x, y, w, h, name, count, ink, mode, bgColor, outline,
 }: {
   src: string; x: number; y: number; w: number; h: number;
   name: string; count: number; ink: string; mode: "cells" | "center"; bgColor: string;
+  outline?: number[][][] | null;
 }) {
   const [img] = useImage(src, "anonymous");
   const showCover = mode === "cells" && !!src && !!img;
@@ -266,6 +269,24 @@ function CoverImageCell({
             fillLinearGradientColorStops={[0, "rgba(0,0,0,0.75)", 1, "rgba(0,0,0,0.1)"]}
           />
         </>
+      )}
+      {/* Region outline — on cover: white semi-transparent; on color bg: ink tint */}
+      {outline && (
+        <Shape
+          sceneFunc={(ctx, shape) => {
+            ctx.beginPath();
+            for (const ring of outline) {
+              ring.forEach((pt: number[], i: number) => {
+                if (i === 0) ctx.moveTo(pt[0], pt[1]);
+                else ctx.lineTo(pt[0], pt[1]);
+              });
+              ctx.closePath();
+            }
+            ctx.fillStrokeShape(shape);
+          }}
+          fill={showCover ? "#fff" : ink}
+          opacity={showCover ? 0.15 : 0.07}
+        />
       )}
       {showCover && [[1, 1], [-1, -1], [1, -1], [-1, 1]].map(([dx, dy], i) => (
         <Text key={i} x={dx} y={nameY + dy} width={w} align="center"
@@ -362,6 +383,15 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
     [cities],
   );
 
+  /* Pre-compute region outlines for all cities */
+  const outlineMap = useMemo(() => {
+    const map = new Map<string, number[][][] | null>();
+    for (const c of cities) {
+      if (!map.has(c.name)) map.set(c.name, getRegionOutline(c.name, csW, csH));
+    }
+    return map;
+  }, [cities, csW, csH]);
+
   const cellMap = useMemo(() => {
     let ci = 0;
     return EDGE_PATH.map(([row, col], idx) => {
@@ -431,7 +461,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
         if (cell.city) {
           return (
             <CoverImageCell key={cell.idx} src={cell.cover} x={cx} y={cy} w={csW} h={csH}
-              name={cell.city.name} count={cell.city.count} ink={INK} mode={mode} bgColor={cell.bgColor} />
+              name={cell.city.name} count={cell.city.count} ink={INK} mode={mode} bgColor={cell.bgColor}
+              outline={outlineMap.get(cell.city.name)} />
           );
         }
 

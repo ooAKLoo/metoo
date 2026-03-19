@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { Rect, Text, Line, Group, Shape } from "react-konva";
+import { Rect, Text, Line, Group, Shape, Path, Ellipse } from "react-konva";
 import type { PosterModuleProps } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { useMapStore } from "../../stores/useMapStore";
+import { generateFigureScene, type AvoidZone } from "../../lib/line-figures";
 
 /* ── Base design dimensions (for proportional scaling) ── */
 const BASE_W = 1100;
@@ -243,6 +244,103 @@ function TypographySection({
 }
 
 /* ══════════════════════════════════════════════════════
+   Scattered Line Figures (近大远小)
+   ══════════════════════════════════════════════════════ */
+
+const FIGURE_COUNT = 28;
+
+/** Compute normalized (0-100) bounding box from flat polygon points with padding */
+function kbBoundsFromPts(pts: number[], W: number, H: number, pad = 3): AvoidZone {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) {
+    minX = Math.min(minX, pts[i]);
+    maxX = Math.max(maxX, pts[i]);
+    minY = Math.min(minY, pts[i + 1]);
+    maxY = Math.max(maxY, pts[i + 1]);
+  }
+  return {
+    x1: Math.max(0, (minX / W) * 100 - pad),
+    y1: Math.max(0, (minY / H) * 100 - pad),
+    x2: Math.min(100, (maxX / W) * 100 + pad),
+    y2: Math.min(100, (maxY / H) * 100 + pad),
+  };
+}
+
+function ScatteredFigures({
+  W, H, seed, figureColor, shadowColor, avoidZones,
+}: {
+  W: number; H: number; seed: number;
+  figureColor: string; shadowColor: string;
+  avoidZones: AvoidZone[];
+}) {
+  const figures = useMemo(
+    () => generateFigureScene(seed, FIGURE_COUNT, avoidZones),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seed, FIGURE_COUNT, JSON.stringify(avoidZones)],
+  );
+
+  const baseScale = W / 1600;
+
+  return (
+    <>
+      {figures.map((fig, i) => {
+        const s = baseScale * fig.scale;
+        const fx = (fig.x / 100) * W;
+        const fy = (fig.y / 100) * H;
+        /* 大气透视：远处人物微微变淡 */
+        const atmosOpacity = 0.55 + fig.scale * 0.45;
+        /* 影子浓淡随深度：近处深、远处淡 */
+        const shadowOpacity = 0.35 + fig.scale * 0.65;
+        return (
+          <Group key={i} x={fx} y={fy} scaleX={s} scaleY={s}>
+            {/* Shadow — 紧贴脚底，宽度匹配人物轮廓 */}
+            <Ellipse
+              x={0} y={1}
+              radiusX={fig.person.shadowW * 0.7}
+              radiusY={1.8 + fig.person.shadowW * 0.06}
+              fill={shadowColor}
+              opacity={shadowOpacity}
+            />
+            {/* Figure — offset so feet are at origin */}
+            <Group offsetX={50} offsetY={fig.person.totalH} opacity={atmosOpacity}>
+              {fig.person.fillPaths.map((p, j) => (
+                <Path
+                  key={`f${j}`}
+                  data={p.d}
+                  fill={p.fill ? figureColor : undefined}
+                  stroke={p.stroke ? figureColor : undefined}
+                  strokeWidth={2.5}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ))}
+              {fig.person.paths.map((p, j) => (
+                <Path
+                  key={`s${j}`}
+                  data={p.d}
+                  stroke={figureColor}
+                  strokeWidth={2.5}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ))}
+            </Group>
+          </Group>
+        );
+      })}
+    </>
+  );
+}
+
+function useFigureColors(theme: ThemePreset) {
+  const isLight = luminance(theme.posterBg) > 140;
+  return useMemo(() => ({
+    figureColor: isLight ? "rgb(40,40,38)" : "rgb(210,210,208)",
+    shadowColor: isLight ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.22)",
+  }), [isLight]);
+}
+
+/* ══════════════════════════════════════════════════════
    STYLE 0 — Desktop (existing perspective, flat/rounded)
    ══════════════════════════════════════════════════════ */
 
@@ -261,6 +359,8 @@ interface KonvaKey {
   fs: number;
   tc: string;
   centered: boolean;
+  rotation: number;
+  keyW: number;
 }
 
 function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
@@ -339,14 +439,11 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
           const fs = (big ? 22 : 8) * s;
           const tc = theme.palette.shadow;
 
-          if (big) {
-            const cx = capC.reduce((a, p) => a + p[0], 0) / 4;
-            const cy = capC.reduce((a, p) => a + p[1], 0) / 4;
-            keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
-          } else {
-            const [lx, ly] = proj(kx + 12, ky + kH - 10);
-            keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
-          }
+          const keyCx = capC.reduce((a, p) => a + p[0], 0) / 4;
+          const keyCy = capC.reduce((a, p) => a + p[1], 0) / 4;
+          const rot = Math.atan2(capC[1][1] - capC[0][1], capC[1][0] - capC[0][0]) * 180 / Math.PI;
+          const kpw = Math.hypot(capC[1][0] - capC[0][0], capC[1][1] - capC[0][1]);
+          keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx: keyCx, ly: keyCy, fs, tc, centered: big, rotation: rot, keyW: kpw });
         } else {
           const depth = 7;
           layers.push({ pts: flat([proj(kx + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH + 2), proj(kx - 3, ky + kH + 2)]), fill: "rgba(0,0,0,0.35)" });
@@ -358,14 +455,11 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
           const s = pScale(ky + (kH - depth) / 2);
           const fs = (big ? 20 : 8) * s;
 
-          if (big) {
-            const cx = topC.reduce((a, p) => a + p[0], 0) / 4;
-            const cy = topC.reduce((a, p) => a + p[1], 0) / 4;
-            keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
-          } else {
-            const [lx, ly] = proj(kx + 5, ky + kH - depth - 3);
-            keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
-          }
+          const keyCx = topC.reduce((a, p) => a + p[0], 0) / 4;
+          const keyCy = topC.reduce((a, p) => a + p[1], 0) / 4;
+          const rot = Math.atan2(topC[1][1] - topC[0][1], topC[1][0] - topC[0][0]) * 180 / Math.PI;
+          const kpw = Math.hypot(topC[1][0] - topC[0][0], topC[1][1] - topC[0][1]);
+          keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx: keyCx, ly: keyCy, fs, tc, centered: big, rotation: rot, keyW: kpw });
         }
       }
     }
@@ -374,6 +468,12 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
 
   const layout = useTypographyLayout(H, topCity, topCities, 0.52);
+  const { figureColor, shadowColor } = useFigureColors(theme);
+  const figureSeed = useMapStore((s) => s.figureSeed);
+  const desktopAvoid = useMemo<AvoidZone[]>(() => [
+    { x1: 0, y1: 0, x2: 22, y2: 55 },
+    kbBoundsFromPts(kbData.bg, W, H),
+  ], [kbData.bg, W, H]);
 
   return (
     <KonvaPosterStage width={W} height={H}>
@@ -384,6 +484,8 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
         ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
       }}>
         <Rect width={W} height={H} fill={theme.posterBg} />
+        <ScatteredFigures W={W} H={H} seed={figureSeed}
+          figureColor={figureColor} shadowColor={shadowColor} avoidZones={desktopAvoid} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
           topCity={topCity} theme={theme} />
         <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
@@ -394,11 +496,12 @@ function DesktopContent({ items, cityEntries, posterWidth, posterHeight }: Poste
             ))}
             {k.label && (
               <Text
-                x={k.centered ? k.lx - 50 : k.lx}
-                y={k.centered ? k.ly - k.fs * 0.45 : k.ly - k.fs * 0.85}
+                x={k.lx} y={k.ly}
+                offsetX={k.keyW * 0.5} offsetY={k.fs * 0.5}
+                rotation={k.rotation}
                 text={k.label} fontSize={k.fs} fontStyle="700" fill={k.tc}
                 letterSpacing={k.fs * 0.05} fontFamily={FONT_UI}
-                width={k.centered ? 100 : undefined} align={k.centered ? "center" : "left"} />
+                width={k.keyW} align="center" />
             )}
           </Group>
         ))}
@@ -435,7 +538,7 @@ function drawRoundedQuad(
 }
 
 interface Persp3DKeyLayer { corners: [number, number][]; radii: [number, number, number, number]; fill: string; }
-interface Persp3DKey { layers: Persp3DKeyLayer[]; label: string; lx: number; ly: number; fs: number; tc: string; centered: boolean; }
+interface Persp3DKey { layers: Persp3DKeyLayer[]; label: string; lx: number; ly: number; fs: number; tc: string; centered: boolean; rotation: number; keyW: number; }
 
 function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
   const W = posterWidth;
@@ -517,14 +620,11 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
         const tc = luminance(capColor) < 128 ? "#faf3e0" : "#1a1a2e";
         const fs = (big ? 20 : 8) * s;
 
-        if (big) {
-          const cx = topC.reduce((a, p) => a + p[0], 0) / 4;
-          const cy = topC.reduce((a, p) => a + p[1], 0) / 4;
-          keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
-        } else {
-          const [lx, ly] = proj(kx + 5, ky + kH - depth - 3);
-          keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
-        }
+        const keyCx = topC.reduce((a, p) => a + p[0], 0) / 4;
+        const keyCy = topC.reduce((a, p) => a + p[1], 0) / 4;
+        const rot = Math.atan2(topC[1][1] - topC[0][1], topC[1][0] - topC[0][0]) * 180 / Math.PI;
+        const kpw = Math.hypot(topC[1][0] - topC[0][0], topC[1][1] - topC[0][1]);
+        keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx: keyCx, ly: keyCy, fs, tc, centered: big, rotation: rot, keyW: kpw });
       }
     }
 
@@ -532,6 +632,12 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors]);
 
   const layout = useTypographyLayout(H, topCity, topCities, 0.48);
+  const { figureColor, shadowColor } = useFigureColors(theme);
+  const figureSeed = useMapStore((s) => s.figureSeed);
+  const perspAvoid = useMemo<AvoidZone[]>(() => [
+    { x1: 0, y1: 0, x2: 22, y2: 50 },
+    kbBoundsFromPts(kbData.bgPts, W, H),
+  ], [kbData.bgPts, W, H]);
 
   return (
     <KonvaPosterStage width={W} height={H}>
@@ -542,6 +648,8 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
         ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
       }}>
         <Rect width={W} height={H} fill={theme.posterBg} />
+        <ScatteredFigures W={W} H={H} seed={figureSeed}
+          figureColor={figureColor} shadowColor={shadowColor} avoidZones={perspAvoid} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
           topCity={topCity} theme={theme} />
         <Line points={kbData.bgPts} closed fill={theme.kbContainerBg} />
@@ -555,11 +663,12 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
             ))}
             {k.label && (
               <Text
-                x={k.centered ? k.lx - 50 : k.lx}
-                y={k.centered ? k.ly - k.fs * 0.45 : k.ly - k.fs * 0.85}
+                x={k.lx} y={k.ly}
+                offsetX={k.keyW * 0.5} offsetY={k.fs * 0.5}
+                rotation={k.rotation}
                 text={k.label} fontSize={k.fs} fontStyle="700" fill={k.tc}
                 letterSpacing={k.fs * 0.05} fontFamily={FONT_UI}
-                width={k.centered ? 100 : undefined} align={k.centered ? "center" : "left"} />
+                width={k.keyW} align="center" />
             )}
           </Group>
         ))}
@@ -653,14 +762,11 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
         const tc = theme.palette.shadow;
         const fs = big ? 18 * kbRatio : 7 * kbRatio;
 
-        if (big) {
-          const cx = capC.reduce((a, p) => a + p[0], 0) / 4;
-          const cy = capC.reduce((a, p) => a + p[1], 0) / 4;
-          keys.push({ layers, label: kd.l.toUpperCase(), lx: cx, ly: cy, fs, tc, centered: true });
-        } else {
-          const [lx, ly] = proj(kx + 12, ky + kH - 10);
-          keys.push({ layers, label: kd.l.toLowerCase(), lx, ly, fs, tc, centered: false });
-        }
+        const keyCx = capC.reduce((a, p) => a + p[0], 0) / 4;
+        const keyCy = capC.reduce((a, p) => a + p[1], 0) / 4;
+        const rot = Math.atan2(capC[1][1] - capC[0][1], capC[1][0] - capC[0][0]) * 180 / Math.PI;
+        const kpw = Math.hypot(capC[1][0] - capC[0][0], capC[1][1] - capC[0][1]);
+        keys.push({ layers, label: big ? kd.l.toUpperCase() : kd.l.toLowerCase(), lx: keyCx, ly: keyCy, fs, tc, centered: big, rotation: rot, keyW: kpw });
       }
     }
 
@@ -668,6 +774,12 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
   }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
 
   const layout = useTypographyLayout(H, topCity, topCities, 0.28);
+  const { figureColor, shadowColor } = useFigureColors(theme);
+  const figureSeed = useMapStore((s) => s.figureSeed);
+  const isoAvoid = useMemo<AvoidZone[]>(() => [
+    { x1: 0, y1: 0, x2: 22, y2: 32 },
+    kbBoundsFromPts(kbData.bg, W, H, 4),
+  ], [kbData.bg, W, H]);
 
   return (
     <KonvaPosterStage width={W} height={H}>
@@ -691,6 +803,8 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
           }
           ctx.restore(); ctx.fillStrokeShape(shape);
         }} />
+        <ScatteredFigures W={W} H={H} seed={figureSeed}
+          figureColor={figureColor} shadowColor={shadowColor} avoidZones={isoAvoid} />
         <TypographySection layout={layout} cityCount={cityCount} totalItems={totalItems}
           topCity={topCity} theme={theme} />
         <Line points={kbData.bg} closed fill={theme.kbContainerBg} />
@@ -701,11 +815,12 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
             ))}
             {k.label && (
               <Text
-                x={k.centered ? k.lx - 50 : k.lx}
-                y={k.centered ? k.ly - k.fs * 0.45 : k.ly - k.fs * 0.85}
+                x={k.lx} y={k.ly}
+                offsetX={k.keyW * 0.5} offsetY={k.fs * 0.5}
+                rotation={k.rotation}
                 text={k.label} fontSize={k.fs} fontStyle="700" fill={k.tc}
                 letterSpacing={k.fs * 0.05} fontFamily={FONT_UI}
-                width={k.centered ? 100 : undefined} align={k.centered ? "center" : "left"} />
+                width={k.keyW} align="center" />
             )}
           </Group>
         ))}

@@ -33,7 +33,9 @@ interface MapState {
   mosaicHue: number;
   mosaicStyleIdx: number;
   keyboardStyleIdx: number;
+  figureSeed: number;
   gridBlankHue: number;
+  shuffleFigures: () => void;
   setGridBlankHue: (hue: number) => void;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
@@ -122,7 +124,9 @@ export const useMapStore = create<MapState>((set, get) => ({
   mosaicHue: 250,
   mosaicStyleIdx: 0,
   keyboardStyleIdx: 0,
+  figureSeed: 42,
   gridBlankHue: 245,
+  shuffleFigures: () => set({ figureSeed: Math.floor(Math.random() * 100000) }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
   setSelectedCity: (city) => {
