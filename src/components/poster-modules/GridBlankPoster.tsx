@@ -175,9 +175,9 @@ function GridBlankPoster({
   posterWidth: W,
   posterHeight: H,
 }: PosterModuleProps) {
-  /* Hue-driven stroke color — S/L fixed at #4338ca levels (s=58,l=51) */
+  /* Absolute monochrome — single vivid hue + white */
   const gridBlankHue = useMapStore((s) => s.gridBlankHue);
-  const STROKE = hslToHex(gridBlankHue, 58, 51);
+  const BLUE = hslToHex(gridBlankHue, 100, 50);
 
   /* Scale grid dimensions proportionally to poster width */
   const ratio = W / BASE_W;
@@ -283,12 +283,12 @@ function GridBlankPoster({
     for (const [idx, cell] of cellMap.entries()) {
       if (cell.kind === "doodle") {
         const iconSize = Math.min(cellW, cellH) * 0.7;
-        const el = buildCellIconElement(cell.iconType, cell.seed, iconSize, STROKE);
+        const el = buildCellIconElement(cell.iconType, cell.seed, iconSize, BLUE);
         if (el) out.set(idx, el);
       }
     }
     return out;
-  }, [cellMap, cellW, cellH, STROKE]);
+  }, [cellMap, cellW, cellH, BLUE]);
 
   /* ── Build grid outline rects ── */
   const gridRects = useMemo(() => {
@@ -353,7 +353,7 @@ function GridBlankPoster({
             width={cellW}
             height={cellH}
             fill="transparent"
-            stroke={STROKE}
+            stroke={BLUE}
             strokeWidth={SW}
           />
         ))}
@@ -402,7 +402,7 @@ function GridBlankPoster({
                     y={cy}
                     width={cellW}
                     height={cellH}
-                    fill={STROKE}
+                    fill={BLUE}
                   />
                 )}
                 {/* Label */}
@@ -429,7 +429,7 @@ function GridBlankPoster({
                   text={cell.value}
                   fontSize={valueFS}
                   fontStyle="800"
-                  fill={cell.accent ? "#fff" : STROKE}
+                  fill={cell.accent ? "#fff" : BLUE}
                   letterSpacing={valueFS * -0.02}
                   fontFamily={FONT_CN}
                 />

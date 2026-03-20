@@ -347,11 +347,16 @@ export function RightPanel() {
               {inPosterMode && (
                 <motion.div
                   key="poster-area"
-                  className="flex-1 min-h-0 flex flex-col bg-neutral-100 rounded-2xl overflow-hidden origin-center"
-                  initial={{ opacity: 0, scale: 0.92 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.92 }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="flex-1 min-h-0 flex flex-col bg-neutral-100 rounded-2xl overflow-hidden"
+                  initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 30,
+                    opacity: { duration: 0.2, ease: "easeOut" },
+                  }}
                 >
                   {/* White preview area */}
                   <div className="flex-1 min-h-0 bg-white rounded-b-xl relative overflow-hidden">
@@ -639,7 +644,7 @@ export function RightPanel() {
                         <input type="range" min={0} max={359} value={gridBlankHue}
                           onChange={(e) => setGridBlankHue(Number(e.target.value))}
                           className="hue-slider w-16"
-                          style={{ "--hue-thumb": hslToHex(gridBlankHue, 58, 51) } as React.CSSProperties} />
+                          style={{ "--hue-thumb": hslToHex(gridBlankHue, 100, 50) } as React.CSSProperties} />
                       </div>
                     )}
 

@@ -250,6 +250,8 @@ export function useSvgRoam(
 
   const dragging = useRef(false);
   const lastPt = useRef<[number, number]>([0, 0]);
+  const animRafRef = useRef(0);
+  const isAnimating = useRef(false);
 
   // Reset when base dims change (e.g. GeoJSON loads)
   useEffect(() => {
@@ -259,7 +261,7 @@ export function useSvgRoam(
   const zoom = baseW > 0 ? baseW / vb.w : 1;
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || isAnimating.current) return;
     dragging.current = true;
     lastPt.current = [e.clientX, e.clientY];
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -287,6 +289,7 @@ export function useSvgRoam(
     if (!svgEl) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
+      if (isAnimating.current) return;
       const rect = svgEl.getBoundingClientRect();
       const v = vbRef.current;
       const mx = v.x + ((e.clientX - rect.left) / rect.width) * v.w;
@@ -341,6 +344,61 @@ export function useSvgRoam(
     [baseW, baseH, setVb],
   );
 
+  /**
+   * Smoothly animate viewBox to target over `duration` ms (easeInOutCubic).
+   * During animation: updates ref + SVG DOM only (no React re-renders).
+   * `onTick` is called each frame for external work (e.g. canvas redraw).
+   */
+  const animateTo = useCallback(
+    (target: VB, duration = 400, onTick?: () => void): Promise<void> => {
+      return new Promise((resolve) => {
+        cancelAnimationFrame(animRafRef.current);
+        isAnimating.current = true;
+        const from = { ...vbRef.current };
+        const t0 = performance.now();
+
+        const tick = (now: number) => {
+          const elapsed = now - t0;
+          const t = Math.min(elapsed / duration, 1);
+          // easeInOutCubic
+          const e =
+            t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+          const next: VB = {
+            x: from.x + (target.x - from.x) * e,
+            y: from.y + (target.y - from.y) * e,
+            w: from.w + (target.w - from.w) * e,
+            h: from.h + (target.h - from.h) * e,
+          };
+
+          // Update ref only — no React state update per frame
+          vbRef.current = next;
+          // Update SVG viewBox via direct DOM manipulation
+          svgEl?.setAttribute(
+            "viewBox",
+            `${next.x.toFixed(1)} ${next.y.toFixed(1)} ${next.w.toFixed(1)} ${next.h.toFixed(1)}`,
+          );
+          onTick?.();
+
+          if (t < 1) {
+            animRafRef.current = requestAnimationFrame(tick);
+          } else {
+            isAnimating.current = false;
+            // Single React state sync at the end
+            setVb(next);
+            resolve();
+          }
+        };
+
+        animRafRef.current = requestAnimationFrame(tick);
+      });
+    },
+    [setVb, svgEl],
+  );
+
+  // Cleanup fly-to animation on unmount
+  useEffect(() => () => cancelAnimationFrame(animRafRef.current), []);
+
   return {
     viewBox,
     vb,
@@ -352,6 +410,8 @@ export function useSvgRoam(
     svgToScreen,
     resetView,
     centerOn,
+    animateTo,
     isDragging: dragging,
+    isAnimating,
   };
 }

@@ -32,25 +32,27 @@ export function PosterModuleBar({ open }: { open: boolean }) {
                 onClick={() =>
                   setActivePosterModule(isActive ? null : mod.id)
                 }
-                className={`flex items-center gap-1 px-1.5 py-1 rounded-lg
-                           text-[9px] font-medium cursor-pointer
-                           transition-colors duration-200
-                           ${isActive
-                             ? "bg-neutral-800 text-white"
-                             : "text-neutral-400 hover:text-neutral-600"
-                           }`}
+                className="relative flex items-center gap-1 px-1.5 py-1 rounded-lg
+                           text-[9px] font-medium cursor-pointer z-[1]"
               >
+                {isActive && (
+                  <motion.div
+                    layoutId="poster-module-indicator"
+                    className="absolute inset-0 bg-neutral-800 rounded-lg"
+                    transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                  />
+                )}
                 {getPosterDoodleIcon(mod.id) ? (
                   <svg
                     viewBox="0 0 40 40"
-                    className="w-3 h-3 shrink-0"
+                    className={`relative z-[1] w-3 h-3 shrink-0 transition-colors duration-200 ${isActive ? "text-white" : "text-neutral-400 hover:text-neutral-600"}`}
                     style={{ overflow: "visible" }}
                     dangerouslySetInnerHTML={{ __html: getPosterDoodleIcon(mod.id)! }}
                   />
                 ) : (
-                  <span className="text-[11px] leading-none shrink-0">{mod.thumbnail}</span>
+                  <span className={`relative z-[1] text-[11px] leading-none shrink-0 transition-colors duration-200 ${isActive ? "text-white" : "text-neutral-400 hover:text-neutral-600"}`}>{mod.thumbnail}</span>
                 )}
-                <span className="whitespace-nowrap">{mod.name}</span>
+                <span className={`relative z-[1] whitespace-nowrap transition-colors duration-200 ${isActive ? "text-white" : "text-neutral-400 hover:text-neutral-600"}`}>{mod.name}</span>
               </motion.button>
             );
           })}

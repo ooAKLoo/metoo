@@ -9,6 +9,7 @@ import { PixelSpriteSVG, SPRITE_NAMES } from "../poster-generators/PixelSprites"
 import { ElevationPersonSVG } from "../poster-generators/ElevationPeople";
 import { CharacterSVG, POSE_CATEGORIES, BODY_TYPES } from "../poster-generators/CharacterGenerator";
 import { mulberry32, DOODLE_ENTRIES } from "../poster-generators/DoodleGallery";
+import { NeonSignSVG, NEON_SIGN_COUNT } from "../poster-generators/NeonSigns";
 import { useMapStore } from "../../stores/useMapStore";
 
 /* ── Theme definitions — cell decoration styles ── */
@@ -33,31 +34,17 @@ export interface MosaicStylePreset {
   textStroke: string;
   /** 噪点纹理叠加 */
   noiseOverlay: boolean;
-  /** 背景十字格纹 */
-  crosshatch: boolean;
 }
 
 export const MOSAIC_STYLES: MosaicStylePreset[] = [
   {
-    id: "brutalism", label: "野兽派",
-    borderWidth: 3, shadowOffset: 6, shadowBlur: 0, borderRadius: 14,
-    insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: true,
-  },
-{
-    id: "flat", label: "扁平",
-    borderWidth: 0, shadowOffset: 0, shadowBlur: 0, borderRadius: 14,
-    insetShadow: "", textStroke: "", noiseOverlay: false, crosshatch: false,
-  },
-  {
     id: "sketch", label: "手绘",
     borderWidth: 2, shadowOffset: 3, shadowBlur: 0, borderRadius: 4,
-    insetShadow: "", textStroke: "1.5px", noiseOverlay: true, crosshatch: false,
-  },
+    insetShadow: "", textStroke: "1.5px", noiseOverlay: true,   },
   {
     id: "neon", label: "霓虹",
     borderWidth: 2, shadowOffset: 0, shadowBlur: 14, borderRadius: 14,
-    insetShadow: "", textStroke: "2px", noiseOverlay: false, crosshatch: false,
-  },
+    insetShadow: "", textStroke: "2px", noiseOverlay: false,   },
 ];
 
 /* ── Grid dimensions (base at 800×1100, scales proportionally) ── */
@@ -72,93 +59,63 @@ export function deriveMosaicPalette(hue: number, styleId?: string): MosaicPalett
   const h = hue;
 
   switch (styleId) {
-    /* ── 野兽派: 高对比、宽色相、浓烈 ── */
-    case "brutalism":
-      return {
-        bg:     "#ffffff",
-        ink:    hslToHex(h + 210, 40, 10),
-        accent: hslToHex(h, 90, 55),
-        cells: [
-          hslToHex(h,        85, 60),
-          hslToHex(h + 50,   80, 56),
-          hslToHex(h + 100,  75, 53),
-          hslToHex(h + 150,  70, 58),
-          hslToHex(h + 200,  80, 54),
-          hslToHex(h + 250,  75, 58),
-          hslToHex(h + 300,  85, 56),
-          hslToHex(h + 30,   78, 62),
-        ],
-      };
-
-/* ── 扁平: 三色分裂互补 — 主色深/浅 + 近互补色，暖底 ── */
-    case "flat":
-      return {
-        bg:     "#ffffff",                        // 纯白底
-        ink:    hslToHex(h, 40, 18),             // 极深主色调
-        accent: hslToHex(h, 72, 58),             // 深主色（info card）
-        cells: [
-          hslToHex(h,       72, 60),   // [0] 主色深 A
-          hslToHex(h,       45, 80),   // [1] 主色浅 A
-          hslToHex(h + 170, 60, 55),   // [2] 对比色 A
-          hslToHex(h,       68, 57),   // [3] 主色深 B
-          hslToHex(h,       42, 82),   // [4] 主色浅 B
-          hslToHex(h + 170, 55, 58),   // [5] 对比色 B
-          hslToHex(h,       75, 63),   // [6] 主色深 C
-          hslToHex(h,       48, 78),   // [7] 主色浅 C
-        ],
-      };
-
-    /* ── 手绘: 吉卜力风 — 清透明亮、天空/草地/花朵 ── */
+    /* ── 手绘: 水彩画板 — 低饱和暖色系 + 一两个清冷色点睛 ── */
+    /*  策略: 不用均匀彩虹，而是构建"纸上水彩"感 —
+     *  4 个暖色调（赭/杏/鹅黄/玫瑰）+ 2 个清冷色（水蓝/薄荷）+ 2 个极淡底
+     *  明度分层 72-92%，饱和度 30-55%，区别清晰但不刺眼 */
     case "sketch":
       return {
-        bg:     "#ffffff",
-        ink:    "#3a4a5c",           // 蓝灰墨色（轻盈不沉重）
-        accent: hslToHex(h, 55, 62),
+        bg:     "#FFFDF8",                             // 奶白画纸色
+        ink:    "#3D4F5F",                             // 蓝灰铅笔色
+        accent: hslToHex(h, 50, 58),
         cells: [
-          hslToHex(h,        52, 86),  // 主色淡彩
-          hslToHex(200,      50, 88),  // 天空蓝
-          hslToHex(h + 60,   48, 85),  // 邻近色
-          hslToHex(45,       55, 88),  // 暖阳黄
-          hslToHex(150,      42, 86),  // 薄荷绿
-          hslToHex(h + 180,  45, 87),  // 互补淡彩
-          hslToHex(340,      48, 88),  // 樱花粉
-          hslToHex(270,      40, 90),  // 薰衣草
+          hslToHex(h,        50, 78),   // [0] 主色淡彩（温和锚定）
+          hslToHex(25,       55, 82),   // [1] 杏色（暖基调）
+          hslToHex(200,      40, 80),   // [2] 水蓝（冷对比）
+          hslToHex(48,       50, 85),   // [3] 鹅黄（明亮阳光）
+          hslToHex(345,      40, 83),   // [4] 玫瑰灰（柔粉）
+          hslToHex(160,      35, 82),   // [5] 薄荷（清新）
+          hslToHex(15,       45, 87),   // [6] 浅陶土（暖底）
+          hslToHex(h + 180,  30, 90),   // [7] 互补极淡（呼吸留白）
         ],
       };
 
-    /* ── 霓虹: 赛博暗底 — 高饱和发光色、近黑底 ── */
+    /* ── 霓虹: 三色灯管 + 暗色阶梯 — 真实霓虹街区感 ── */
+    /*  策略: 真实霓虹灯管只有 2-3 种颜色，其余是暗色底面
+     *  主色 h 高亮、暖偏移 h+50 次亮、冷偏移 h+200 点缀
+     *  用 2 个深色暗格（建筑墙面感）代替重复色 → 形成明暗节奏 */
     case "neon":
       return {
-        bg:     "#08080f",
-        ink:    "#e0e0f0",           // 浅色文字（info卡片等）
-        accent: hslToHex(h, 100, 58),
+        bg:     "#0F0F1A",                             // 更深的夜空底
+        ink:    "#D8D8EC",                             // 柔白文字
+        accent: hslToHex(h, 100, 58),                  // 主灯管色
         cells: [
-          hslToHex(h,       100, 58), // 主色 — 最亮
-          hslToHex(h + 60,  95,  55), // 邻近色
-          hslToHex(h + 180, 90,  52), // 互补色
-          hslToHex(h + 300, 92,  56), // 三角色
-          hslToHex(h + 120, 88,  50), // 三角色2
-          hslToHex(h + 30,  95,  60), // 暖偏移
-          hslToHex(h + 240, 85,  54), // 冷偏移
-          hslToHex(h - 30,  90,  52), // 反向偏移
+          hslToHex(h,        100, 58),  // [0] 主灯管 — 明亮
+          hslToHex(h + 50,    95, 55),  // [1] 暖灯管（琥珀/粉方向）
+          hslToHex(h + 200,   85, 52),  // [2] 冷灯管（对比色）
+          hslToHex(h,         30, 18),  // [3] 深色墙面 A（暗休息）
+          hslToHex(h,        100, 62),  // [4] 主灯管 — 柔亮
+          hslToHex(h + 50,    40, 22),  // [5] 深色墙面 B（微暖暗）
+          hslToHex(h + 200,   80, 58),  // [6] 冷灯管 — 提亮
+          hslToHex(h + 330,   90, 62),  // [7] 热粉点缀（霓虹感）
         ],
       };
 
-    /* ── 默认 fallback ── */
+    /* ── 默认 fallback — 同色系渐变 ── */
     default:
       return {
         bg:     "#ffffff",
         ink:    hslToHex(h, 15, 18),
         accent: hslToHex(h, 60, 55),
         cells: [
-          hslToHex(h,       50, 70),
-          hslToHex(h + 15,  45, 74),
-          hslToHex(h - 15,  42, 68),
-          hslToHex(h + 25,  38, 76),
-          hslToHex(h - 25,  40, 72),
-          hslToHex(h + 10,  35, 78),
-          hslToHex(h - 10,  44, 70),
-          hslToHex(h + 5,   30, 80),
+          hslToHex(h,        50, 70),
+          hslToHex(h + 15,   45, 74),
+          hslToHex(h - 15,   42, 68),
+          hslToHex(h + 25,   38, 76),
+          hslToHex(h - 25,   40, 72),
+          hslToHex(h + 10,   35, 78),
+          hslToHex(h - 10,   44, 70),
+          hslToHex(h + 5,    30, 80),
         ],
       };
   }
@@ -254,7 +211,14 @@ function CoverCell({ src, x, y, size, cornerRadius }: { src: string; x: number; 
 }
 
 /* ── Generated icon renderer — produces a React element for SvgIcon ── */
-function generatedIconElement(index: number, size: number, color: string, seed: number): React.ReactElement {
+function generatedIconElement(index: number, size: number, color: string, seed: number, styleId?: string): React.ReactElement {
+  /* Neon style → use dedicated neon sign SVGs */
+  if (styleId === "neon") {
+    const rng = mulberry32(seed + index * 7919);
+    const neonIdx = Math.floor(rng() * NEON_SIGN_COUNT);
+    return <NeonSignSVG index={neonIdx} size={size} />;
+  }
+
   const type = ICON_TYPE_CYCLE[index % ICON_TYPE_CYCLE.length];
   const rng = mulberry32(seed + index * 7919);
 
@@ -357,30 +321,6 @@ function CellPatternOverlay({ theme, ink, x, y, size, cornerRadius }: { theme: M
   );
 }
 
-/* ── Crosshatch background — small cross marks ── */
-function CrosshatchBackground({ ink }: { ink: string }) {
-  const crosses = useMemo(() => {
-    const items: { x: number; y: number }[] = [];
-    for (let i = 0; i < 180; i++) {
-      const col = i % 18;
-      const row = Math.floor(i / 18);
-      items.push({ x: 30 + col * 44, y: 30 + row * 110 });
-    }
-    return items;
-  }, []);
-
-  return (
-    <Group>
-      {crosses.map((c, i) => (
-        <Group key={i} opacity={0.06}>
-          <Line points={[c.x - 3, c.y, c.x + 3, c.y]} stroke={ink} strokeWidth={1.5} />
-          <Line points={[c.x, c.y - 3, c.x, c.y + 3]} stroke={ink} strokeWidth={1.5} />
-        </Group>
-      ))}
-    </Group>
-  );
-}
-
 /* ── Wobbly rect — hand-drawn border using bezier curves ── */
 function WobblyRect({
   x, y, w, h, fill, stroke, strokeWidth, seed, opacity,
@@ -442,15 +382,7 @@ function CellBackground({
   x: number; y: number; size: number; fill: string;
   sty: MosaicStylePreset; ink: string;
 }) {
-  /* ── 扁平: 纯色块、微圆角、无阴影、无描边 ── */
-  if (sty.id === "flat") {
-    return (
-      <Rect x={x} y={y} width={size} height={size}
-        fill={fill} cornerRadius={sty.borderRadius} />
-    );
-  }
-
-/* ── 手绘: 摇摆边框 + 粗描边 + 涂鸦装饰 ── */
+  /* ── 手绘: 摇摆边框 + 粗描边 + 涂鸦装饰 ── */
   if (sty.id === "sketch") {
     const seed = x * 7 + y * 13; // deterministic per cell
     return (
@@ -465,7 +397,7 @@ function CellBackground({
     );
   }
 
-  /* ── 霓虹: 暗底 + 发光描边 + 光晕 ── */
+  /* ── 霓虹: 暗底 + 霓虹色光晕反射 + 发光描边 ── */
   if (sty.id === "neon") {
     return (
       <Group>
@@ -473,15 +405,18 @@ function CellBackground({
         <Rect x={x - 2} y={y - 2} width={size + 4} height={size + 4}
           cornerRadius={16} stroke={fill} strokeWidth={4}
           shadowColor={fill} shadowBlur={24} shadowOpacity={0.5} />
-        {/* Dark cell fill */}
+        {/* Dark base */}
         <Rect x={x} y={y} width={size} height={size}
-          fill="rgba(8,8,18,0.92)" cornerRadius={14}
+          fill="#0F0F1A" cornerRadius={14} />
+        {/* Neon color tint — glow reflection on wall */}
+        <Rect x={x} y={y} width={size} height={size}
+          fill={fill} opacity={0.1} cornerRadius={14}
           stroke={fill} strokeWidth={2} />
       </Group>
     );
   }
 
-  /* ── Default (brutalism / clay / others) ── */
+  /* ── Default ── */
   const hasShadow = sty.shadowOffset > 0;
   const hasBlur = sty.shadowBlur > 0;
   return (
@@ -575,16 +510,16 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
       for (let ci = 0; ci < LAYOUT[ri].length; ci++) {
         const cell = LAYOUT[ri][ci];
         const cellBg = pal.cells[COLOR_IDX[ri][ci]];
-        const iconColor = sty.id === "flat" && !isLightColor(cellBg) ? pal.bg : pal.ink;
+        const iconColor = pal.ink;
         if (cell.startsWith("I")) {
           const iIdx = parseInt(cell.substring(1));
-          elements[cell] = generatedIconElement(iIdx, Math.round(CELL * 0.5), iconColor, iconSeed);
+          elements[cell] = generatedIconElement(iIdx, Math.round(CELL * 0.5), iconColor, iconSeed, sty.id);
         }
         // Fallback cover → icon
         if (cell.startsWith("C")) {
           const cIdx = parseInt(cell.substring(1));
           if (!covers[cIdx]) {
-            elements[cell] = generatedIconElement(ri * 2 + ci, Math.round(CELL * 0.5), iconColor, iconSeed);
+            elements[cell] = generatedIconElement(ri * 2 + ci, Math.round(CELL * 0.5), iconColor, iconSeed, sty.id);
           }
         }
       }
@@ -626,10 +561,6 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
         {/* Background */}
         <Rect width={POSTER_W} height={POSTER_H} fill={pal.bg} />
 
-        {/* Style-specific background treatments */}
-        {sty.crosshatch && <CrosshatchBackground ink={pal.ink} />}
-
-
         {/* Neon: subtle grid lines */}
         {sty.id === "neon" && (
           <Group opacity={0.08}>
@@ -652,9 +583,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
             const cy = GRID_Y + ri * (CELL + GAP);
             const key = `${ri}-${ci}`;
             // Neon: bright text on dark cells; Flat: adaptive per luminance; others: ink
-            const cellTextColor = sty.id === "neon" ? bg
-              : sty.id === "flat" && !isLightColor(bg) ? "#ffffff"
-              : pal.ink;
+            const cellTextColor = sty.id === "neon" ? bg : pal.ink;
             const cellTextStroke = sty.id === "neon"
               ? { stroke: bg, strokeWidth: 1.5, shadowColor: bg, shadowBlur: 12 }
               : textStrokeProps;
@@ -752,20 +681,26 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
         {/* ── Bottom info card ── */}
         <Group x={INFO_X} y={INFO_Y}>
           {/* Style-specific info card background */}
-          {sty.id === "neon" ? (<>
-            {/* Neon glow border card */}
-            <Rect width={INFO_W} height={INFO_H} cornerRadius={14}
-              stroke={pal.accent} strokeWidth={2}
-              shadowColor={pal.accent} shadowBlur={20} shadowOpacity={0.5} />
-            <Rect width={INFO_W} height={INFO_H} fill="rgba(8,8,18,0.92)"
-              cornerRadius={14} stroke={pal.accent} strokeWidth={1.5} />
-          </>) : sty.id === "flat" ? (
-            <Rect width={INFO_W} height={INFO_H} fill={pal.accent} cornerRadius={16} />
-          ) : sty.id === "sketch" ? (<>
+          {sty.id === "neon" ? (() => {
+            /* 互补色深暗底 — 与主灯管形成色彩张力 */
+            const compDark = hslToHex(mosaicHue + 180, 50, 10);
+            return (<>
+              <Rect width={INFO_W} height={INFO_H} cornerRadius={14}
+                stroke={pal.accent} strokeWidth={2}
+                shadowColor={pal.accent} shadowBlur={20} shadowOpacity={0.5} />
+              {/* Deep complementary base */}
+              <Rect width={INFO_W} height={INFO_H} fill={compDark}
+                cornerRadius={14} />
+              {/* Accent glow tint */}
+              <Rect width={INFO_W} height={INFO_H} fill={pal.accent}
+                opacity={0.06} cornerRadius={14}
+                stroke={pal.accent} strokeWidth={1.5} />
+            </>);
+          })() : sty.id === "sketch" ? (<>
             <WobblyRect x={4} y={4} w={INFO_W} h={INFO_H}
-              fill={pal.ink} seed={777} opacity={0.1} />
+              fill={pal.ink} seed={777} opacity={0.06} />
             <WobblyRect x={0} y={0} w={INFO_W} h={INFO_H}
-              fill={pal.ink} stroke={pal.ink} strokeWidth={2.5} seed={888} />
+              fill={pal.bg} stroke={pal.ink} strokeWidth={2.5} seed={888} />
           </>) : (<>
             {sty.shadowOffset > 0 && (
               <Rect x={sty.shadowOffset} y={sty.shadowOffset}
@@ -780,10 +715,9 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
 
           {/* Big number */}
           {(() => {
-            const isFlat = sty.id === "flat";
-            const infoText = sty.id === "neon" ? "#e8e8f4" : pal.bg;
-            const numberColor = isFlat ? pal.bg : pal.accent;
-            const dividerColor = isFlat ? pal.bg : pal.accent;
+            const infoText = sty.id === "neon" ? "#e8e8f4" : sty.id === "sketch" ? pal.ink : pal.bg;
+            const numberColor = pal.accent;
+            const dividerColor = pal.accent;
             return (<>
               <Text x={INFO_PAD_X} y={INFO_PAD_Y}
                 text={String(cityCount)} fontSize={60} fontStyle="900"
@@ -794,7 +728,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
                 letterSpacing={10 * 0.15} fontFamily={FONT_UI} />
               <Rect x={INFO_PAD_X + 80} y={INFO_PAD_Y + 4} width={3}
                 height={INFO_H - INFO_PAD_Y * 2 - 8}
-                fill={dividerColor} opacity={isFlat ? 0.3 : 0.4} cornerRadius={2} />
+                fill={dividerColor} opacity={0.4} cornerRadius={2} />
               <Text x={INFO_PAD_X + 100} y={INFO_PAD_Y + 4}
                 text={subtitle} fontSize={22} fontStyle="900"
                 fill={infoText} letterSpacing={22 * -0.02}

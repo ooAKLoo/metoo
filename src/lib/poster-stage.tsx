@@ -83,13 +83,6 @@ export function KonvaPosterStage({ width, height, children, transparent }: Props
         style={{
           transform: `scale(${scale})`,
           transformOrigin: "center",
-          ...(transparent
-            ? {}
-            : {
-                borderRadius: 24,
-                boxShadow:
-                  "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
-              }),
         }}
       >
         <Stage ref={stageRef} width={width} height={height}>

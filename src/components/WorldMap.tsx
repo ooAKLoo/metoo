@@ -3,7 +3,8 @@ import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import {
-  ensureWorldGeo, ensureWorldGeoJson, buildGeoSvg, useSvgRoam,
+  ensureWorldGeo, ensureWorldGeoJson, ensureCountryGeo,
+  buildGeoSvg, useSvgRoam,
   coverSrc, hasCountryGeo,
   AVATAR_MIN, AVATAR_MAX,
   type AvatarPos, type GeoSvgData,
@@ -197,6 +198,12 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const nameToIdx = worldDotData.nameToIdx;
   nameToIdxRef.current = nameToIdx;
 
+  // Refs for fly-to animation (avoid stale closures)
+  const geoSvgDataRef = useRef(geoSvgData);
+  geoSvgDataRef.current = geoSvgData;
+  const worldDotDataRef = useRef(worldDotData);
+  worldDotDataRef.current = worldDotData;
+
   // ── Country data counts ──
   const countryDataCounts = useMemo(() => {
     const counts = new Map<number, number>();
@@ -313,8 +320,13 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const ctx = canvas.getContext("2d")!;
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    const needW = Math.round(rect.width * dpr);
+    const needH = Math.round(rect.height * dpr);
+    // Only resize when dimensions actually change — avoids expensive backing store reset
+    if (canvas.width !== needW || canvas.height !== needH) {
+      canvas.width = needW;
+      canvas.height = needH;
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
 
@@ -459,25 +471,77 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
 
   // ── SVG event handlers ──
   const handleCountryMouseEnter = useCallback((name: string) => {
+    if (roam.isAnimating.current) return;
     setHoveredProvince(name);
     setHoveredCountry(name);
     const idx = nameToIdxRef.current.get(name) ?? -1;
     startHoverAnimRef.current(idx);
-  }, [setHoveredProvince]);
+  }, [setHoveredProvince, roam.isAnimating]);
 
   const handleCountryMouseLeave = useCallback(() => {
+    if (roam.isAnimating.current) return;
     setHoveredProvince(null);
     setHoveredCountry(null);
     startHoverAnimRef.current(-1);
-  }, [setHoveredProvince]);
+  }, [setHoveredProvince, roam.isAnimating]);
 
   const handleCountryClick = useCallback((name: string) => {
-    // Don't drill down if user was dragging
-    if (roam.isDragging.current) return;
-    if (hasCountryGeo(name)) {
+    if (roam.isDragging.current || roam.isAnimating.current) return;
+    if (!hasCountryGeo(name)) return;
+
+    const geo = geoSvgDataRef.current;
+    const data = worldDotDataRef.current;
+    const idx = nameToIdxRef.current.get(name);
+
+    // Fallback: no geo data or index → immediate drill-down
+    if (idx === undefined || !geo || !data.countryPolygons[idx]) {
       drillDownRef.current(name);
+      return;
     }
-  }, [roam.isDragging]);
+
+    const cpoly = data.countryPolygons[idx];
+    if (cpoly.rings.length === 0) {
+      drillDownRef.current(name);
+      return;
+    }
+
+    // Clear hover state before animation
+    setHoveredCountry(null);
+    setHoveredProvince(null);
+    startHoverAnimRef.current(-1);
+
+    // Prefetch country GeoJSON so CountryMap loads instantly
+    ensureCountryGeo(name);
+
+    // Compute country bounding box in SVG coordinates
+    const [minLng, minLat, maxLng, maxLat] = cpoly.bbox;
+    const [svgL, svgB] = geo.geoToSvg(minLng, minLat);
+    const [svgR, svgT] = geo.geoToSvg(maxLng, maxLat);
+
+    const cw = svgR - svgL;
+    const ch = svgB - svgT;
+    if (cw <= 0 || ch <= 0) {
+      drillDownRef.current(name);
+      return;
+    }
+
+    const cx = (svgL + svgR) / 2;
+    const cy = (svgT + svgB) / 2;
+
+    // Target zoom: fit country with ~50% padding, clamped
+    const pad = 1.5;
+    const z = Math.min(geo.svgW / (cw * pad), geo.svgH / (ch * pad), 8);
+    const tw = geo.svgW / z;
+    const th = geo.svgH / z;
+
+    // Fire BOTH at the same time — CountryMap fades in DURING the zoom
+    drillDownRef.current(name);
+    roam.animateTo(
+      { x: cx - tw / 2, y: cy - th / 2, w: tw, h: th },
+      400,
+      () => drawDotMatrixRef.current(), // canvas-only redraw per frame, no React
+    );
+  }, [roam.isDragging, roam.isAnimating, roam.animateTo, setHoveredProvince]);
 
   // ── Redraw canvas on viewBox change ──
   useEffect(() => {

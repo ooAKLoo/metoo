@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { useFavoriteStore } from "../stores/useFavoriteStore";
+import { useFavoriteStore, type FavoriteItem } from "../stores/useFavoriteStore";
 import { extractTagsFromTitle } from "../hooks/useTagExtraction";
 import { getCategoryColor } from "../lib/category-colors";
 import { TAG_MAP } from "../lib/tag-dictionary";
+import { coverSrc } from "./map-shared";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -40,14 +41,28 @@ export function BubbleCluster() {
   const items = useFavoriteStore((s) => s.items);
 
   const [hoveredCity, setHoveredCity] = useState<string | null>(null);
-  const [tooltip, setTooltip] = useState<{
+
+  /* ── Popover state ── */
+  const [popover, setPopover] = useState<{
     city: string;
     category: string;
     emoji: string;
+    color: string;
     count: number;
+    items: FavoriteItem[];
     x: number;
     y: number;
   } | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  /** Schedule popover close — cancelled if mouse re-enters bubble or popover */
+  const scheduleClose = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setPopover(null), 180);
+  }, []);
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+  }, []);
 
   /* ── Aggregate: city → category → count ── */
 
@@ -139,6 +154,25 @@ export function BubbleCluster() {
     return rawClusters;
   }, [items]);
 
+  /* ── Index: "city::category" → FavoriteItem[] for popover ── */
+  const itemIndex = useMemo(() => {
+    const idx = new Map<string, FavoriteItem[]>();
+    for (const item of items) {
+      const tags = extractTagsFromTitle(item.title);
+      if (tags.length === 0 || item.locations.length === 0) continue;
+      for (const loc of item.locations) {
+        if (!loc.name) continue;
+        for (const tag of tags) {
+          const key = `${loc.name}::${tag}`;
+          let arr = idx.get(key);
+          if (!arr) { arr = []; idx.set(key, arr); }
+          if (!arr.some((x) => x.id === item.id)) arr.push(item);
+        }
+      }
+    }
+    return idx;
+  }, [items]);
+
   if (items.length === 0) return null;
 
   if (clusters.length === 0) {
@@ -192,7 +226,7 @@ export function BubbleCluster() {
               onMouseEnter={() => setHoveredCity(cluster.city)}
               onMouseLeave={() => {
                 setHoveredCity(null);
-                setTooltip(null);
+                scheduleClose();
               }}
             >
               <g transform={`translate(${cluster.cx}, ${cluster.cy})`}>
@@ -254,23 +288,20 @@ export function BubbleCluster() {
                     opacity={0.82}
                     className="cursor-pointer"
                     onMouseEnter={(e) => {
-                      setTooltip({
+                      cancelClose();
+                      const matchedItems = itemIndex.get(`${cluster.city}::${b.category}`) ?? [];
+                      setPopover({
                         city: cluster.city,
                         category: b.category,
                         emoji: b.emoji,
+                        color: b.color,
                         count: b.count,
+                        items: matchedItems,
                         x: e.clientX,
                         y: e.clientY,
                       });
                     }}
-                    onMouseMove={(e) => {
-                      setTooltip((prev) =>
-                        prev
-                          ? { ...prev, x: e.clientX, y: e.clientY }
-                          : null,
-                      );
-                    }}
-                    onMouseLeave={() => setTooltip(null)}
+                    onMouseLeave={() => scheduleClose()}
                   />
                 ))}
 
@@ -317,28 +348,79 @@ export function BubbleCluster() {
         </div>
       </div>
 
-      {/* Tooltip */}
+      {/* Interactive popover */}
       <AnimatePresence>
-        {tooltip && (
+        {popover && (
           <motion.div
-            initial={{ opacity: 0, y: 4 }}
+            key={`${popover.city}::${popover.category}`}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="fixed pointer-events-none z-50
-                       bg-white/95 backdrop-blur-sm rounded-xl
-                       px-3 py-2 shadow-[0_4px_20px_rgba(0,0,0,0.08)]"
-            style={{
-              left: tooltip.x,
-              top: tooltip.y - 50,
-              transform: "translateX(-50%)",
+            exit={{ opacity: 0, y: 4 }}
+            transition={{
+              type: "spring",
+              stiffness: 500,
+              damping: 35,
+              opacity: { duration: 0.15, ease: "easeOut" },
             }}
+            className="fixed z-50 w-60"
+            style={{
+              left: Math.min(popover.x + 16, window.innerWidth - 260),
+              top: Math.max(popover.y - 40, 8),
+            }}
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
           >
-            <div className="text-[10px] font-medium text-[var(--text-primary)]">
-              {tooltip.city} · {tooltip.emoji} {tooltip.category}
-            </div>
-            <div className="text-[9px] text-[var(--text-secondary)]">
-              {tooltip.count} 条收藏
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl
+                            shadow-[0_8px_32px_rgba(0,0,0,0.10),0_1px_4px_rgba(0,0,0,0.06)]
+                            overflow-hidden">
+              {/* Header */}
+              <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: popover.color }}
+                />
+                <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                  {popover.city} · {popover.emoji} {popover.category}
+                </span>
+                <span className="ml-auto text-[9px] text-[var(--text-secondary)] shrink-0">
+                  {popover.count} 条
+                </span>
+              </div>
+
+              {/* Scrollable item list */}
+              {popover.items.length > 0 ? (
+                <div className="max-h-52 overflow-y-auto px-1.5 pb-1.5">
+                  {popover.items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 px-1.5 py-1.5 rounded-lg
+                                 hover:bg-black/[0.04] transition-colors cursor-default"
+                    >
+                      {item.cover && (
+                        <img
+                          src={coverSrc(item.cover)}
+                          alt=""
+                          className="w-9 h-9 rounded-lg object-cover shrink-0 bg-neutral-100"
+                          loading="lazy"
+                          draggable={false}
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-medium text-[var(--text-primary)] line-clamp-2 leading-tight">
+                          {item.title}
+                        </div>
+                        <div className="text-[9px] text-[var(--text-secondary)] mt-0.5 truncate">
+                          {item.author}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-3 pb-3 text-[10px] text-[var(--text-secondary)]">
+                  暂无匹配内容
+                </div>
+              )}
             </div>
           </motion.div>
         )}
