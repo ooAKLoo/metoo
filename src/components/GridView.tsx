@@ -82,7 +82,6 @@ function ItemCard({ item, index }: { item: FavoriteItem; index: number }) {
 
 export function GridView() {
   const items = useFavoriteStore((s) => s.items);
-  const listTitle = useFavoriteStore((s) => s.listTitle);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   if (items.length === 0) {

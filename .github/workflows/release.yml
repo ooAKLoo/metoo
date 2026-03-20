@@ -160,8 +160,20 @@ jobs:
           access-key-id: ${{ secrets.OSS_ACCESS_KEY_ID }}
           access-key-secret: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
 
-      - name: Upload to Aliyun OSS
+      - name: Upload versioned to OSS
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           ossutil cp -rf upload/ oss://${{ secrets.OSS_BUCKET }}/releases/${VERSION}/
-          ossutil cp -rf upload/ oss://${{ secrets.OSS_BUCKET }}/releases/latest/
+
+      - name: Upload latest to OSS (version-free filenames)
+        run: |
+          VERSION_NUM=${GITHUB_REF#refs/tags/v}
+          mkdir -p latest
+          for f in upload/*; do
+            filename=$(basename "$f")
+            # Strip version number: 觅途_0.1.0_x64-setup.exe → 觅途_x64-setup.exe
+            newname=$(echo "$filename" | sed "s/_${VERSION_NUM}//")
+            cp "$f" "latest/$newname"
+          done
+          ls -lh latest/
+          ossutil cp -rf latest/ oss://${{ secrets.OSS_BUCKET }}/releases/latest/

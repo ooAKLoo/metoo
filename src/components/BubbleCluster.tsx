@@ -637,14 +637,3 @@ function distributeInViewport(clusters: Cluster[]) {
   }
 }
 
-/* ── Helpers ──────────────────────────────────────────── */
-
-function clamp(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
-}
-
-/** Deterministic pseudo-random for consistent jitter */
-function seededRandom(seed: number): number {
-  const x = Math.sin(seed * 9301 + 49297) * 233280;
-  return x - Math.floor(x);
-}

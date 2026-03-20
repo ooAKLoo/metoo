@@ -47,9 +47,6 @@ export const MOSAIC_STYLES: MosaicStylePreset[] = [
     insetShadow: "", textStroke: "2px", noiseOverlay: false,   },
 ];
 
-/* ── Grid dimensions (base at 800×1100, scales proportionally) ── */
-const BASE_W = 800;
-
 /* ── 色相推导引擎 — 单一色相 → 全套配色 ── */
 import { hslToHex } from "./PopBoardPoster";
 
@@ -119,14 +116,6 @@ export function deriveMosaicPalette(hue: number, styleId?: string): MosaicPalett
         ],
       };
   }
-}
-
-/* ── Perceived-luminance check — adaptive text/icon on monochrome cells ── */
-function isLightColor(hex: string): boolean {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
 }
 
 /* ── Cell color index — ensures adjacent cells get different colors ── */
@@ -509,7 +498,6 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
     for (let ri = 0; ri < LAYOUT.length; ri++) {
       for (let ci = 0; ci < LAYOUT[ri].length; ci++) {
         const cell = LAYOUT[ri][ci];
-        const cellBg = pal.cells[COLOR_IDX[ri][ci]];
         const iconColor = pal.ink;
         if (cell.startsWith("I")) {
           const iIdx = parseInt(cell.substring(1));

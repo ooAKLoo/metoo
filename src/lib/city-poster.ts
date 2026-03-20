@@ -110,7 +110,7 @@ function drawProvince(
   ctx: CanvasRenderingContext2D,
   feature: GeoFeature,
   areaX: number, areaY: number, areaW: number, areaH: number,
-  cityCoord: [number, number],
+  _cityCoord: [number, number],
 ) {
   const bounds = getGeoBounds(feature);
   const geoW = bounds.maxLng - bounds.minLng;

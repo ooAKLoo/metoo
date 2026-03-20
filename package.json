@@ -1,7 +1,7 @@
 {
   "name": "metoo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@fontsource/zcool-kuaile": "^5.2.8",
+    "@ooakloowj/orbit": "^0.1.4",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
     "html2canvas": "^1.4.1",
