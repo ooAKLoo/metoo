@@ -40,6 +40,23 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
+      "entitlements": null
+    },
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      }
+    },
+    "linux": {
+      "deb": { "depends": [] },
+      "appimage": { "bundleMediaFramework": true }
+    },
+    "category": "Utility"
   }
 }
