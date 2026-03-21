@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Rect, Text, Group, Circle, Path, Image as KImage, Shape } from "react-konva";
+import { Rect, Text, Group, Circle, Image as KImage, Shape } from "react-konva";
 import useImage from "use-image";
 import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
@@ -37,19 +37,6 @@ interface CityCell {
   count: number;
   cover: string;
   color: string;
-}
-
-/* ── Star SVG path scaled to a given diameter ── */
-function starPath(d: number): string {
-  const s = d / 100;
-  return [
-    `M ${50 * s} ${10 * s}`,
-    `Q ${50 * s} ${50 * s} ${90 * s} ${50 * s}`,
-    `Q ${50 * s} ${50 * s} ${50 * s} ${90 * s}`,
-    `Q ${50 * s} ${50 * s} ${10 * s} ${50 * s}`,
-    `Q ${50 * s} ${50 * s} ${50 * s} ${10 * s}`,
-    "Z",
-  ].join(" ");
 }
 
 /* ── Per-ratio layout config ── */

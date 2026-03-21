@@ -15,14 +15,11 @@ import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { invoke } from "@tauri-apps/api/core";
 import { posterStageRef, saveKonvaPosterToDownloads, posterFilename } from "../lib/poster-stage";
 import { getPosterModule, posterModules, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
-import { DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
 import { KEYBOARD_THEMES, KEYBOARD_STYLES } from "./poster-modules/KeyboardPoster";
 import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
-import { MUJI_TEMPLATES, getDefaultTemplateIdx, classifyCollection, getVisibleTemplateIndices, templateConfigId } from "./poster-modules/MujiPoster";
+import { MUJI_TEMPLATES, getDefaultTemplateIdx, classifyCollection, getVisibleTemplateIndices } from "./poster-modules/MujiPoster";
 import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
 import { derivePopBoardPalette, hslToHex } from "./poster-modules/PopBoardPoster";
-import { deriveMujiColors } from "./poster-modules/MujiPoster";
-import { DISCOVER_RATIO_LAYOUTS } from "./poster-modules/DiscoverWestPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
@@ -39,10 +36,6 @@ export function RightPanel() {
   const setActivePosterModule = useMapStore((s) => s.setActivePosterModule);
   const posterRatios = useMapStore((s) => s.posterRatios);
   const setPosterRatio = useMapStore((s) => s.setPosterRatio);
-  const mujiConfigs = useMapStore((s) => s.mujiConfigs);
-  const setMujiConfig = useMapStore((s) => s.setMujiConfig);
-  const discoverConfigs = useMapStore((s) => s.discoverConfigs);
-  const setDiscoverConfig = useMapStore((s) => s.setDiscoverConfig);
   const keyboardThemeIdx = useMapStore((s) => s.keyboardThemeIdx);
   const setKeyboardThemeIdx = useMapStore((s) => s.setKeyboardThemeIdx);
   const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
@@ -55,8 +48,6 @@ export function RightPanel() {
   const setMosaicThemeIdx = useMapStore((s) => s.setMosaicThemeIdx);
   const popBoardHue = useMapStore((s) => s.popBoardHue);
   const setPopBoardHue = useMapStore((s) => s.setPopBoardHue);
-  const mujiHue = useMapStore((s) => s.mujiHue);
-  const setMujiHue = useMapStore((s) => s.setMujiHue);
   const mujiTextHidden = useMapStore((s) => s.mujiTextHidden);
   const toggleMujiTextHidden = useMapStore((s) => s.toggleMujiTextHidden);
   const mosaicHue = useMapStore((s) => s.mosaicHue);
@@ -84,15 +75,7 @@ export function RightPanel() {
     () => mujiTemplateIdx < 0 ? getDefaultTemplateIdx(listTitle, favItems) : mujiTemplateIdx % MUJI_TEMPLATES.length,
     [mujiTemplateIdx, favItems, listTitle],
   );
-  const currentMujiTemplate = MUJI_TEMPLATES[effectiveMujiIdx];
-  const currentMujiDefault = currentMujiTemplate.defaultConfig
-    ? { ...DEFAULT_CONFIG, ...currentMujiTemplate.defaultConfig }
-    : DEFAULT_CONFIG;
-  const currentMujiBaseCfgKey = templateConfigId(currentMujiTemplate);
   const currentPosterRatio = activePosterModule ? (posterRatios[activePosterModule] ?? "4:3") : "4:3";
-  const currentMujiCfgKey = `${currentMujiBaseCfgKey}:${currentPosterRatio}`;
-  const currentMujiConfig = mujiConfigs[currentMujiCfgKey] ?? currentMujiDefault;
-
   const posterRef = useRef<HTMLDivElement>(null);
   const [dlState, setDlState] = useState<"idle" | "loading" | "done">("idle");
   const [showModuleBar, setShowModuleBar] = useState(false);

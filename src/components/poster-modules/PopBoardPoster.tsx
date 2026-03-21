@@ -612,7 +612,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
       const x = Math.sin(figureSeed * 0.1 + i * 7.919) * 10000;
       return x - Math.floor(x);
     };
-    return DEFAULT_SCATTER.map((s, i) => ({
+    return DEFAULT_SCATTER.map((_, i) => ({
       x: 5 + r(i * 4) * 85,
       y: 5 + r(i * 4 + 1) * 85,
       rot: (r(i * 4 + 2) - 0.5) * 40,
