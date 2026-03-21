@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Rect, Text, Line, Group, Circle, Image as KImage, Shape } from "react-konva";
 import useImage from "use-image";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { PixelSpriteSVG, SPRITE_NAMES } from "../poster-generators/PixelSprites";
@@ -428,25 +428,143 @@ function CellBackground({
   );
 }
 
+/* ── Per-ratio layout config ── */
+
+interface MosaicLayout {
+  gridY: number;
+  infoH: number;
+  infoToBrandGap: number;
+  brandFooterH: number;
+  gapRatio: number;
+  sideMargin: number;
+  gridCols: number;
+  gridRows: number;
+  clipR: number;
+  infoPadX: number;
+  infoPadY: number;
+  bigNumberFS: number;
+  citiesLabelFS: number;
+  subtitleFS: number;
+  descriptionFS: number;
+  brandFS: number;
+  neonGridSpacing: number;
+  bottomPadding: number;
+  dividerX: number;
+  dividerW: number;
+  textBlockX: number;
+}
+
+const BASE_LAYOUT: MosaicLayout = {
+  gridY: 48,
+  infoH: 110,
+  infoToBrandGap: 30,
+  brandFooterH: 32,
+  gapRatio: 14 / 138,
+  sideMargin: 32,
+  gridCols: 4,
+  gridRows: 5,
+  clipR: 24,
+  infoPadX: 28,
+  infoPadY: 22,
+  bigNumberFS: 60,
+  citiesLabelFS: 10,
+  subtitleFS: 22,
+  descriptionFS: 12,
+  brandFS: 13,
+  neonGridSpacing: 60,
+  bottomPadding: 16,
+  dividerX: 80,
+  dividerW: 3,
+  textBlockX: 100,
+};
+
+const RATIO_LAYOUTS: Record<PosterRatio, MosaicLayout> = {
+  "4:3": BASE_LAYOUT,
+  "1:1": {
+    ...BASE_LAYOUT,
+    gridY: 36,
+    infoH: 90,
+    infoToBrandGap: 24,
+    brandFooterH: 28,
+    sideMargin: 28,
+    clipR: 20,
+    infoPadX: 22,
+    infoPadY: 18,
+    bigNumberFS: 48,
+    citiesLabelFS: 8,
+    subtitleFS: 18,
+    descriptionFS: 10,
+    brandFS: 11,
+    neonGridSpacing: 50,
+    bottomPadding: 12,
+    dividerX: 64,
+    dividerW: 2,
+    textBlockX: 80,
+  },
+  "3:4": {
+    ...BASE_LAYOUT,
+    gridY: 40,
+    infoH: 96,
+    infoToBrandGap: 26,
+    brandFooterH: 28,
+    sideMargin: 28,
+    clipR: 20,
+    infoPadX: 24,
+    infoPadY: 20,
+    bigNumberFS: 52,
+    citiesLabelFS: 9,
+    subtitleFS: 19,
+    descriptionFS: 11,
+    brandFS: 11,
+    neonGridSpacing: 52,
+    bottomPadding: 14,
+    dividerX: 68,
+    dividerW: 3,
+    textBlockX: 86,
+  },
+  "16:9": {
+    ...BASE_LAYOUT,
+    gridY: 56,
+    infoH: 124,
+    infoToBrandGap: 34,
+    brandFooterH: 36,
+    sideMargin: 38,
+    clipR: 28,
+    infoPadX: 32,
+    infoPadY: 26,
+    bigNumberFS: 68,
+    citiesLabelFS: 12,
+    subtitleFS: 26,
+    descriptionFS: 14,
+    brandFS: 15,
+    neonGridSpacing: 70,
+    bottomPadding: 18,
+    dividerX: 92,
+    dividerW: 3,
+    textBlockX: 116,
+  },
+};
+
 /* ── Main Component ── */
 
 function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHeight: POSTER_H }: PosterModuleProps) {
+  const ratio = detectPosterRatio(POSTER_W, POSTER_H);
+  const L = RATIO_LAYOUTS[ratio];
+
   const mosaicThemeIdx = useMapStore((s) => s.mosaicThemeIdx);
   const themeId = MOSAIC_THEMES[mosaicThemeIdx]?.id ?? "solid";
 
   /* Scale grid to fit both width and height */
-  const GRID_Y = 48;
-  const BOTTOM_H = 110 + 30 + 32; // INFO_H + gap + brand footer
-  const GAP_RATIO = 14 / 138;
+  const BOTTOM_H = L.infoH + L.infoToBrandGap + L.brandFooterH;
 
-  const availW = POSTER_W - 64;
-  const availH = POSTER_H - GRID_Y - BOTTOM_H - 16;
+  const availW = POSTER_W - L.sideMargin * 2;
+  const availH = POSTER_H - L.gridY - BOTTOM_H - L.bottomPadding;
 
-  const maxByW = availW / (4 + 3 * GAP_RATIO);
-  const maxByH = availH / (5 + 4 * GAP_RATIO);
+  const maxByW = availW / (L.gridCols + (L.gridCols - 1) * L.gapRatio);
+  const maxByH = availH / (L.gridRows + (L.gridRows - 1) * L.gapRatio);
   const CELL = Math.round(Math.min(maxByW, maxByH));
-  const GAP = Math.round(CELL * GAP_RATIO);
-  const GRID_W = CELL * 4 + GAP * 3;
+  const GAP = Math.round(CELL * L.gapRatio);
+  const GRID_W = CELL * L.gridCols + GAP * (L.gridCols - 1);
   const GRID_X = Math.round((POSTER_W - GRID_W) / 2);
 
   /* ── Derive grid text from city names ── */
@@ -516,15 +634,15 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
   }, [pal.ink, pal.bg, pal.cells, sty.id, iconSeed, covers, CELL]);
 
   /* ── Bottom info card layout ── */
-  const INFO_PAD_X = 28;
-  const INFO_PAD_Y = 22;
-  const INFO_H = 110;
-  const INFO_Y = POSTER_H - 32 - 30 - INFO_H; // leave room for brand footer
+  const INFO_H = L.infoH;
+  const INFO_PAD_X = L.infoPadX;
+  const INFO_PAD_Y = L.infoPadY;
+  const INFO_Y = POSTER_H - L.brandFooterH - L.infoToBrandGap - INFO_H;
   const INFO_X = GRID_X;
   const INFO_W = GRID_W;
 
   /* ── Brand footer Y ── */
-  const BRAND_Y = POSTER_H - 32;
+  const BRAND_Y = POSTER_H - L.brandFooterH;
 
   /* ── Text stroke props ── */
   const textStrokeProps = sty.textStroke
@@ -536,7 +654,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
       {/* Rounded-corner clip */}
       <Group
         clipFunc={(ctx) => {
-          const r = 24;
+          const r = L.clipR;
           ctx.beginPath();
           ctx.moveTo(r, 0);
           ctx.arcTo(POSTER_W, 0, POSTER_W, POSTER_H, r);
@@ -552,12 +670,12 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
         {/* Neon: subtle grid lines */}
         {sty.id === "neon" && (
           <Group opacity={0.08}>
-            {Array.from({ length: Math.ceil(POSTER_W / 60) }, (_, i) => (
-              <Line key={`v${i}`} points={[i * 60, 0, i * 60, POSTER_H]}
+            {Array.from({ length: Math.ceil(POSTER_W / L.neonGridSpacing) }, (_, i) => (
+              <Line key={`v${i}`} points={[i * L.neonGridSpacing, 0, i * L.neonGridSpacing, POSTER_H]}
                 stroke={pal.accent} strokeWidth={0.5} />
             ))}
-            {Array.from({ length: Math.ceil(POSTER_H / 60) }, (_, i) => (
-              <Line key={`h${i}`} points={[0, i * 60, POSTER_W, i * 60]}
+            {Array.from({ length: Math.ceil(POSTER_H / L.neonGridSpacing) }, (_, i) => (
+              <Line key={`h${i}`} points={[0, i * L.neonGridSpacing, POSTER_W, i * L.neonGridSpacing]}
                 stroke={pal.accent} strokeWidth={0.5} />
             ))}
           </Group>
@@ -568,7 +686,7 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
           row.map((cell, ci) => {
             const bg = pal.cells[COLOR_IDX[ri][ci]];
             const cx = GRID_X + ci * (CELL + GAP);
-            const cy = GRID_Y + ri * (CELL + GAP);
+            const cy = L.gridY + ri * (CELL + GAP);
             const key = `${ri}-${ci}`;
             // Neon: bright text on dark cells; Flat: adaptive per luminance; others: ink
             const cellTextColor = sty.id === "neon" ? bg : pal.ink;
@@ -708,23 +826,23 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
             const dividerColor = pal.accent;
             return (<>
               <Text x={INFO_PAD_X} y={INFO_PAD_Y}
-                text={String(cityCount)} fontSize={60} fontStyle="900"
+                text={String(cityCount)} fontSize={L.bigNumberFS} fontStyle="900"
                 fill={numberColor} fontFamily={FONT_CN} lineHeight={1} />
-              <Text x={INFO_PAD_X} y={INFO_PAD_Y + 62}
-                text="CITIES" fontSize={10} fontStyle="800"
+              <Text x={INFO_PAD_X} y={INFO_PAD_Y + L.bigNumberFS + 2}
+                text="CITIES" fontSize={L.citiesLabelFS} fontStyle="800"
                 fill={infoText} opacity={0.6}
-                letterSpacing={10 * 0.15} fontFamily={FONT_UI} />
-              <Rect x={INFO_PAD_X + 80} y={INFO_PAD_Y + 4} width={3}
+                letterSpacing={L.citiesLabelFS * 0.15} fontFamily={FONT_UI} />
+              <Rect x={INFO_PAD_X + L.dividerX} y={INFO_PAD_Y + 4} width={L.dividerW}
                 height={INFO_H - INFO_PAD_Y * 2 - 8}
                 fill={dividerColor} opacity={0.4} cornerRadius={2} />
-              <Text x={INFO_PAD_X + 100} y={INFO_PAD_Y + 4}
-                text={subtitle} fontSize={22} fontStyle="900"
-                fill={infoText} letterSpacing={22 * -0.02}
-                fontFamily={FONT_CN} width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X} />
-              <Text x={INFO_PAD_X + 100} y={INFO_PAD_Y + 36}
-                text={description} fontSize={12}
+              <Text x={INFO_PAD_X + L.textBlockX} y={INFO_PAD_Y + 4}
+                text={subtitle} fontSize={L.subtitleFS} fontStyle="900"
+                fill={infoText} letterSpacing={L.subtitleFS * -0.02}
+                fontFamily={FONT_CN} width={INFO_W - INFO_PAD_X - L.textBlockX - INFO_PAD_X} />
+              <Text x={INFO_PAD_X + L.textBlockX} y={INFO_PAD_Y + 36}
+                text={description} fontSize={L.descriptionFS}
                 fill={infoText} opacity={0.7} lineHeight={1.6}
-                fontFamily={FONT_CN} width={INFO_W - INFO_PAD_X - 100 - INFO_PAD_X} />
+                fontFamily={FONT_CN} width={INFO_W - INFO_PAD_X - L.textBlockX - INFO_PAD_X} />
             </>);
           })()}
         </Group>
@@ -735,11 +853,11 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
           y={BRAND_Y}
           width={POSTER_W}
           text="METOO · 城市拼贴"
-          fontSize={13}
+          fontSize={L.brandFS}
           fontStyle="900"
           fill={sty.id === "neon" ? pal.accent : pal.ink}
           opacity={sty.id === "neon" ? 0.5 : 0.35}
-          letterSpacing={13 * 0.2}
+          letterSpacing={L.brandFS * 0.2}
           fontFamily={FONT_CN}
           align="center"
         />

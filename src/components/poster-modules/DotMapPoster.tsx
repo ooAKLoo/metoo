@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Rect, Text, Line, Group, Circle, Image as KImage } from "react-konva";
 import useImage from "use-image";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 
@@ -71,6 +71,110 @@ function CoverImg({
     <KImage image={img} x={x} y={y} width={w} height={h} />
   ) : null;
 }
+
+/* ── Per-ratio layout config ── */
+
+interface DotMapLayout {
+  pad: number;
+  labelFS: number;
+  numFS: number;
+  statsFS: number;
+  coverW: number;
+  coverH: number;
+  coverGap: number;
+  descFS: number;
+  descWidthFrac: number;
+  footerH: number;
+  footerContentOffset: number;
+  gridPad: number;
+  headerBottomOffset: number;
+  captionFS: number;
+  legendFS: number;
+  legendGap: number;
+  legendBarW: number;
+  legendBarH: number;
+  legendBottomMargin: number;
+  textColW: number;
+  coversXGap: number;
+  labelNumGap: number;
+  numStatsGap: number;
+  footerBrandFS: number;
+  footerSubFS: number;
+  footerSubOffsetY: number;
+  footerSepX: number;
+  footerSepH: number;
+  qrSize: number;
+  qrOffsetX: number;
+  tagFS: number;
+  tagGap: number;
+  tagDotR: number;
+  tagDotGap: number;
+  tagOffsetY: number;
+  clipR: number;
+}
+
+const BASE_LAYOUT: DotMapLayout = {
+  pad: 48, labelFS: 14, numFS: 36, statsFS: 10,
+  coverW: 48, coverH: 40, coverGap: 4,
+  descFS: 8, descWidthFrac: 1 / 3,
+  footerH: 80, footerContentOffset: 24,
+  gridPad: 20, headerBottomOffset: 100,
+  captionFS: 8,
+  legendFS: 10, legendGap: 16, legendBarW: 24, legendBarH: 2, legendBottomMargin: 32,
+  textColW: 140, coversXGap: 16,
+  labelNumGap: 4, numStatsGap: 8,
+  footerBrandFS: 24, footerSubFS: 14, footerSubOffsetY: 28,
+  footerSepX: 68, footerSepH: 40,
+  qrSize: 28, qrOffsetX: 80,
+  tagFS: 9, tagGap: 14, tagDotR: 3, tagDotGap: 6, tagOffsetY: 16,
+  clipR: 24,
+};
+
+const RATIO_LAYOUTS: Record<PosterRatio, DotMapLayout> = {
+  "4:3": BASE_LAYOUT,
+  "1:1": {
+    ...BASE_LAYOUT,
+    pad: 40, labelFS: 12, numFS: 30, statsFS: 9,
+    coverW: 40, coverH: 34, descFS: 7, descWidthFrac: 0.30,
+    footerH: 70, gridPad: 16, headerBottomOffset: 86,
+    captionFS: 7,
+    legendFS: 9, legendGap: 14, legendBarW: 20, legendBottomMargin: 26,
+    textColW: 115, coversXGap: 12,
+    footerBrandFS: 20, footerSubFS: 12, footerSubOffsetY: 24,
+    footerSepX: 58, footerSepH: 34,
+    qrSize: 24, qrOffsetX: 70,
+    tagFS: 8, tagGap: 12, tagDotR: 2.5, tagOffsetY: 14,
+    clipR: 20,
+  },
+  "3:4": {
+    ...BASE_LAYOUT,
+    pad: 44, labelFS: 12, numFS: 30, statsFS: 9,
+    coverW: 42, coverH: 36, descFS: 7, descWidthFrac: 0.35,
+    footerH: 70, gridPad: 16, headerBottomOffset: 86,
+    captionFS: 7,
+    legendFS: 9, legendGap: 14, legendBarW: 20, legendBottomMargin: 26,
+    textColW: 120, coversXGap: 12,
+    footerBrandFS: 20, footerSubFS: 12, footerSubOffsetY: 24,
+    footerSepX: 58, footerSepH: 34,
+    qrSize: 24, qrOffsetX: 70,
+    tagFS: 8, tagGap: 12, tagDotR: 2.5, tagOffsetY: 14,
+    clipR: 20,
+  },
+  "16:9": {
+    ...BASE_LAYOUT,
+    pad: 56, labelFS: 16, numFS: 42, statsFS: 11,
+    coverW: 54, coverH: 46, coverGap: 5, descFS: 9, descWidthFrac: 0.25,
+    footerH: 84, gridPad: 24, headerBottomOffset: 110,
+    captionFS: 9,
+    legendFS: 11, legendGap: 18, legendBarW: 28, legendBottomMargin: 36,
+    textColW: 170, coversXGap: 20,
+    footerBrandFS: 28, footerSubFS: 16, footerSubOffsetY: 32,
+    footerSepX: 78, footerSepH: 44,
+    qrSize: 32, qrOffsetX: 92,
+    tagFS: 10, tagGap: 16, tagDotR: 3.5, tagDotGap: 7, tagOffsetY: 18,
+    clipR: 28,
+  },
+};
 
 /* ── Component ── */
 function DotMapPoster({
@@ -157,73 +261,80 @@ function DotMapPoster({
     [cityEntries],
   );
 
-  /* ── Layout constants ── */
-  const PAD = 48;
+  /* ── Per-ratio layout ── */
+  const ratio = detectPosterRatio(W, H);
+  const L = RATIO_LAYOUTS[ratio];
+
+  const PAD = L.pad;
   const HEADER_Y = PAD;
 
-  // Header text metrics
-  const labelFS = 14; // "足迹 / FOOTPRINT"
-  const numFS = 36; // city count number
-  const statsFS = 10; // stats line
+  const labelFS = L.labelFS;
+  const numFS = L.numFS;
+  const statsFS = L.statsFS;
 
-  // Cover thumbnails
-  const coverW = 48;
-  const coverH = 40;
-  const coverGap = 4;
+  const coverW = L.coverW;
+  const coverH = L.coverH;
+  const coverGap = L.coverGap;
 
-  // Header right description
-  const descFS = 8;
-  const descW = W / 3;
+  const descFS = L.descFS;
+  const descW = W * L.descWidthFrac;
 
-  // Footer
-  const footerH = 80;
+  const footerH = L.footerH;
   const footerY = H - footerH;
   const footerLineY = footerY;
-  const footerContentY = footerY + 24;
+  const footerContentY = footerY + L.footerContentOffset;
 
-  // Dot grid: centered in the middle area
-  const gridPad = 20;
+  const gridPad = L.gridPad;
   const gridTotalW = svgW + 2 * gridPad;
   const gridTotalH = svgH + 2 * gridPad;
-  const headerBottom = HEADER_Y + 100;
+  const headerBottom = HEADER_Y + L.headerBottomOffset;
   const availH = footerY - headerBottom;
   const gridX = (W - gridTotalW) / 2;
   const gridY = headerBottom + (availH - gridTotalH - 20) / 2;
   const dotsOffsetX = gridX + gridPad;
   const dotsOffsetY = gridY + gridPad;
 
-  // Caption below dot grid
-  const captionFS = 8;
+  const captionFS = L.captionFS;
   const captionY = gridY + gridTotalH + 8;
 
-  // Legend (right side, above footer)
-  const legendFS = 10;
-  const legendGap = 16;
-  const legendBarW = 24;
-  const legendBarH = 2;
+  const legendFS = L.legendFS;
+  const legendGap = L.legendGap;
+  const legendBarW = L.legendBarW;
+  const legendBarH = L.legendBarH;
   const legendX = W - PAD;
-  const legendBottomY = footerY - 32;
+  const legendBottomY = footerY - L.legendBottomMargin;
 
-  // Compute left-side header positions
   const labelY = HEADER_Y;
-  const numY = labelY + labelFS + 4;
-  const statsY = numY + numFS + 8;
+  const numY = labelY + labelFS + L.labelNumGap;
+  const statsY = numY + numFS + L.numStatsGap;
 
-  // Cover thumbnails: to the right of the text column
-  const textColW = 140;
-  const coversX = PAD + textColW + 16;
+  const textColW = L.textColW;
+  const coversX = PAD + textColW + L.coversXGap;
   const coversY = HEADER_Y + 4;
   const coversTotalW = covers.length * coverW + (covers.length - 1) * coverGap;
 
-  // Red border (right side of covers group)
-  const coverBorderX = coversX + coversTotalW + 16;
+  const coverBorderX = coversX + coversTotalW + L.coversXGap;
+
+  const footerBrandFS = L.footerBrandFS;
+  const footerSubFS = L.footerSubFS;
+  const footerSubOffsetY = L.footerSubOffsetY;
+  const footerSepX = L.footerSepX;
+  const footerSepH = L.footerSepH;
+  const qrSize = L.qrSize;
+  const qrOffsetX = L.qrOffsetX;
+  const tagFS = L.tagFS;
+  const tagGap = L.tagGap;
+  const tagDotR = L.tagDotR;
+  const tagDotGap = L.tagDotGap;
+  const tagOffsetY = L.tagOffsetY;
+  const clipR = L.clipR;
 
   return (
     <KonvaPosterStage width={W} height={H}>
       {/* Rounded-corner clip */}
       <Group
         clipFunc={(ctx) => {
-          const r = 24;
+          const r = clipR;
           ctx.beginPath();
           ctx.moveTo(r, 0);
           ctx.arcTo(W, 0, W, H, r);
@@ -435,7 +546,7 @@ function DotMapPoster({
           x={PAD}
           y={footerContentY}
           text="觅途"
-          fontSize={24}
+          fontSize={footerBrandFS}
           fontStyle="bold"
           fill="#171717"
           letterSpacing={-1}
@@ -445,22 +556,22 @@ function DotMapPoster({
         {/* Brand: METOO */}
         <Text
           x={PAD}
-          y={footerContentY + 28}
+          y={footerContentY + footerSubOffsetY}
           text="METOO"
-          fontSize={14}
+          fontSize={footerSubFS}
           fontStyle="500"
           fill="#a3a3a3"
-          letterSpacing={14 * 0.1}
+          letterSpacing={footerSubFS * 0.1}
           fontFamily={FONT_UI}
         />
 
         {/* Vertical separator between brand and QR */}
         <Line
           points={[
-            PAD + 60 + 8,
+            PAD + footerSepX,
             footerContentY,
-            PAD + 60 + 8,
-            footerContentY + 40,
+            PAD + footerSepX,
+            footerContentY + footerSepH,
           ]}
           stroke="#a3a3a3"
           strokeWidth={1}
@@ -468,8 +579,7 @@ function DotMapPoster({
 
         {/* QR-like grid (3x3) */}
         {(() => {
-          const qrSize = 28;
-          const qrX = PAD + 60 + 8 + 12;
+          const qrX = PAD + qrOffsetX;
           const qrY = footerContentY + 6;
           const border = 2;
           const inner = qrSize - border * 2;
@@ -523,28 +633,23 @@ function DotMapPoster({
 
         {/* Footer tags with colored dots */}
         {(() => {
-          const tagFS = 9;
-          const tagGap = 14;
-          const dotR = 3;
-          const dotGap = 6;
-          // Compute total width to right-align
           const tagWidths = FOOTER_TAGS.map(
-            (t) => dotR * 2 + dotGap + t.text.length * tagFS,
+            (t) => tagDotR * 2 + tagDotGap + t.text.length * tagFS,
           );
           const totalTagW =
             tagWidths.reduce((a, b) => a + b, 0) +
             (FOOTER_TAGS.length - 1) * tagGap;
           let ox = W - PAD - totalTagW;
-          const tagY = footerContentY + 16;
+          const tY = footerContentY + tagOffsetY;
 
           return FOOTER_TAGS.map((tag, i) => {
             const x0 = ox;
             ox += tagWidths[i] + tagGap;
             return (
-              <Group key={tag.text} x={x0} y={tagY}>
-                <Circle x={dotR} y={tagFS / 2} radius={dotR} fill={tag.color} />
+              <Group key={tag.text} x={x0} y={tY}>
+                <Circle x={tagDotR} y={tagFS / 2} radius={tagDotR} fill={tag.color} />
                 <Text
-                  x={dotR * 2 + dotGap}
+                  x={tagDotR * 2 + tagDotGap}
                   y={0}
                   text={tag.text}
                   fontSize={tagFS}

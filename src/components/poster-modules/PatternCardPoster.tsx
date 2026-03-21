@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Rect, Text, Group, Circle, Path, Image as KImage, Shape } from "react-konva";
 import useImage from "use-image";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { useMapStore } from "../../stores/useMapStore";
@@ -52,6 +52,244 @@ function starPath(d: number): string {
   ].join(" ");
 }
 
+/* ── Per-ratio layout config ── */
+
+interface PatternLayout {
+  /* Card inset (brutal vs flat) */
+  cardMarginBrutal: number;
+  cardMarginFlat: number;
+  shadowDepthBrutal: number;
+  /* Grid */
+  gridGapBrutal: number;
+  gridGapFlat: number;
+  gridPad: number;
+  /* Sections */
+  headerH: number;
+  footerStatsH: number;
+  labelH: number;
+  footerStripHBrutal: number;
+  footerStripHFlat: number;
+  /* Border / radius */
+  borderWidth: number;
+  brRadius: number;
+  /* Header – brutalism */
+  headerPadX: number;
+  headerTitleFS: number;
+  accentBoxW: number;
+  iconSize: number;
+  iconStrokeWidth: number;
+  /* Header – flat */
+  flatBoxPadX: number;
+  flatBoxPadY: number;
+  flatHeaderH: number;
+  flatTitlePadX: number;
+  flatTitleFS: number;
+  flatIconBoxW: number;
+  flatIconR: number;
+  /* Cell labels */
+  cellNameFS: number;
+  cellCountFS: number;
+  cellLabelGap: number;
+  cellLabelLineH: number;
+  /* Stats section */
+  statsPadX: number;
+  statsFS: number;
+  rankingFS: number;
+  rankingGap: number;
+  rankingDividerY: number;
+  statsTextY: number;
+  rankingBgH: number;
+  rankingBgPad: number;
+  rankingBgCornerR: number;
+  rankingBgTextX: number;
+  rankingFirstExtraPad: number;
+  /* Footer stripe */
+  stripeW: number;
+  /* Circle shadow offset (brutal) */
+  circleShadowOffset: number;
+}
+
+const BASE_LAYOUT: PatternLayout = {
+  cardMarginBrutal: 20,
+  cardMarginFlat: 0,
+  shadowDepthBrutal: 12,
+  gridGapBrutal: 16,
+  gridGapFlat: 12,
+  gridPad: 32,
+  headerH: 72,
+  footerStatsH: 120,
+  labelH: 28,
+  footerStripHBrutal: 28,
+  footerStripHFlat: 4,
+  borderWidth: 5,
+  brRadius: 16,
+  headerPadX: 28,
+  headerTitleFS: 28,
+  accentBoxW: 72,
+  iconSize: 32,
+  iconStrokeWidth: 3,
+  flatBoxPadX: 32,
+  flatBoxPadY: 20,
+  flatHeaderH: 60,
+  flatTitlePadX: 20,
+  flatTitleFS: 22,
+  flatIconBoxW: 60,
+  flatIconR: 12,
+  cellNameFS: 13,
+  cellCountFS: 10,
+  cellLabelGap: 8,
+  cellLabelLineH: 16,
+  statsPadX: 32,
+  statsFS: 12,
+  rankingFS: 11,
+  rankingGap: 16,
+  rankingDividerY: 24,
+  statsTextY: 38,
+  rankingBgH: 18,
+  rankingBgPad: 20,
+  rankingBgCornerR: 4,
+  rankingBgTextX: 8,
+  rankingFirstExtraPad: 16,
+  stripeW: 11,
+  circleShadowOffset: 6,
+};
+
+const RATIO_LAYOUTS: Record<PosterRatio, PatternLayout> = {
+  "4:3": BASE_LAYOUT,
+  "1:1": {
+    ...BASE_LAYOUT,
+    cardMarginBrutal: 16,
+    shadowDepthBrutal: 10,
+    gridGapBrutal: 14,
+    gridGapFlat: 10,
+    gridPad: 26,
+    headerH: 60,
+    footerStatsH: 100,
+    labelH: 24,
+    footerStripHBrutal: 24,
+    footerStripHFlat: 3,
+    borderWidth: 4,
+    brRadius: 14,
+    headerPadX: 22,
+    headerTitleFS: 23,
+    accentBoxW: 60,
+    iconSize: 26,
+    iconStrokeWidth: 2.5,
+    flatBoxPadX: 26,
+    flatBoxPadY: 16,
+    flatHeaderH: 50,
+    flatTitlePadX: 16,
+    flatTitleFS: 18,
+    flatIconBoxW: 50,
+    flatIconR: 10,
+    cellNameFS: 11,
+    cellCountFS: 9,
+    cellLabelGap: 6,
+    cellLabelLineH: 14,
+    statsPadX: 26,
+    statsFS: 10,
+    rankingFS: 10,
+    rankingGap: 14,
+    rankingDividerY: 20,
+    statsTextY: 32,
+    rankingBgH: 16,
+    rankingBgPad: 16,
+    rankingBgCornerR: 3,
+    rankingBgTextX: 6,
+    rankingFirstExtraPad: 14,
+    stripeW: 9,
+    circleShadowOffset: 5,
+  },
+  "3:4": {
+    ...BASE_LAYOUT,
+    cardMarginBrutal: 18,
+    shadowDepthBrutal: 10,
+    gridGapBrutal: 14,
+    gridGapFlat: 10,
+    gridPad: 28,
+    headerH: 64,
+    footerStatsH: 106,
+    labelH: 26,
+    footerStripHBrutal: 24,
+    footerStripHFlat: 3,
+    borderWidth: 4,
+    brRadius: 14,
+    headerPadX: 24,
+    headerTitleFS: 24,
+    accentBoxW: 64,
+    iconSize: 28,
+    iconStrokeWidth: 2.5,
+    flatBoxPadX: 28,
+    flatBoxPadY: 18,
+    flatHeaderH: 52,
+    flatTitlePadX: 18,
+    flatTitleFS: 20,
+    flatIconBoxW: 52,
+    flatIconR: 11,
+    cellNameFS: 12,
+    cellCountFS: 9,
+    cellLabelGap: 7,
+    cellLabelLineH: 14,
+    statsPadX: 28,
+    statsFS: 11,
+    rankingFS: 10,
+    rankingGap: 14,
+    rankingDividerY: 22,
+    statsTextY: 34,
+    rankingBgH: 16,
+    rankingBgPad: 18,
+    rankingBgCornerR: 3,
+    rankingBgTextX: 7,
+    rankingFirstExtraPad: 14,
+    stripeW: 10,
+    circleShadowOffset: 5,
+  },
+  "16:9": {
+    ...BASE_LAYOUT,
+    cardMarginBrutal: 24,
+    shadowDepthBrutal: 14,
+    gridGapBrutal: 18,
+    gridGapFlat: 14,
+    gridPad: 36,
+    headerH: 80,
+    footerStatsH: 130,
+    labelH: 30,
+    footerStripHBrutal: 32,
+    footerStripHFlat: 5,
+    borderWidth: 6,
+    brRadius: 18,
+    headerPadX: 32,
+    headerTitleFS: 32,
+    accentBoxW: 80,
+    iconSize: 36,
+    iconStrokeWidth: 3.5,
+    flatBoxPadX: 36,
+    flatBoxPadY: 24,
+    flatHeaderH: 68,
+    flatTitlePadX: 22,
+    flatTitleFS: 26,
+    flatIconBoxW: 68,
+    flatIconR: 14,
+    cellNameFS: 15,
+    cellCountFS: 11,
+    cellLabelGap: 10,
+    cellLabelLineH: 18,
+    statsPadX: 36,
+    statsFS: 14,
+    rankingFS: 12,
+    rankingGap: 18,
+    rankingDividerY: 28,
+    statsTextY: 44,
+    rankingBgH: 20,
+    rankingBgPad: 24,
+    rankingBgCornerR: 5,
+    rankingBgTextX: 10,
+    rankingFirstExtraPad: 18,
+    stripeW: 13,
+    circleShadowOffset: 7,
+  },
+};
+
 /* ── Single circle cell with image loading ── */
 function CityCircleCell({
   cell,
@@ -60,6 +298,7 @@ function CityCircleCell({
   radius,
   isBrutal,
   borderWidth,
+  circleShadowOffset,
 }: {
   cell: CityCell;
   cx: number;
@@ -67,6 +306,7 @@ function CityCircleCell({
   radius: number;
   isBrutal: boolean;
   borderWidth: number;
+  circleShadowOffset: number;
 }) {
   const [img] = useImage(cell.cover, "anonymous");
   const d = radius * 2;
@@ -76,8 +316,8 @@ function CityCircleCell({
       {/* Brutalism shadow offset */}
       {isBrutal && (
         <Circle
-          x={radius + 6}
-          y={radius + 6}
+          x={radius + circleShadowOffset}
+          y={radius + circleShadowOffset}
           radius={radius}
           fill="#000"
         />
@@ -158,9 +398,11 @@ export default function PatternCardPoster({
   const cardStyle = PATTERN_STYLES[patternStyleIdx % PATTERN_STYLES.length].id;
   const isBrutal = cardStyle === "brutalism";
 
-  /* ── Brutalism: card sits inset on grid bg with solid depth shadow ── */
-  const CARD_MARGIN = isBrutal ? 20 : 0;
-  const SHADOW_DEPTH = isBrutal ? 12 : 0;
+  /* ── Resolve per-ratio layout ── */
+  const ratio = detectPosterRatio(PW, PH);
+  const L = RATIO_LAYOUTS[ratio];
+  const CARD_MARGIN = isBrutal ? L.cardMarginBrutal : L.cardMarginFlat;
+  const SHADOW_DEPTH = isBrutal ? L.shadowDepthBrutal : 0;
   const W = PW - CARD_MARGIN * 2 - SHADOW_DEPTH;
   const H = PH - CARD_MARGIN * 2 - SHADOW_DEPTH;
 
@@ -168,8 +410,8 @@ export default function PatternCardPoster({
   const totalItems = items.length;
   const topCity = cityEntries[0];
 
-  const borderWidth = 5;
-  const brRadius = 16;
+  const borderWidth = L.borderWidth;
+  const brRadius = L.brRadius;
   const accentColor = CITY_COLORS[1];
   const primaryColor = CITY_COLORS[0];
 
@@ -196,12 +438,12 @@ export default function PatternCardPoster({
   }, [cityEntries, cellCount]);
 
   /* ── Layout constants ── */
-  const GRID_GAP = isBrutal ? 16 : 12;
-  const GRID_PAD = 32;
-  const HEADER_H = 72;
-  const FOOTER_STATS_H = 120;
-  const LABEL_H = 28;
-  const FOOTER_STRIP_H = isBrutal ? 28 : 4;
+  const GRID_GAP = isBrutal ? L.gridGapBrutal : L.gridGapFlat;
+  const GRID_PAD = L.gridPad;
+  const HEADER_H = L.headerH;
+  const FOOTER_STATS_H = L.footerStatsH;
+  const LABEL_H = L.labelH;
+  const FOOTER_STRIP_H = isBrutal ? L.footerStripHBrutal : L.footerStripHFlat;
 
   /* ── Compute cell size to fit both W and H ── */
   const availW = W - GRID_PAD * 2;
@@ -223,21 +465,21 @@ export default function PatternCardPoster({
   /* ── City ranking layout (horizontal flow) ── */
   const rankingEntries = useMemo(() => {
     const top8 = cityEntries.slice(0, 8);
-    const gap = 16;
-    const fs = 11;
+    const gap = L.rankingGap;
+    const fs = L.rankingFS;
     let ox = 0;
     return top8.map((city, i) => {
       const label = `${i + 1}. ${city.name}`;
       const countLabel = `(${city.count})`;
       const fw = i === 0 ? "700" : "400";
       // For brutalism first item, add padding
-      const extraPad = isBrutal && i === 0 ? 16 : 0;
+      const extraPad = isBrutal && i === 0 ? L.rankingFirstExtraPad : 0;
       const textW = measureText(label + countLabel, fs, fw, FONT_CN) + 4 + extraPad;
       const x = ox;
       ox += textW + gap;
       return { city, label, countLabel, x, w: textW, idx: i };
     });
-  }, [cityEntries, isBrutal]);
+  }, [cityEntries, isBrutal, L]);
 
   return (
     <KonvaPosterStage width={PW} height={PH}>
@@ -295,12 +537,12 @@ export default function PatternCardPoster({
 
             {/* Title text */}
             <Text
-              x={28}
+              x={L.headerPadX}
               y={0}
-              width={W - 28 - 72 - borderWidth}
+              width={W - L.headerPadX - L.accentBoxW - borderWidth}
               height={HEADER_H - borderWidth}
               text={title}
-              fontSize={28}
+              fontSize={L.headerTitleFS}
               fontStyle="900"
               fill="#000"
               fontFamily={FONT_CN}
@@ -309,15 +551,15 @@ export default function PatternCardPoster({
 
             {/* Right accent box */}
             <Rect
-              x={W - 72}
+              x={W - L.accentBoxW}
               y={0}
-              width={72}
+              width={L.accentBoxW}
               height={HEADER_H - borderWidth}
               fill={accentColor}
             />
             {/* Left border of accent box */}
             <Rect
-              x={W - 72 - borderWidth}
+              x={W - L.accentBoxW - borderWidth}
               y={0}
               width={borderWidth}
               height={HEADER_H - borderWidth}
@@ -329,34 +571,34 @@ export default function PatternCardPoster({
             {[1, 2, 3, 4].map(d => (
               <Rect
                 key={d}
-                x={W - 72 / 2 - 16 + d}
-                y={(HEADER_H - borderWidth) / 2 - 16 + d}
-                width={32}
-                height={32}
+                x={W - L.accentBoxW / 2 - L.iconSize / 2 + d}
+                y={(HEADER_H - borderWidth) / 2 - L.iconSize / 2 + d}
+                width={L.iconSize}
+                height={L.iconSize}
                 cornerRadius={brRadius / 2}
                 fill="#000"
               />
             ))}
             {/* Icon square */}
             <Rect
-              x={W - 72 / 2 - 16}
-              y={(HEADER_H - borderWidth) / 2 - 16}
-              width={32}
-              height={32}
+              x={W - L.accentBoxW / 2 - L.iconSize / 2}
+              y={(HEADER_H - borderWidth) / 2 - L.iconSize / 2}
+              width={L.iconSize}
+              height={L.iconSize}
               cornerRadius={brRadius / 2}
               fill={primaryColor}
               stroke="#000"
-              strokeWidth={3}
+              strokeWidth={L.iconStrokeWidth}
             />
           </Group>
         ) : (
           /* ── Flat theme: full border wrapping header + grid ── */
           (() => {
-            const boxX = 32;
-            const boxY = 20;
-            const boxW = W - 64;
+            const boxX = L.flatBoxPadX;
+            const boxY = L.flatBoxPadY;
+            const boxW = W - L.flatBoxPadX * 2;
             const boxH = statsY - 12 - boxY;
-            const hdrH = 60;
+            const hdrH = L.flatHeaderH;
             return (
               <Group>
                 {/* Full outer border around header + grid area */}
@@ -378,12 +620,12 @@ export default function PatternCardPoster({
                 />
                 {/* Title text */}
                 <Text
-                  x={boxX + 20}
+                  x={boxX + L.flatTitlePadX}
                   y={boxY}
-                  width={boxW - 20 - 60 - 1.5}
+                  width={boxW - L.flatTitlePadX - L.flatIconBoxW - 1.5}
                   height={hdrH}
                   text={title}
-                  fontSize={22}
+                  fontSize={L.flatTitleFS}
                   fontStyle="500"
                   fill="#1a1a1a"
                   fontFamily={FONT_MONO}
@@ -392,18 +634,18 @@ export default function PatternCardPoster({
                 />
                 {/* Right icon box border */}
                 <Rect
-                  x={boxX + boxW - 60}
+                  x={boxX + boxW - L.flatIconBoxW}
                   y={boxY}
-                  width={60}
+                  width={L.flatIconBoxW}
                   height={hdrH}
                   stroke="#1a1a1a"
                   strokeWidth={1.5}
                 />
                 {/* Circle icon */}
                 <Circle
-                  x={boxX + boxW - 30}
+                  x={boxX + boxW - L.flatIconBoxW / 2}
                   y={boxY + hdrH / 2}
-                  radius={12}
+                  radius={L.flatIconR}
                   fill={primaryColor}
                 />
               </Group>
@@ -427,6 +669,7 @@ export default function PatternCardPoster({
                 radius={radius}
                 isBrutal={isBrutal}
                 borderWidth={borderWidth}
+                circleShadowOffset={L.circleShadowOffset}
               />
 
               {/* City name + count label below circle */}
@@ -434,10 +677,10 @@ export default function PatternCardPoster({
                 <Group>
                   <Text
                     x={cx - cellW / 2}
-                    y={cy + radius + 8}
+                    y={cy + radius + L.cellLabelGap}
                     width={cellW}
                     text={cell.name}
-                    fontSize={13}
+                    fontSize={L.cellNameFS}
                     fontStyle={isBrutal ? "800" : "500"}
                     fill={isBrutal ? "#000" : "#1a1a1a"}
                     fontFamily={FONT_CN}
@@ -448,10 +691,10 @@ export default function PatternCardPoster({
                   />
                   <Text
                     x={cx - cellW / 2}
-                    y={cy + radius + 8 + 16}
+                    y={cy + radius + L.cellLabelGap + L.cellLabelLineH}
                     width={cellW}
                     text={`${cell.count} \u6536\u85CF`}
-                    fontSize={10}
+                    fontSize={L.cellCountFS}
                     fill="#a3a3a3"
                     fontFamily={FONT_CN}
                     align="center"
@@ -463,27 +706,27 @@ export default function PatternCardPoster({
         })}
 
         {/* ══════════ STATS SECTION ══════════ */}
-        <Group x={32} y={statsY}>
+        <Group x={L.statsPadX} y={statsY}>
           {/* City ranking list (horizontal flow) */}
           {rankingEntries.map((entry) => {
             const isFirst = entry.idx === 0;
             if (isBrutal && isFirst) {
               // Highlighted first city with background
-              const bgW = measureText(entry.label + entry.countLabel, 11, "700", FONT_CN) + 20;
+              const bgW = measureText(entry.label + entry.countLabel, L.rankingFS, "700", FONT_CN) + L.rankingBgPad;
               return (
                 <Group key={entry.city.name} x={entry.x} y={0}>
                   <Rect
                     width={bgW}
-                    height={18}
+                    height={L.rankingBgH}
                     fill={CITY_COLORS[0]}
-                    cornerRadius={4}
+                    cornerRadius={L.rankingBgCornerR}
                     y={-2}
                   />
                   <Text
-                    x={8}
+                    x={L.rankingBgTextX}
                     y={0}
                     text={`${entry.label}${entry.countLabel}`}
-                    fontSize={11}
+                    fontSize={L.rankingFS}
                     fontStyle="700"
                     fill="#fff"
                     fontFamily={FONT_CN}
@@ -495,15 +738,15 @@ export default function PatternCardPoster({
               <Group key={entry.city.name} x={entry.x} y={0}>
                 <Text
                   text={entry.label}
-                  fontSize={11}
+                  fontSize={L.rankingFS}
                   fontStyle={isFirst ? "700" : "400"}
                   fill={isFirst ? "#000" : "#737373"}
                   fontFamily={FONT_CN}
                 />
                 <Text
-                  x={measureText(entry.label, 11, isFirst ? "700" : "400", FONT_CN) + 2}
+                  x={measureText(entry.label, L.rankingFS, isFirst ? "700" : "400", FONT_CN) + 2}
                   text={entry.countLabel}
-                  fontSize={11}
+                  fontSize={L.rankingFS}
                   fill="#a3a3a3"
                   fontFamily={FONT_CN}
                 />
@@ -514,8 +757,8 @@ export default function PatternCardPoster({
           {/* Divider line below ranking */}
           <Rect
             x={0}
-            y={24}
-            width={W - 64}
+            y={L.rankingDividerY}
+            width={W - L.statsPadX * 2}
             height={isBrutal ? borderWidth : 1}
             fill={isBrutal ? "#000" : "#e5e5e5"}
           />
@@ -523,19 +766,19 @@ export default function PatternCardPoster({
           {/* Stats bar */}
           <Text
             x={0}
-            y={38}
+            y={L.statsTextY}
             text={`${totalItems} \u4E2A\u6536\u85CF \u00B7 ${totalCities} \u5EA7\u57CE\u5E02`}
-            fontSize={12}
+            fontSize={L.statsFS}
             fontStyle="500"
             fill="#737373"
             fontFamily={FONT_CN}
           />
           <Text
             x={0}
-            y={38}
-            width={W - 64}
+            y={L.statsTextY}
+            width={W - L.statsPadX * 2}
             text={"\u89C5\u9014 METOO"}
-            fontSize={12}
+            fontSize={L.statsFS}
             fontStyle="500"
             fill="#737373"
             letterSpacing={0.6}
@@ -568,7 +811,7 @@ export default function PatternCardPoster({
                 ctx.clip();
 
                 // Draw repeating diagonal stripes
-                const stripeW = 11;
+                const stripeW = L.stripeW;
                 const totalStripes = Math.ceil((w + h) / stripeW) * 2;
                 for (let i = 0; i < totalStripes; i++) {
                   const x0 = i * stripeW - h;

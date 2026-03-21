@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { PosterRatio } from "../lib/poster-modules";
 import type { MujiPosterConfig } from "../components/poster-modules/MujiPosterDevPanel";
+import type { DiscoverLayoutConfig } from "../components/poster-modules/DiscoverDevPanel";
 
 type ViewMode = "all" | "city";
 export type MapLevel = "world" | `country:${string}`;
@@ -24,6 +25,7 @@ interface MapState {
   activePosterModule: string | null;
   posterRatios: Record<string, PosterRatio>;
   mujiConfigs: Record<string, MujiPosterConfig>;
+  discoverConfigs: Record<string, Partial<DiscoverLayoutConfig>>;
   keyboardThemeIdx: number;
   patternStyleIdx: number;
   popBoardMode: "cells" | "center";
@@ -56,6 +58,7 @@ interface MapState {
   setActivePosterModule: (id: string | null) => void;
   setPosterRatio: (moduleId: string, ratio: PosterRatio) => void;
   setMujiConfig: (templateId: string, config: MujiPosterConfig) => void;
+  setDiscoverConfig: (key: string, config: Partial<DiscoverLayoutConfig>) => void;
   setKeyboardThemeIdx: (idx: number) => void;
   setPatternStyleIdx: (idx: number) => void;
   setPopBoardMode: (mode: "cells" | "center") => void;
@@ -123,6 +126,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   activePosterModule: null,
   posterRatios: {} as Record<string, PosterRatio>,
   mujiConfigs: {},
+  discoverConfigs: {},
   keyboardThemeIdx: 0,
   patternStyleIdx: 0,
   popBoardMode: "cells",
@@ -176,6 +180,9 @@ export const useMapStore = create<MapState>((set, get) => ({
   })),
   setMujiConfig: (templateId, config) => set((s) => ({
     mujiConfigs: { ...s.mujiConfigs, [templateId]: config },
+  })),
+  setDiscoverConfig: (key, config) => set((s) => ({
+    discoverConfigs: { ...s.discoverConfigs, [key]: config },
   })),
   setKeyboardThemeIdx: (idx) => set({ keyboardThemeIdx: idx }),
   setPatternStyleIdx: (idx) => set({ patternStyleIdx: idx }),

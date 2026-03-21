@@ -22,6 +22,8 @@ import { MUJI_TEMPLATES, getDefaultTemplateIdx, classifyCollection, getVisibleTe
 import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
 import { derivePopBoardPalette, hslToHex } from "./poster-modules/PopBoardPoster";
 import { deriveMujiColors } from "./poster-modules/MujiPoster";
+import { DiscoverDevPanel } from "./poster-modules/DiscoverDevPanel";
+import { DISCOVER_RATIO_LAYOUTS } from "./poster-modules/DiscoverWestPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
@@ -40,6 +42,8 @@ export function RightPanel() {
   const setPosterRatio = useMapStore((s) => s.setPosterRatio);
   const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const setMujiConfig = useMapStore((s) => s.setMujiConfig);
+  const discoverConfigs = useMapStore((s) => s.discoverConfigs);
+  const setDiscoverConfig = useMapStore((s) => s.setDiscoverConfig);
   const keyboardThemeIdx = useMapStore((s) => s.keyboardThemeIdx);
   const setKeyboardThemeIdx = useMapStore((s) => s.setKeyboardThemeIdx);
   const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
@@ -85,7 +89,9 @@ export function RightPanel() {
   const currentMujiDefault = currentMujiTemplate.defaultConfig
     ? { ...DEFAULT_CONFIG, ...currentMujiTemplate.defaultConfig }
     : DEFAULT_CONFIG;
-  const currentMujiCfgKey = templateConfigId(currentMujiTemplate);
+  const currentMujiBaseCfgKey = templateConfigId(currentMujiTemplate);
+  const currentPosterRatio = activePosterModule ? (posterRatios[activePosterModule] ?? "4:3") : "4:3";
+  const currentMujiCfgKey = `${currentMujiBaseCfgKey}:${currentPosterRatio}`;
   const currentMujiConfig = mujiConfigs[currentMujiCfgKey] ?? currentMujiDefault;
 
   const posterRef = useRef<HTMLDivElement>(null);
@@ -103,19 +109,22 @@ export function RightPanel() {
       const filename = posterFilename(mod.name);
 
       if (activePosterModule === "muji" && posterRef.current) {
-        const rect = posterRef.current.getBoundingClientRect();
-        const W = rect.width;
-        const H = rect.height;
+        // Use poster native dimensions (not screen rect) to avoid aspect-ratio mismatch
+        const PW = ratioPreset.w;   // e.g. 1440
+        const PH = ratioPreset.h;   // e.g. 1080
         const dpr = 3;
 
+        const rect = posterRef.current.getBoundingClientRect();
+        const screenScale = rect.width / PW; // CSS scale factor
+
         const output = document.createElement("canvas");
-        output.width = Math.round(W * dpr);
-        output.height = Math.round(H * dpr);
+        output.width = PW * dpr;
+        output.height = PH * dpr;
         const ctx = output.getContext("2d")!;
         ctx.scale(dpr, dpr);
 
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillRect(0, 0, PW, PH);
 
         const offscreen = document.createElement("canvas");
         offscreen.width = output.width;
@@ -124,16 +133,17 @@ export function RightPanel() {
         oCtx.scale(dpr, dpr);
 
         const dotCanvas = posterRef.current.querySelector(".muji-map-bg canvas") as HTMLCanvasElement | null;
-        if (dotCanvas) oCtx.drawImage(dotCanvas, 0, 0, W, H);
+        if (dotCanvas) oCtx.drawImage(dotCanvas, 0, 0, PW, PH);
 
         const avatarEls = posterRef.current.querySelectorAll<HTMLElement>(".muji-map-bg [data-city]");
         for (const el of avatarEls) {
           const img = el.querySelector("img") as HTMLImageElement | null;
           if (!img?.complete || !img.naturalWidth) continue;
           const elRect = el.getBoundingClientRect();
-          const x = elRect.left - rect.left;
-          const y = elRect.top - rect.top;
-          const s = elRect.width;
+          // Convert screen positions to poster native coordinates
+          const x = (elRect.left - rect.left) / screenScale;
+          const y = (elRect.top - rect.top) / screenScale;
+          const s = elRect.width / screenScale;
           const r = s / 2;
           oCtx.save();
           oCtx.beginPath();
@@ -149,12 +159,12 @@ export function RightPanel() {
         }
 
         ctx.globalAlpha = 0.18;
-        ctx.drawImage(offscreen, 0, 0, W, H);
+        ctx.drawImage(offscreen, 0, 0, PW, PH);
         ctx.globalAlpha = 1;
 
         if (posterStageRef.current) {
           const konvaCanvas = posterStageRef.current.toCanvas({ pixelRatio: dpr });
-          ctx.drawImage(konvaCanvas, 0, 0, W, H);
+          ctx.drawImage(konvaCanvas, 0, 0, PW, PH);
         }
 
         const blob = await new Promise<Blob>((res) => output.toBlob((b) => res(b!), "image/png"));
@@ -176,7 +186,7 @@ export function RightPanel() {
   const inPosterMode = activePosterModule !== null;
   const activeMod = activePosterModule ? getPosterModule(activePosterModule) : undefined;
   const hideBackground = inPosterMode && !!activeMod?.opaqueBackground;
-  const posterRatio = activePosterModule ? (posterRatios[activePosterModule] ?? "4:3") : "4:3";
+  const posterRatio = currentPosterRatio;
   const ratioPreset = POSTER_RATIOS[posterRatio];
 
   return (
@@ -267,20 +277,66 @@ export function RightPanel() {
                 whileTap={{ scale: 0.9 }}
                 onClick={handlePosterDownload}
                 disabled={dlState === "loading"}
-                className={`flex items-center justify-center
+                className="relative flex items-center justify-center
                            w-[26px] h-[26px] rounded-full cursor-pointer
-                           transition-colors duration-200
-                           ${dlState === "done"
-                             ? "bg-emerald-500 text-white"
-                             : "bg-neutral-800 text-white hover:bg-neutral-700"
-                           }`}
+                           bg-neutral-800 text-white hover:bg-neutral-700
+                           transition-colors duration-200"
               >
-                {dlState === "loading" ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : dlState === "done" ? (
-                  <Check size={12} />
-                ) : (
-                  <Download size={12} />
+                <AnimatePresence mode="wait">
+                  {dlState === "loading" ? (
+                    <motion.span
+                      key="spin"
+                      initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
+                      animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                      exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex"
+                    >
+                      <Loader2 size={12} className="animate-spin" />
+                    </motion.span>
+                  ) : dlState === "done" ? (
+                    <motion.span
+                      key="done"
+                      initial={{ opacity: 0, scale: 0, rotate: -90 }}
+                      animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                      exit={{ opacity: 0, scale: 0.5 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      className="flex"
+                    >
+                      <Check size={12} />
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="dl"
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex"
+                    >
+                      <Download size={12} />
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+
+                {/* Success dots burst */}
+                {dlState === "done" && (
+                  <>
+                    {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+                      <motion.span
+                        key={`dot-${deg}`}
+                        initial={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                        animate={{
+                          opacity: 0,
+                          scale: 0,
+                          x: Math.cos((deg * Math.PI) / 180) * 18,
+                          y: Math.sin((deg * Math.PI) / 180) * 18,
+                        }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        className="absolute w-[3px] h-[3px] rounded-full bg-neutral-400"
+                      />
+                    ))}
+                  </>
                 )}
               </motion.button>
             </Tooltip>
@@ -793,6 +849,18 @@ export function RightPanel() {
                   config={currentMujiConfig}
                   onChange={(c) => setMujiConfig(currentMujiCfgKey, c)}
                   templateLabel={currentMujiTemplate.label}
+                  ratioLabel={ratioPreset.label}
+                />
+              </div>
+            )}
+
+            {/* Discover dev panel */}
+            {activePosterModule === "discover" && (
+              <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
+                <DiscoverDevPanel
+                  config={{ ...DISCOVER_RATIO_LAYOUTS[posterRatio], ...discoverConfigs[posterRatio] }}
+                  onChange={(c) => setDiscoverConfig(posterRatio, c)}
+                  ratioLabel={ratioPreset.label}
                 />
               </div>
             )}

@@ -112,18 +112,23 @@ export function MapBottomBar() {
       if (!region) return name;
       return isWorld ? region.country : region.province;
     };
-    const groups: RouteGroup[] = [];
-    let currentKey = "", currentCount = 0, currentCover = "";
-    const flush = () => {
-      if (currentCount > 0) groups.push({ key: currentKey, cityCount: currentCount, cover: currentCover });
-    };
+    const acc = new Map<string, { cityCount: number; cover: string }>();
+    const order: string[] = [];
     for (const node of routePath) {
       const key = getKey(node.name);
-      if (key !== currentKey) { flush(); currentKey = key; currentCount = 0; currentCover = ""; }
-      currentCount++;
-      if (!currentCover) currentCover = cityCovers.get(node.name) || "";
+      let g = acc.get(key);
+      if (!g) {
+        g = { cityCount: 0, cover: "" };
+        acc.set(key, g);
+        order.push(key);
+      }
+      g.cityCount++;
+      if (!g.cover) g.cover = cityCovers.get(node.name) || "";
     }
-    flush();
+    const groups: RouteGroup[] = order.map((key) => {
+      const g = acc.get(key)!;
+      return { key, cityCount: g.cityCount, cover: g.cover };
+    });
     return groups.length > 0 ? groups : null;
   }, [routePath, mapLevel, cityRegion, cityCovers]);
 

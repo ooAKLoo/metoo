@@ -1,13 +1,260 @@
 import { useMemo } from "react";
 import { Rect, Text, Line, Group, Shape, Path } from "react-konva";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { useMapStore } from "../../stores/useMapStore";
 import { generateFigureScene, type AvoidZone } from "../../lib/line-figures";
 
-/* ── Base design dimensions (for proportional scaling) ── */
-const BASE_W = 1100;
-const BASE_KB_W = 920;
+/* ══════════════════════════════════════════════════════
+   Per-ratio Layout Configs
+   ══════════════════════════════════════════════════════ */
+
+/** Typography layout parameters used by useTypographyLayout */
+interface TypoLayout {
+  padLeft: number;
+  titleFSShort: number;
+  titleFSLong: number;
+  subtitleFS: number;
+  accentH: number;
+  tagFS: number;
+  tagPadX: number;
+  tagPadY: number;
+  tagGap: number;
+  tagsYOffset: number;
+  titleYOffset: number;
+  subtitleYOffset: number;
+  sectionBottomOffset: number;
+}
+
+/** Persp3D sub-component layout */
+interface Persp3DLayout extends TypoLayout {
+  baseW: number;
+  baseKbW: number;
+  kbScale: number;
+  bottomOffset: number;
+  perspD: number;
+  perspRotDeg: number;
+  sectionBottomRatio: number;
+  keyDepth: number;
+  baseRadius: number;
+  shadowOffsetX: number;
+}
+
+/** Isometric sub-component layout */
+interface IsoLayout extends TypoLayout {
+  baseW: number;
+  baseKbW: number;
+  isoS: number;
+  isoRotDeg: number;
+  isoSkewDeg: number;
+  pcyRatio: number;
+  sectionBottomRatio: number;
+  keyShadowOffset: number;
+  keyBaseOffset: number;
+  shineInsetA: number;
+  shineInsetB: number;
+  capInsetA: number;
+  capInsetB: number;
+}
+
+const BASE_TYPO: TypoLayout = {
+  padLeft: 64,
+  titleFSShort: 80,
+  titleFSLong: 64,
+  subtitleFS: 13,
+  accentH: 3,
+  tagFS: 12,
+  tagPadX: 12,
+  tagPadY: 4,
+  tagGap: 10,
+  tagsYOffset: 20,
+  titleYOffset: 16,
+  subtitleYOffset: 12,
+  sectionBottomOffset: 24,
+};
+
+const BASE_PERSP3D: Persp3DLayout = {
+  ...BASE_TYPO,
+  baseW: 1100,
+  baseKbW: 920,
+  kbScale: 0.62,
+  bottomOffset: 25,
+  perspD: 1400,
+  perspRotDeg: 32,
+  sectionBottomRatio: 0.48,
+  keyDepth: 7,
+  baseRadius: 7,
+  shadowOffsetX: 3,
+};
+
+const PERSP3D_LAYOUTS: Record<PosterRatio, Persp3DLayout> = {
+  "4:3": BASE_PERSP3D,
+  "1:1": {
+    ...BASE_PERSP3D,
+    padLeft: 52,
+    titleFSShort: 64,
+    titleFSLong: 52,
+    subtitleFS: 11,
+    accentH: 3,
+    tagFS: 10,
+    tagPadX: 10,
+    tagPadY: 3,
+    tagGap: 8,
+    tagsYOffset: 16,
+    titleYOffset: 13,
+    subtitleYOffset: 10,
+    sectionBottomOffset: 20,
+    kbScale: 0.58,
+    bottomOffset: 20,
+    perspD: 1200,
+    sectionBottomRatio: 0.44,
+    keyDepth: 6,
+    baseRadius: 6,
+    shadowOffsetX: 2,
+  },
+  "3:4": {
+    ...BASE_PERSP3D,
+    padLeft: 48,
+    titleFSShort: 60,
+    titleFSLong: 48,
+    subtitleFS: 11,
+    accentH: 3,
+    tagFS: 10,
+    tagPadX: 10,
+    tagPadY: 3,
+    tagGap: 8,
+    tagsYOffset: 16,
+    titleYOffset: 13,
+    subtitleYOffset: 10,
+    sectionBottomOffset: 20,
+    kbScale: 0.55,
+    bottomOffset: 20,
+    perspD: 1100,
+    sectionBottomRatio: 0.38,
+    keyDepth: 6,
+    baseRadius: 6,
+    shadowOffsetX: 2,
+  },
+  "16:9": {
+    ...BASE_PERSP3D,
+    padLeft: 76,
+    titleFSShort: 96,
+    titleFSLong: 76,
+    subtitleFS: 15,
+    accentH: 4,
+    tagFS: 14,
+    tagPadX: 14,
+    tagPadY: 5,
+    tagGap: 12,
+    tagsYOffset: 24,
+    titleYOffset: 19,
+    subtitleYOffset: 14,
+    sectionBottomOffset: 28,
+    kbScale: 0.66,
+    bottomOffset: 30,
+    perspD: 1600,
+    sectionBottomRatio: 0.50,
+    keyDepth: 8,
+    baseRadius: 8,
+    shadowOffsetX: 4,
+  },
+};
+
+const BASE_ISO: IsoLayout = {
+  ...BASE_TYPO,
+  baseW: 1100,
+  baseKbW: 920,
+  isoS: 0.85,
+  isoRotDeg: -24,
+  isoSkewDeg: 25,
+  pcyRatio: 0.58,
+  sectionBottomRatio: 0.28,
+  keyShadowOffset: 14,
+  keyBaseOffset: 8,
+  shineInsetA: 3,
+  shineInsetB: 7,
+  capInsetA: 7,
+  capInsetB: 3,
+};
+
+const ISO_LAYOUTS: Record<PosterRatio, IsoLayout> = {
+  "4:3": BASE_ISO,
+  "1:1": {
+    ...BASE_ISO,
+    padLeft: 52,
+    titleFSShort: 64,
+    titleFSLong: 52,
+    subtitleFS: 11,
+    accentH: 3,
+    tagFS: 10,
+    tagPadX: 10,
+    tagPadY: 3,
+    tagGap: 8,
+    tagsYOffset: 16,
+    titleYOffset: 13,
+    subtitleYOffset: 10,
+    sectionBottomOffset: 20,
+    isoS: 0.78,
+    pcyRatio: 0.56,
+    sectionBottomRatio: 0.26,
+    keyShadowOffset: 12,
+    keyBaseOffset: 7,
+    shineInsetA: 2,
+    shineInsetB: 6,
+    capInsetA: 6,
+    capInsetB: 2,
+  },
+  "3:4": {
+    ...BASE_ISO,
+    padLeft: 48,
+    titleFSShort: 60,
+    titleFSLong: 48,
+    subtitleFS: 11,
+    accentH: 3,
+    tagFS: 10,
+    tagPadX: 10,
+    tagPadY: 3,
+    tagGap: 8,
+    tagsYOffset: 16,
+    titleYOffset: 13,
+    subtitleYOffset: 10,
+    sectionBottomOffset: 20,
+    isoS: 0.72,
+    pcyRatio: 0.55,
+    sectionBottomRatio: 0.22,
+    keyShadowOffset: 11,
+    keyBaseOffset: 6,
+    shineInsetA: 2,
+    shineInsetB: 6,
+    capInsetA: 6,
+    capInsetB: 2,
+  },
+  "16:9": {
+    ...BASE_ISO,
+    padLeft: 76,
+    titleFSShort: 96,
+    titleFSLong: 76,
+    subtitleFS: 15,
+    accentH: 4,
+    tagFS: 14,
+    tagPadX: 14,
+    tagPadY: 5,
+    tagGap: 12,
+    tagsYOffset: 24,
+    titleYOffset: 19,
+    subtitleYOffset: 14,
+    sectionBottomOffset: 28,
+    isoS: 0.90,
+    pcyRatio: 0.60,
+    sectionBottomRatio: 0.30,
+    keyShadowOffset: 16,
+    keyBaseOffset: 9,
+    shineInsetA: 4,
+    shineInsetB: 8,
+    capInsetA: 8,
+    capInsetB: 4,
+  },
+};
 
 /* ══════════════════════════════════════════════════════
    Keyboard Layouts
@@ -161,19 +408,20 @@ function useTypographyLayout(
   topCity: string,
   topCities: string[],
   sectionBottomRatio: number,
+  typo: TypoLayout,
 ) {
   return useMemo(() => {
-    const padLeft = 64;
-    const sectionBottom = H * sectionBottomRatio - 24;
-    const titleFS = topCity.length > 3 ? 64 : 80;
+    const padLeft = typo.padLeft;
+    const sectionBottom = H * sectionBottomRatio - typo.sectionBottomOffset;
+    const titleFS = topCity.length > 3 ? typo.titleFSLong : typo.titleFSShort;
     const titleH = titleFS * 1.1;
-    const subtitleFS = 13;
+    const subtitleFS = typo.subtitleFS;
     const subtitleH = subtitleFS;
-    const accentH = 3;
-    const tagFS = 12;
-    const tagPadX = 12;
-    const tagPadY = 4;
-    const tagGap = 10;
+    const accentH = typo.accentH;
+    const tagFS = typo.tagFS;
+    const tagPadX = typo.tagPadX;
+    const tagPadY = typo.tagPadY;
+    const tagGap = typo.tagGap;
     const tagH = tagFS + tagPadY * 2;
     const hasTags = topCities.length > 1;
 
@@ -191,12 +439,12 @@ function useTypographyLayout(
       : [];
 
     const accentY = sectionBottom - accentH;
-    const tagsY = accentY - 20 - (hasTags ? tagH : 0);
-    const titleY = tagsY - (hasTags ? 16 : 0) - titleH;
-    const subtitleY = titleY - 12 - subtitleH;
+    const tagsY = accentY - typo.tagsYOffset - (hasTags ? tagH : 0);
+    const titleY = tagsY - (hasTags ? typo.titleYOffset : 0) - titleH;
+    const subtitleY = titleY - typo.subtitleYOffset - subtitleH;
 
     return { padLeft, subtitleY, subtitleFS, titleY, titleFS, tags, tagsY, accentY, accentH };
-  }, [H, topCity, topCities, sectionBottomRatio]);
+  }, [H, topCity, topCities, sectionBottomRatio, typo]);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -358,13 +606,6 @@ interface KonvaKey {
    STYLE 1 — 3D Perspective (F-key row, rounded quads)
    ══════════════════════════════════════════════════════ */
 
-const PERSP3D_D = 1400;
-const PERSP3D_ROT_RAD = (32 * Math.PI) / 180;
-const PERSP3D_COS_R = Math.cos(PERSP3D_ROT_RAD);
-const PERSP3D_SIN_R = Math.sin(PERSP3D_ROT_RAD);
-const PERSP3D_KB_SCALE = 0.62;
-const PERSP3D_BOTTOM_OFFSET = 25;
-
 function drawRoundedQuad(
   ctx: { beginPath(): void; moveTo(x: number, y: number): void; arcTo(x1: number, y1: number, x2: number, y2: number, r: number): void; closePath(): void },
   c: [number, number][],
@@ -387,9 +628,15 @@ interface Persp3DKey { layers: Persp3DKeyLayer[]; label: string; lx: number; ly:
 function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
   const W = posterWidth;
   const H = posterHeight;
+  const ratio = detectPosterRatio(W, H);
+  const L = PERSP3D_LAYOUTS[ratio];
 
-  const kbW = Math.round(W * (BASE_KB_W / BASE_W));
-  const kbRatio = kbW / BASE_KB_W;
+  const PERSP3D_ROT_RAD = (L.perspRotDeg * Math.PI) / 180;
+  const PERSP3D_COS_R = Math.cos(PERSP3D_ROT_RAD);
+  const PERSP3D_SIN_R = Math.sin(PERSP3D_ROT_RAD);
+
+  const kbW = Math.round(W * (L.baseKbW / L.baseW));
+  const kbRatio = kbW / L.baseKbW;
   const kbGap = Math.round(8 * kbRatio);
   const kH = Math.round(42 * kbRatio);
 
@@ -416,24 +663,24 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
     const totalH = 2 * pad + rowCount * kH + (rowCount - 1) * kbGap;
 
     const proj = (kx: number, ky: number): [number, number] => {
-      const rx = (kx - kbW / 2) * PERSP3D_KB_SCALE;
-      const ry = (ky - totalH) * PERSP3D_KB_SCALE;
+      const rx = (kx - kbW / 2) * L.kbScale;
+      const ry = (ky - totalH) * L.kbScale;
       const yr = ry * PERSP3D_COS_R;
       const zr = ry * PERSP3D_SIN_R;
-      const w = 1 - zr / PERSP3D_D;
-      return [rx / w + W / 2, yr / w + H + PERSP3D_BOTTOM_OFFSET];
+      const w = 1 - zr / L.perspD;
+      return [rx / w + W / 2, yr / w + H + L.bottomOffset];
     };
 
     const flat = (cs: [number, number][]) => cs.flatMap(([x, y]) => [x, y]);
     const pScale = (ky: number) => {
-      const zr = (ky - totalH) * PERSP3D_KB_SCALE * PERSP3D_SIN_R;
-      return PERSP3D_KB_SCALE / (1 - zr / PERSP3D_D);
+      const zr = (ky - totalH) * L.kbScale * PERSP3D_SIN_R;
+      return L.kbScale / (1 - zr / L.perspD);
     };
 
     const bgPts = flat([proj(0, 0), proj(kbW, 0), proj(kbW, totalH), proj(0, totalH)]);
     const keys: Persp3DKey[] = [];
-    const depth = 7;
-    const BASE_RADIUS = 7;
+    const depth = L.keyDepth;
+    const keyBaseRadius = L.baseRadius;
 
     for (let ri = 0; ri < KB_PERSP.length; ri++) {
       let col = 0;
@@ -447,11 +694,11 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
 
         const big = (kd.w === 4 && kd.l.length === 1 && !kd.type) || kd.type === "accent";
         const s = pScale(ky + kH / 2);
-        const r = BASE_RADIUS * s;
+        const r = keyBaseRadius * s;
         const layers: Persp3DKeyLayer[] = [];
 
         layers.push({
-          corners: [proj(kx + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH - depth - 2), proj(kx + kw + 3, ky + kH + 2), proj(kx - 3, ky + kH + 2)],
+          corners: [proj(kx + L.shadowOffsetX, ky + kH - depth - 2), proj(kx + kw + L.shadowOffsetX, ky + kH - depth - 2), proj(kx + kw + L.shadowOffsetX, ky + kH + 2), proj(kx - L.shadowOffsetX, ky + kH + 2)],
           radii: [0, 0, r, r], fill: "rgba(0,0,0,0.35)",
         });
         layers.push({
@@ -473,9 +720,10 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
     }
 
     return { bgPts, keys };
-  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, L]);
 
-  const layout = useTypographyLayout(H, topCity, topCities, 0.48);
+  const layout = useTypographyLayout(H, topCity, topCities, L.sectionBottomRatio, L);
   const { figureColor, groundColor } = useFigureColors(theme);
   const figureSeed = useMapStore((s) => s.figureSeed);
   const perspAvoid = useMemo<AvoidZone[]>(() => [
@@ -520,20 +768,22 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
    STYLE 2 — Isometric Keyboard
    ══════════════════════════════════════════════════════ */
 
-const ISO_S = 0.85;
-const ISO_R = (-24 * Math.PI) / 180;
-const ISO_K = Math.tan((25 * Math.PI) / 180);
-const ISO_M00 = ISO_S * Math.cos(ISO_R);
-const ISO_M01 = ISO_S * (Math.cos(ISO_R) * ISO_K - Math.sin(ISO_R));
-const ISO_M10 = ISO_S * Math.sin(ISO_R);
-const ISO_M11 = ISO_S * (Math.sin(ISO_R) * ISO_K + Math.cos(ISO_R));
-
 function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: PosterModuleProps) {
   const W = posterWidth;
   const H = posterHeight;
+  const ratio = detectPosterRatio(W, H);
+  const L = ISO_LAYOUTS[ratio];
 
-  const kbW = Math.round(W * (BASE_KB_W / BASE_W));
-  const kbRatio = kbW / BASE_KB_W;
+  const ISO_S = L.isoS;
+  const ISO_R = (L.isoRotDeg * Math.PI) / 180;
+  const ISO_K = Math.tan((L.isoSkewDeg * Math.PI) / 180);
+  const ISO_M00 = ISO_S * Math.cos(ISO_R);
+  const ISO_M01 = ISO_S * (Math.cos(ISO_R) * ISO_K - Math.sin(ISO_R));
+  const ISO_M10 = ISO_S * Math.sin(ISO_R);
+  const ISO_M11 = ISO_S * (Math.sin(ISO_R) * ISO_K + Math.cos(ISO_R));
+
+  const kbW = Math.round(W * (L.baseKbW / L.baseW));
+  const kbRatio = kbW / L.baseKbW;
   const kbGap = Math.round(10 * kbRatio);
   const kH = Math.round(52 * kbRatio);
 
@@ -565,7 +815,7 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
     const kcx = kbW / 2;
     const kcy = totalH / 2;
     const pcx = W / 2;
-    const pcy = H * 0.58;
+    const pcy = H * L.pcyRatio;
 
     const proj = (kx: number, ky: number): [number, number] => {
       const dx = kx - kcx;
@@ -591,11 +841,17 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
         const big = (kd.w === 4 && kd.l.length === 1 && !kd.type) || kd.type === "accent";
         const layers: { pts: number[]; fill: string }[] = [];
 
-        layers.push({ pts: flat([proj(kx - 14, ky + 14), proj(kx + kw - 14, ky + 14), proj(kx + kw - 14, ky + kH + 14), proj(kx - 14, ky + kH + 14)]), fill: theme.palette.shadow });
-        layers.push({ pts: flat([proj(kx - 8, ky + 8), proj(kx + kw - 8, ky + 8), proj(kx + kw - 8, ky + kH + 8), proj(kx - 8, ky + kH + 8)]), fill: cc.base });
+        const so = L.keyShadowOffset;
+        const bo = L.keyBaseOffset;
+        layers.push({ pts: flat([proj(kx - so, ky + so), proj(kx + kw - so, ky + so), proj(kx + kw - so, ky + kH + so), proj(kx - so, ky + kH + so)]), fill: theme.palette.shadow });
+        layers.push({ pts: flat([proj(kx - bo, ky + bo), proj(kx + kw - bo, ky + bo), proj(kx + kw - bo, ky + kH + bo), proj(kx - bo, ky + kH + bo)]), fill: cc.base });
         layers.push({ pts: flat([proj(kx, ky), proj(kx + kw, ky), proj(kx + kw, ky + kH), proj(kx, ky + kH)]), fill: theme.palette.surface });
-        layers.push({ pts: flat([proj(kx + 3, ky + 7), proj(kx + kw - 7, ky + 7), proj(kx + kw - 7, ky + kH - 3), proj(kx + 3, ky + kH - 3)]), fill: theme.palette.shadow });
-        const capC: [number, number][] = [proj(kx + 7, ky + 3), proj(kx + kw - 3, ky + 3), proj(kx + kw - 3, ky + kH - 7), proj(kx + 7, ky + kH - 7)];
+        const sA = L.shineInsetA;
+        const sB = L.shineInsetB;
+        layers.push({ pts: flat([proj(kx + sA, ky + sB), proj(kx + kw - sB, ky + sB), proj(kx + kw - sB, ky + kH - sA), proj(kx + sA, ky + kH - sA)]), fill: theme.palette.shadow });
+        const cA = L.capInsetA;
+        const cB = L.capInsetB;
+        const capC: [number, number][] = [proj(kx + cA, ky + cB), proj(kx + kw - cB, ky + cB), proj(kx + kw - cB, ky + kH - cA), proj(kx + cA, ky + kH - cA)];
         layers.push({ pts: flat(capC), fill: cc.cap });
 
         const tc = theme.palette.shadow;
@@ -610,9 +866,10 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
     }
 
     return { bg, keys };
-  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbW, kH, kbGap, kbRatio, W, H, keyColors, theme, L]);
 
-  const layout = useTypographyLayout(H, topCity, topCities, 0.28);
+  const layout = useTypographyLayout(H, topCity, topCities, L.sectionBottomRatio, L);
   const { figureColor, groundColor } = useFigureColors(theme);
   const figureSeed = useMapStore((s) => s.figureSeed);
   const isoAvoid = useMemo<AvoidZone[]>(() => [

@@ -8,7 +8,7 @@ import {
   Image as KImage,
 } from "react-konva";
 import useImage from "use-image";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { useMapStore } from "../../stores/useMapStore";
@@ -92,11 +92,166 @@ export const POP_BOARD_HUE_PRESETS = [
 
 const FONT_CN = "'ZCOOL KuaiLe', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
 
-/* ── Dimensions ── */
+/* ── Per-ratio layout config ── */
 
-const N = 7;
-const GAP = 3;
-const PAD = 4;
+interface PopBoardLayout {
+  N: number;
+  GAP: number;
+  PAD: number;
+  /** Cover cell font sizes: [long, mid, short] based on name length */
+  coverFSLong: number;
+  coverFSMid: number;
+  coverFSShort: number;
+  /** Badge height inside cover cells */
+  badgeH: number;
+  /** Badge font size */
+  badgeFS: number;
+  /** Cover cell corner dot radius */
+  coverDotR: number;
+  /** Title banner font size */
+  titleFS: number;
+  /** Title banner letter spacing */
+  titleLetterSpacing: number;
+  /** Title banner stroke width */
+  titleStrokeW: number;
+  /** Title banner rect: [halfW, halfH] → full rect is 2*halfW × 2*halfH */
+  titleHalfW: number;
+  titleHalfH: number;
+  /** Title rotation in degrees */
+  titleRotation: number;
+  /** Stats pill height */
+  pillH: number;
+  /** Stats pill border width */
+  pillBorderW: number;
+  /** Stats pill corner radius */
+  pillR: number;
+  /** Photo card border */
+  photoBorder: number;
+  /** Photo card label height */
+  photoLabelH: number;
+  /** Step circle radius */
+  stepR: number;
+  /** Step circle stroke width */
+  stepStrokeW: number;
+  /** Checkerboard pattern tile size */
+  patternTile: number;
+  /** Diagonal stripe offset (spacing) */
+  diagOffset: number;
+  /** Center stripe width (full period = 2× half) */
+  centerStripeW: number;
+}
+
+const BASE_LAYOUT: PopBoardLayout = {
+  N: 7,
+  GAP: 3,
+  PAD: 4,
+  coverFSLong: 11,
+  coverFSMid: 13,
+  coverFSShort: 15,
+  badgeH: 14,
+  badgeFS: 11,
+  coverDotR: 2.5,
+  titleFS: 42,
+  titleLetterSpacing: 4,
+  titleStrokeW: 2,
+  titleHalfW: 100,
+  titleHalfH: 32,
+  titleRotation: -6,
+  pillH: 24,
+  pillBorderW: 3,
+  pillR: 12,
+  photoBorder: 4,
+  photoLabelH: 16,
+  stepR: 8,
+  stepStrokeW: 2,
+  patternTile: 8,
+  diagOffset: 8,
+  centerStripeW: 40,
+};
+
+const RATIO_LAYOUTS: Record<PosterRatio, PopBoardLayout> = {
+  "4:3": BASE_LAYOUT,
+  "1:1": {
+    ...BASE_LAYOUT,
+    GAP: 2,
+    PAD: 3,
+    coverFSLong: 9,
+    coverFSMid: 11,
+    coverFSShort: 13,
+    badgeH: 12,
+    badgeFS: 9,
+    coverDotR: 2,
+    titleFS: 34,
+    titleLetterSpacing: 3,
+    titleStrokeW: 1.5,
+    titleHalfW: 82,
+    titleHalfH: 26,
+    pillH: 20,
+    pillBorderW: 2.5,
+    pillR: 10,
+    photoBorder: 3,
+    photoLabelH: 14,
+    stepR: 7,
+    stepStrokeW: 1.5,
+    patternTile: 6,
+    diagOffset: 6,
+    centerStripeW: 32,
+  },
+  "3:4": {
+    ...BASE_LAYOUT,
+    GAP: 2,
+    PAD: 3,
+    coverFSLong: 10,
+    coverFSMid: 12,
+    coverFSShort: 14,
+    badgeH: 12,
+    badgeFS: 10,
+    coverDotR: 2,
+    titleFS: 36,
+    titleLetterSpacing: 3,
+    titleStrokeW: 1.5,
+    titleHalfW: 86,
+    titleHalfH: 28,
+    pillH: 20,
+    pillBorderW: 2.5,
+    pillR: 10,
+    photoBorder: 3,
+    photoLabelH: 14,
+    stepR: 7,
+    stepStrokeW: 1.5,
+    patternTile: 7,
+    diagOffset: 7,
+    centerStripeW: 34,
+  },
+  "16:9": {
+    ...BASE_LAYOUT,
+    GAP: 4,
+    PAD: 5,
+    coverFSLong: 13,
+    coverFSMid: 15,
+    coverFSShort: 17,
+    badgeH: 16,
+    badgeFS: 13,
+    coverDotR: 3,
+    titleFS: 50,
+    titleLetterSpacing: 5,
+    titleStrokeW: 2.5,
+    titleHalfW: 120,
+    titleHalfH: 38,
+    pillH: 28,
+    pillBorderW: 3.5,
+    pillR: 14,
+    photoBorder: 5,
+    photoLabelH: 18,
+    stepR: 10,
+    stepStrokeW: 2.5,
+    patternTile: 10,
+    diagOffset: 10,
+    centerStripeW: 48,
+  },
+};
+
+const N = BASE_LAYOUT.N;
 
 function buildEdgePath(): Array<[number, number]> {
   const p: Array<[number, number]> = [];
@@ -124,9 +279,9 @@ const DEFAULT_SCATTER: ScatterSlot[] = [
   { x: 74, y: 16, rot: -15, w: 92 },
 ];
 
-function cellSize(totalLen: number) { return (totalLen - PAD * 2 - GAP * (N - 1)) / N; }
-function cellX(col: number, cs: number) { return PAD + col * (cs + GAP); }
-function cellY(row: number, cs: number) { return PAD + row * (cs + GAP); }
+function cellSize(totalLen: number, pad: number, gap: number) { return (totalLen - pad * 2 - gap * (N - 1)) / N; }
+function cellX(col: number, cs: number, pad: number, gap: number) { return pad + col * (cs + gap); }
+function cellY(row: number, cs: number, pad: number, gap: number) { return pad + row * (cs + gap); }
 
 /* ── Mini doodle icons for board game cells ── */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -296,20 +451,21 @@ function buildCornerMeta(dp: DerivedPopPalette): Record<number, CornerDef> {
 
 /* ── Cover image sub-component ── */
 function CoverImageCell({
-  src, x, y, w, h, name, count, ink, mode, bgColor, outline,
+  src, x, y, w, h, name, count, ink, mode, bgColor, outline, L,
 }: {
   src: string; x: number; y: number; w: number; h: number;
   name: string; count: number; ink: string; mode: "cells" | "center"; bgColor: string;
   outline?: number[][][] | null;
+  L: PopBoardLayout;
 }) {
   const [img] = useImage(src, "anonymous");
   const showCover = mode === "cells" && !!src && !!img;
-  const fs = name.length > 5 ? 11 : name.length > 3 ? 13 : 15;
-  const contentH = fs * 1.2 + 2 + 14;
+  const fs = name.length > 5 ? L.coverFSLong : name.length > 3 ? L.coverFSMid : L.coverFSShort;
+  const contentH = fs * 1.2 + 2 + L.badgeH;
   const contentTop = (h - contentH) / 2;
   const nameY = contentTop;
   const badgeY = contentTop + fs * 1.2 + 2;
-  const badgeW = 11 * String(count).length + 18;
+  const badgeW = L.badgeFS * String(count).length + 18;
 
   return (
     <Group x={x} y={y} clipX={0} clipY={0} clipWidth={w} clipHeight={h}>
@@ -360,33 +516,34 @@ function CoverImageCell({
       ))}
       <Text x={0} y={nameY} width={w} align="center"
         text={name} fontSize={fs} fontStyle="900" fill={showCover ? "#fff" : ink} fontFamily={FONT_CN} />
-      <Rect x={(w - badgeW) / 2} y={badgeY} width={badgeW} height={14}
+      <Rect x={(w - badgeW) / 2} y={badgeY} width={badgeW} height={L.badgeH}
         fill={showCover ? "rgba(0,0,0,0.5)" : ink} cornerRadius={2} />
       <Text x={(w - badgeW) / 2} y={badgeY + 1} width={badgeW} align="center"
-        text={`\u00d7${count}`} fontSize={11} fontStyle="700" fill="#fff" fontFamily={FONT_CN} />
-      <Circle x={5.5} y={5.5} radius={2.5} fill="#fff" stroke={ink} strokeWidth={1.5} opacity={0.5} />
+        text={`\u00d7${count}`} fontSize={L.badgeFS} fontStyle="700" fill="#fff" fontFamily={FONT_CN} />
+      <Circle x={5.5} y={5.5} radius={L.coverDotR} fill="#fff" stroke={ink} strokeWidth={1.5} opacity={0.5} />
     </Group>
   );
 }
 
 /* ── Scattered photo card ── */
 function ScatteredPhotoCard({
-  src, name, slot, centerW, centerH, ink, yellow, onDragEnd,
+  src, name, slot, centerW, centerH, ink, yellow, onDragEnd, L,
 }: {
   src: string; name: string; slot: ScatterSlot;
   centerW: number; centerH: number; ink: string; yellow: string;
   onDragEnd: (x: number, y: number) => void;
+  L: PopBoardLayout;
 }) {
   const [img] = useImage(src, "anonymous");
   const baseCenter = 750;
   const photoScale = Math.max(centerW, centerH) / baseCenter;
   const pw = Math.round(slot.w * photoScale);
   const ph = Math.round(pw * 0.75);
-  const border = 4;
+  const border = L.photoBorder;
   const innerW = pw - border * 2 - 4;
   const innerH = ph - border * 2 - 4;
   const labelW = Math.max(name.length * 10 + 16, 40);
-  const labelH = 16;
+  const labelH = L.photoLabelH;
 
   return (
     <Group draggable
@@ -427,6 +584,9 @@ function ScatteredPhotoCard({
 
 /* ── Board Game Content ── */
 function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: PosterModuleProps) {
+  const ratio = detectPosterRatio(PW, PH);
+  const L = RATIO_LAYOUTS[ratio];
+
   const mode = useMapStore((s) => s.popBoardMode);
   const popBoardHue = useMapStore((s) => s.popBoardHue);
   const dp = useMemo(() => derivePopBoardPalette(popBoardHue), [popBoardHue]);
@@ -439,8 +599,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
   );
   const CORNER_META = useMemo(() => buildCornerMeta(dp), [dp]);
   const [slots, setSlots] = useState<ScatterSlot[]>(DEFAULT_SCATTER);
-  const csW = cellSize(PW);
-  const csH = cellSize(PH);
+  const csW = cellSize(PW, L.PAD, L.GAP);
+  const csH = cellSize(PH, L.PAD, L.GAP);
 
   const cities = useMemo(() => [...cityEntries].sort((a, b) => b.count - a.count), [cityEntries]);
   const totalVisits = useMemo(() => cityEntries.reduce((s, c) => s + c.count, 0), [cityEntries]);
@@ -470,10 +630,10 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
     });
   }, [cities, CORNER_META, CELL_PALETTE]);
 
-  const centerX = cellX(1, csW);
-  const centerY = cellY(1, csH);
-  const centerW = 5 * csW + 4 * GAP;
-  const centerH = 5 * csH + 4 * GAP;
+  const centerX = cellX(1, csW, L.PAD, L.GAP);
+  const centerY = cellY(1, csH, L.PAD, L.GAP);
+  const centerW = 5 * csW + 4 * L.GAP;
+  const centerH = 5 * csH + 4 * L.GAP;
 
   const updateSlot = useCallback((i: number, x: number, y: number) => {
     setSlots((prev) => prev.map((s, idx) => (idx === i ? { ...s, x, y } : s)));
@@ -485,8 +645,8 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
 
       {/* Edge cells */}
       {cellMap.map((cell) => {
-        const cx = cellX(cell.col, csW);
-        const cy = cellY(cell.row, csH);
+        const cx = cellX(cell.col, csW, L.PAD, L.GAP);
+        const cy = cellY(cell.row, csH, L.PAD, L.GAP);
 
         if (cell.corner) {
           const iconS = Math.min(csW, csH) * 0.32;
@@ -519,7 +679,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
               <Shape x={cx} y={cy} sceneFunc={(ctx, shape) => {
                 ctx.save(); ctx.beginPath(); ctx.rect(0, 0, csW, csH); ctx.clip();
                 ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, csW, csH);
-                const tile = 8; ctx.fillStyle = C.pink;
+                const tile = L.patternTile; ctx.fillStyle = C.pink;
                 for (let ry = 0; ry < csH; ry += tile) {
                   for (let rx = 0; rx < csW; rx += tile) {
                     if (((Math.floor(rx / tile) + Math.floor(ry / tile)) & 1) === 0) ctx.fillRect(rx, ry, tile, tile);
@@ -544,13 +704,13 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
             <Group key={cell.idx}>
               <CoverImageCell src={cell.cover} x={cx} y={cy} w={csW} h={csH}
                 name={cell.city.name} count={cell.city.count} ink={INK} mode={mode} bgColor={cell.bgColor}
-                outline={outlineMap.get(cell.city.name)} />
+                outline={outlineMap.get(cell.city.name)} L={L} />
               {mode === "center" && (
                 <>
                   {/* Step number — top-right */}
-                  <Group x={cx + csW - 18} y={cy + 3}>
-                    <Circle x={8} y={8} radius={8} fill="#fff" stroke={INK} strokeWidth={2} />
-                    <Text x={0} y={cell.cityStep >= 10 ? 3 : 2.5} width={16} align="center"
+                  <Group x={cx + csW - L.stepR * 2 - 2} y={cy + 3}>
+                    <Circle x={L.stepR} y={L.stepR} radius={L.stepR} fill="#fff" stroke={INK} strokeWidth={L.stepStrokeW} />
+                    <Text x={0} y={cell.cityStep >= 10 ? 3 : 2.5} width={L.stepR * 2} align="center"
                       text={`${cell.cityStep}`} fontSize={cell.cityStep >= 10 ? 7.5 : 9}
                       fontStyle="900" fill={INK} fontFamily={FONT_CN} />
                   </Group>
@@ -584,7 +744,7 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
             <Shape x={cx} y={cy} sceneFunc={(ctx, shape) => {
               ctx.save(); ctx.beginPath(); ctx.rect(0, 0, csW, csH); ctx.clip();
               ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.globalAlpha = 0.15;
-              for (let d = -csH; d < csW + csH; d += 8) {
+              for (let d = -csH; d < csW + csH; d += L.diagOffset) {
                 ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d - csH, csH); ctx.stroke();
               }
               ctx.globalAlpha = 1; ctx.restore(); ctx.fillStrokeShape(shape);
@@ -597,13 +757,14 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
       <Group x={centerX} y={centerY} clipX={0} clipY={0} clipWidth={centerW} clipHeight={centerH}>
         <Shape sceneFunc={(ctx, shape) => {
           ctx.save(); ctx.beginPath(); ctx.rect(0, 0, centerW, centerH); ctx.clip();
-          for (let d = 0; d < centerW + centerH; d += 40) {
+          const sw = L.centerStripeW; const shw = sw / 2;
+          for (let d = 0; d < centerW + centerH; d += sw) {
             ctx.fillStyle = "#fff";
-            ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d + 20, 0);
-            ctx.lineTo(d + 20 - centerH, centerH); ctx.lineTo(d - centerH, centerH); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d + shw, 0);
+            ctx.lineTo(d + shw - centerH, centerH); ctx.lineTo(d - centerH, centerH); ctx.closePath(); ctx.fill();
             ctx.fillStyle = "#f0f0f0";
-            ctx.beginPath(); ctx.moveTo(d + 20, 0); ctx.lineTo(d + 40, 0);
-            ctx.lineTo(d + 40 - centerH, centerH); ctx.lineTo(d + 20 - centerH, centerH); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(d + shw, 0); ctx.lineTo(d + sw, 0);
+            ctx.lineTo(d + sw - centerH, centerH); ctx.lineTo(d + shw - centerH, centerH); ctx.closePath(); ctx.fill();
           }
           ctx.restore(); ctx.fillStrokeShape(shape);
         }} />
@@ -623,30 +784,30 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
         {mode === "center" && centerCovers.map((photo, i) => (
           <ScatteredPhotoCard key={i} src={photo.src} name={photo.name} slot={slots[i]}
             centerW={centerW} centerH={centerH} ink={INK} yellow={C.yellow}
-            onDragEnd={(x, y) => updateSlot(i, x, y)} />
+            onDragEnd={(x, y) => updateSlot(i, x, y)} L={L} />
         ))}
 
         <Group x={centerW / 2} y={centerH / 2}>
           {/* Title banner */}
-          <Group rotation={-6} y={-40}>
-            <Rect x={-100 + 6} y={-32 + 6} width={200} height={64} fill={INK} />
-            <Rect x={-100} y={-32} width={200} height={64} fill={C.pink} stroke={INK} strokeWidth={4} />
-            <Text x={-100} y={-18} width={200} align="center" text="旅行棋盘"
-              fontSize={42} fontStyle="900" fill="#fff" fontFamily={FONT_CN}
-              stroke={INK} strokeWidth={2} letterSpacing={4} />
+          <Group rotation={L.titleRotation} y={-40}>
+            <Rect x={-L.titleHalfW + 6} y={-L.titleHalfH + 6} width={L.titleHalfW * 2} height={L.titleHalfH * 2} fill={INK} />
+            <Rect x={-L.titleHalfW} y={-L.titleHalfH} width={L.titleHalfW * 2} height={L.titleHalfH * 2} fill={C.pink} stroke={INK} strokeWidth={4} />
+            <Text x={-L.titleHalfW} y={-18} width={L.titleHalfW * 2} align="center" text="旅行棋盘"
+              fontSize={L.titleFS} fontStyle="900" fill="#fff" fontFamily={FONT_CN}
+              stroke={INK} strokeWidth={L.titleStrokeW} letterSpacing={L.titleLetterSpacing} />
           </Group>
 
           {/* Stats pills */}
           <Group y={30}>
             <Group x={-75} rotation={3}>
-              <Rect x={3} y={3} width={68} height={24} fill={INK} cornerRadius={12} />
-              <Rect x={0} y={0} width={68} height={24} fill="#fff" stroke={INK} strokeWidth={3} cornerRadius={12} />
+              <Rect x={3} y={3} width={68} height={L.pillH} fill={INK} cornerRadius={L.pillR} />
+              <Rect x={0} y={0} width={68} height={L.pillH} fill="#fff" stroke={INK} strokeWidth={L.pillBorderW} cornerRadius={L.pillR} />
               <Text x={0} y={5} width={68} align="center" text={`${cityEntries.length} 座城市`}
                 fontSize={12} fontStyle="700" fill={INK} fontFamily={FONT_CN} letterSpacing={1} />
             </Group>
             <Group x={5} rotation={-2}>
-              <Rect x={3} y={3} width={68} height={24} fill={INK} cornerRadius={12} />
-              <Rect x={0} y={0} width={68} height={24} fill={C.yellow} stroke={INK} strokeWidth={3} cornerRadius={12} />
+              <Rect x={3} y={3} width={68} height={L.pillH} fill={INK} cornerRadius={L.pillR} />
+              <Rect x={0} y={0} width={68} height={L.pillH} fill={C.yellow} stroke={INK} strokeWidth={L.pillBorderW} cornerRadius={L.pillR} />
               <Text x={0} y={5} width={68} align="center" text={`${totalVisits} 次足迹`}
                 fontSize={12} fontStyle="700" fill={INK} fontFamily={FONT_CN} letterSpacing={1} />
             </Group>

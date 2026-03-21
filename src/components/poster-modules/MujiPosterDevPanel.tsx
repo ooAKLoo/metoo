@@ -68,10 +68,12 @@ export function MujiPosterDevPanel({
   config,
   onChange,
   templateLabel,
+  ratioLabel,
 }: {
   config: MujiPosterConfig;
   onChange: (c: MujiPosterConfig) => void;
   templateLabel?: string;
+  ratioLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const set = <K extends keyof MujiPosterConfig>(k: K, v: MujiPosterConfig[K]) =>
@@ -117,14 +119,15 @@ export function MujiPosterDevPanel({
           <button
             onClick={() => {
               const label = templateLabel ?? "unknown";
-              const payload = { template: label, config };
+              const size = ratioLabel ?? "unknown";
+              const payload = { template: label, ratio: size, config };
               const json = JSON.stringify(payload, null, 2);
-              console.log(`MujiPoster config [${label}]:`, json);
+              console.log(`MujiPoster config [${label} @ ${size}]:`, json);
               navigator.clipboard.writeText(json);
             }}
             className="w-full mt-2 py-1 text-[10px] bg-white/10 hover:bg-white/20 rounded text-white"
           >
-            Copy Config{templateLabel ? ` (${templateLabel})` : ""}
+            Copy Config{templateLabel ? ` (${templateLabel}${ratioLabel ? ` · ${ratioLabel}` : ""})` : ""}
           </button>
         </div>
       )}

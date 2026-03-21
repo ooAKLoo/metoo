@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Text, Group } from "react-konva";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { DEFAULT_CONFIG, type MujiPosterConfig } from "./MujiPosterDevPanel";
 import { useFavoriteStore, type FavoriteItem } from "../../stores/useFavoriteStore";
@@ -26,28 +26,6 @@ export const MUJI_HUE_PRESETS = [
   { name: "赭石", hue: 25 },
 ];
 
-/**
- * Adapt a config (designed for 4:3 landscape) to any aspect ratio.
- *
- * Vertical positions (topPos, bottomPos, subBaseY, subOffsetY) are % of H,
- * but text sizes are % of cqmin (= min(W,H)).
- *
- * - Landscape (ratio ≥ 1): cqmin = H, so topPos % * H gives correct pixels. No change.
- * - Portrait  (ratio < 1):  cqmin = W, H > cqmin. Same % * H gives MORE pixels
- *   than reference → scale by cqmin/H = W/H = ratio to maintain absolute distances.
- */
-function adaptConfigForRatio(ref: MujiPosterConfig, W: number, H: number): MujiPosterConfig {
-  const vScale = Math.min(W, H) / H; // 1 for landscape, W/H for portrait
-  if (Math.abs(vScale - 1) < 0.01) return ref;
-
-  return {
-    ...ref,
-    topPos: ref.topPos * vScale,
-    bottomPos: ref.bottomPos * vScale,
-    subBaseY: ref.subBaseY * vScale,
-    subOffsetY: ref.subOffsetY * vScale,
-  };
-}
 
 const WAVE_DY = [0, 2, 4, 6, 0, 3, 5, 7, 7, 7];
 
@@ -168,11 +146,52 @@ export function templateConfigId(t: MujiTemplateData): string {
 const AGAIN_CONFIG: Partial<MujiPosterConfig> = { mainSpacing: 0.16, topPos: 22, subOffsetX: -4, subOffsetY: -20 };
 const AT_CONFIG: Partial<MujiPosterConfig> = { mainSize: 10.5, mainSpacing: 0.17, topPos: 7, bottomPos: 19, subOffsetY: 2 };
 
-/* 觅·于途 — reference config designed for 4:3 landscape, auto-adapted at render */
 const DISCOVER_CONFIG: Partial<MujiPosterConfig> = {
   mainSize: 11, mainSpacing: 0.21, mainWeight: 100, mainStroke: 0,
   topPos: 16, bottomPos: 9,
   subWeight: 400, subOffsetY: -7,
+};
+
+/*
+ * Per-ratio overrides for vertical-position fields (topPos, bottomPos, subBaseY, subOffsetY).
+ *
+ * Reference ratio is 4:3 (1440×1080). For landscape & square the values match the
+ * base config unchanged (vScale = 1). Portrait "3:4" (1080×1440) applies
+ * vScale = 0.75 to keep absolute text distances consistent.
+ *
+ * Keyed by template configId (eat/travel pairs share the same key).
+ */
+type RatioVFields = Partial<MujiPosterConfig>;
+
+const RATIO_OVERRIDES: Record<string, Record<PosterRatio, RatioVFields>> = {
+  /* poetic — merged base: topPos 10, bottomPos 10, subBaseY 55, subOffsetY 2 */
+  poetic: {
+    "4:3":  {},
+    "16:9": {},
+    "1:1":  {},
+    "3:4":  { topPos: 16, bottomPos: 13 },
+  },
+  /* eat-again / travel-again — merged base: topPos 22, bottomPos 10, subBaseY 55, subOffsetY -20 */
+  "eat-again": {
+    "4:3":  {},
+    "16:9": {},
+    "1:1":  {},
+    "3:4":  { topPos: 19, subOffsetY: -32 },
+  },
+  /* eat-at / travel-at — merged base: topPos 7, bottomPos 19, subBaseY 55, subOffsetY 2 */
+  "eat-at": {
+    "4:3":  {},
+    "16:9": { bottomPos: 15, subOffsetX: -2, subOffsetY: 3 },
+    "1:1":  {},
+    "3:4":  { subOffsetY: -5 },
+  },
+  /* discover — merged base: topPos 16, bottomPos 9, subBaseY 55, subOffsetY -7 */
+  discover: {
+    "4:3":  {},
+    "16:9": {},
+    "1:1":  {},
+    "3:4":  { topPos: 25, subWeight: 300, subOffsetX: -7, subOffsetY: -4, subStartX: 94 },
+  },
 };
 
 export const MUJI_TEMPLATES: MujiTemplateData[] = [
@@ -364,14 +383,21 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
   const templateIdx = rawTemplateIdx < 0 ? autoIdx : rawTemplateIdx % MUJI_TEMPLATES.length;
   const template = MUJI_TEMPLATES[templateIdx];
 
-  // Fallback chain: store custom -> template-specific default -> global default
-  // eat/travel pairs share the same config key via configId
+  // Fallback chain:
+  //   1. template-specific default
+  //   2. per-ratio vertical-position overrides (pre-computed from old adaptConfigForRatio)
+  //   3. user's store customization (highest priority — keyed by cfgKey:ratio)
   const cfgKey = templateConfigId(template);
+  const ratio = detectPosterRatio(W, H);
+  const storeKey = `${cfgKey}:${ratio}`;
   const templateDefault = template.defaultConfig
     ? { ...DEFAULT_CONFIG, ...template.defaultConfig }
     : DEFAULT_CONFIG;
-  const storeConfig = mujiConfigs[cfgKey] ?? templateDefault;
-  const c = adaptConfigForRatio(storeConfig, W, H);
+  const ratioOverride = RATIO_OVERRIDES[cfgKey]?.[ratio] ?? {};
+  const baseConfig: MujiPosterConfig = { ...templateDefault, ...ratioOverride };
+  const c: MujiPosterConfig = mujiConfigs[storeKey]
+    ? { ...baseConfig, ...mujiConfigs[storeKey] }
+    : baseConfig;
 
   const subLabels = useMemo(
     () =>

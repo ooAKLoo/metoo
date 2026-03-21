@@ -3,6 +3,7 @@ import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
 import { MapLegend } from "./MapLegend";
+import { getNativeName } from "../lib/country-native-names";
 import {
   ensureWorldGeo, ensureWorldGeoJson, ensureCountryGeo,
   buildGeoSvg, useSvgRoam,
@@ -663,33 +664,32 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       return -1;
     });
 
-    // Group consecutive same-country nodes
-    const groups: { country: string; centroid: [number, number]; cityCount: number }[] = [];
-    let prevIdx = -2;
-    let sumLng = 0, sumLat = 0, count = 0;
-
-    const flush = () => {
-      if (count > 0 && prevIdx >= 0) {
-        groups.push({
-          country: featureNames[prevIdx] || "Unknown",
-          centroid: [sumLng / count, sumLat / count],
-          cityCount: count,
-        });
-      }
-    };
+    // Group by country — each country appears once, ordered by first occurrence
+    const countryAcc = new Map<number, { sumLng: number; sumLat: number; count: number }>();
+    const order: number[] = [];
 
     for (let i = 0; i < routePath.length; i++) {
       const ci = nodeCountryIdx[i];
-      if (ci !== prevIdx) {
-        flush();
-        prevIdx = ci;
-        sumLng = 0; sumLat = 0; count = 0;
+      if (ci < 0) continue;
+      let acc = countryAcc.get(ci);
+      if (!acc) {
+        acc = { sumLng: 0, sumLat: 0, count: 0 };
+        countryAcc.set(ci, acc);
+        order.push(ci);
       }
-      sumLng += routePath[i].coord[0];
-      sumLat += routePath[i].coord[1];
-      count++;
+      acc.sumLng += routePath[i].coord[0];
+      acc.sumLat += routePath[i].coord[1];
+      acc.count++;
     }
-    flush();
+
+    const groups = order.map((ci) => {
+      const acc = countryAcc.get(ci)!;
+      return {
+        country: getNativeName(featureNames[ci] || "Unknown"),
+        centroid: [acc.sumLng / acc.count, acc.sumLat / acc.count] as [number, number],
+        cityCount: acc.count,
+      };
+    });
 
     return groups.length >= 2 ? groups : null;
   }, [routePath, worldDotData, worldFeatures]);

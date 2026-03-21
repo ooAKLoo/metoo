@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Maximize2 } from "lucide-react";
 import { MapLegend } from "./MapLegend";
+import { CountryMapDevPanel } from "./CountryMapDevPanel";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
+import { getCountryViewOverride } from "../lib/country-view-overrides";
 import type { CityEntry } from "../hooks/useCityAggregation";
 import {
   coverSrc, ensureCountryGeo, buildGeoSvg, useSvgRoam,
@@ -140,6 +142,9 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
+  // ── Per-country initial viewport override ──
+  const viewOverride = getCountryViewOverride(countryName);
+
   // Ref for route state (read inside drawDotMatrix without adding dependency)
   const routeActiveRef = useRef(!!routePath);
   routeActiveRef.current = !!routePath;
@@ -234,7 +239,9 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const svgRefCallback = useCallback((el: SVGSVGElement | null) => setSvgEl(el), []);
 
   // ── Pan / Zoom ──
-  const roam = useSvgRoam(svgEl, geo?.svgW ?? 0, geo?.svgH ?? 0);
+  const roam = useSvgRoam(svgEl, geo?.svgW ?? 0, geo?.svgH ?? 0, {
+    initialView: viewOverride,
+  });
 
   // ── Canvas + container refs ──
   const dotCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -970,6 +977,14 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
 
       {/* Category legend */}
       {!activePosterModule && <MapLegend items={countryItems} />}
+
+      {/* Dev panel for viewport tuning */}
+      <CountryMapDevPanel
+        countryName={countryName}
+        getViewBox={() => roam.vbRef.current}
+        baseW={geo.svgW}
+        baseH={geo.svgH}
+      />
     </div>
   );
 }

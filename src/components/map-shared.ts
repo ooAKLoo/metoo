@@ -229,9 +229,14 @@ export function useSvgRoam(
   svgEl: SVGSVGElement | null,
   baseW: number,
   baseH: number,
-  opts?: { minZoom?: number; maxZoom?: number },
+  opts?: {
+    minZoom?: number;
+    maxZoom?: number;
+    /** Optional initial view override: { cx, cy } as fractions of base dims, zoom level */
+    initialView?: { cx: number; cy: number; zoom: number };
+  },
 ) {
-  const { minZoom = 0.8, maxZoom = 10 } = opts ?? {};
+  const { minZoom = 0.8, maxZoom = 10, initialView } = opts ?? {};
 
   const [vb, _setVb] = useState<VB>({
     x: 0,
@@ -255,7 +260,20 @@ export function useSvgRoam(
 
   // Reset when base dims change (e.g. GeoJSON loads)
   useEffect(() => {
-    if (baseW > 0 && baseH > 0) setVb({ x: 0, y: 0, w: baseW, h: baseH });
+    if (baseW > 0 && baseH > 0) {
+      if (initialView) {
+        const nw = baseW / initialView.zoom;
+        const nh = baseH / initialView.zoom;
+        setVb({
+          x: initialView.cx * baseW - nw / 2,
+          y: initialView.cy * baseH - nh / 2,
+          w: nw,
+          h: nh,
+        });
+      } else {
+        setVb({ x: 0, y: 0, w: baseW, h: baseH });
+      }
+    }
   }, [baseW, baseH, setVb]);
 
   const zoom = baseW > 0 ? baseW / vb.w : 1;

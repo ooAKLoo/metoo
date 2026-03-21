@@ -84,9 +84,9 @@ export function SettingsPanel() {
                       onChange={(e) => setFeedback(e.target.value)}
                       placeholder="告诉我们你的想法、建议或遇到的问题..."
                       rows={3}
-                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl
+                      className="w-full bg-neutral-100 rounded-xl
                                  px-3 py-2.5 text-[12px] text-neutral-800 placeholder:text-neutral-300
-                                 resize-none outline-none focus:border-neutral-400 transition-colors"
+                                 resize-none outline-none transition-colors"
                     />
 
                     <div className="mt-2 flex items-center gap-2">
@@ -95,9 +95,9 @@ export function SettingsPanel() {
                         value={contact}
                         onChange={(e) => setContact(e.target.value)}
                         placeholder="联系方式（选填）"
-                        className="flex-1 bg-neutral-50 border border-neutral-200 rounded-lg
+                        className="flex-1 bg-neutral-100 rounded-lg
                                    px-2.5 py-1.5 text-[11px] text-neutral-800 placeholder:text-neutral-300
-                                   outline-none focus:border-neutral-400 transition-colors"
+                                   outline-none transition-colors"
                       />
                       <motion.button
                         whileTap={{ scale: 0.9 }}

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Rect, Text, Group, Image as KImage } from "react-konva";
 import useImage from "use-image";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
 import { mulberry32, DOODLE_ENTRIES } from "../poster-generators/DoodleGallery";
@@ -16,14 +16,62 @@ import {
 import { useMapStore } from "../../stores/useMapStore";
 import { hslToHex } from "./PopBoardPoster";
 
-const BASE_W = 1100;
-const BASE_CELL = 54;
-const BASE_GAP = 6;
-const COLS = 15;
-const ROWS = 10;
-const SW = 1.2;
-
 const FONT_CN = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
+
+/* ── Per-ratio layout config ── */
+
+interface GridBlankLayout {
+  baseW: number;
+  baseCell: number;
+  baseGap: number;
+  cols: number;
+  rows: number;
+  sw: number;
+  clipR: number;
+  fillFrac: number;       // 1 = square cells sized from baseCell; <1 = fill that fraction of poster
+  labelFS: number;
+  valueFS: number;
+  valueShortFS: number;
+  iconSizeFrac: number;   // fraction of min(cellW,cellH) used for doodle icons
+}
+
+const BASE_LAYOUT: GridBlankLayout = {
+  baseW: 1100,
+  baseCell: 54,
+  baseGap: 6,
+  cols: 15,
+  rows: 10,
+  sw: 1.2,
+  clipR: 24,
+  fillFrac: 0,
+  labelFS: 8,
+  valueFS: 11,
+  valueShortFS: 18,
+  iconSizeFrac: 0.7,
+};
+
+const RATIO_LAYOUTS: Record<PosterRatio, GridBlankLayout> = {
+  "4:3": BASE_LAYOUT,
+  "1:1": {
+    ...BASE_LAYOUT,
+    baseW: 1000,
+    baseCell: 50,
+    clipR: 20,
+  },
+  "3:4": {
+    ...BASE_LAYOUT,
+    baseW: 1000,
+    baseCell: 50,
+    clipR: 20,
+  },
+  "16:9": {
+    ...BASE_LAYOUT,
+    baseW: 1200,
+    baseCell: 54,
+    fillFrac: 0.92,
+    clipR: 28,
+  },
+};
 
 /* ── Cell content types ── */
 type IconType = "doodle" | "pixel" | "elevation" | "character";
@@ -179,18 +227,20 @@ function GridBlankPoster({
   const gridBlankHue = useMapStore((s) => s.gridBlankHue);
   const BLUE = hslToHex(gridBlankHue, 100, 50);
 
-  /* Scale grid dimensions proportionally to poster width */
-  const ratio = W / BASE_W;
-  const GAP = Math.round(BASE_GAP * ratio);
+  /* Per-ratio layout */
+  const ratio = detectPosterRatio(W, H);
+  const L = RATIO_LAYOUTS[ratio];
 
-  /* Widescreen edge-bleed: stretch square cells to fill ~92% of poster */
-  const isWide = W / H >= 16 / 9 - 0.01;
-  const cellW = isWide
-    ? Math.floor((W * 0.92 - (COLS - 1) * GAP) / COLS)
-    : Math.round(BASE_CELL * ratio);
-  const cellH = isWide
-    ? Math.floor((H * 0.92 - (ROWS - 1) * GAP) / ROWS)
-    : cellW; /* square for non-widescreen */
+  /* Scale grid dimensions proportionally to poster width */
+  const scale = W / L.baseW;
+  const GAP = Math.round(L.baseGap * scale);
+
+  const cellW = L.fillFrac > 0
+    ? Math.floor((W * L.fillFrac - (L.cols - 1) * GAP) / L.cols)
+    : Math.round(L.baseCell * scale);
+  const cellH = L.fillFrac > 0
+    ? Math.floor((H * L.fillFrac - (L.rows - 1) * GAP) / L.rows)
+    : cellW; /* square for non-fill layouts */
 
   const dataSeed = cityEntries.length * 31 + items.length;
 
@@ -222,7 +272,7 @@ function GridBlankPoster({
     const map = new Map<number, FilledCell>();
 
     // Shuffle all indices
-    const indices = Array.from({ length: COLS * ROWS }, (_, i) => i);
+    const indices = Array.from({ length: L.cols * L.rows }, (_, i) => i);
     for (let i = indices.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [indices[i], indices[j]] = [indices[j], indices[i]];
@@ -259,7 +309,7 @@ function GridBlankPoster({
     });
 
     // 3) Doodle cells — half of remaining (rest stay empty)
-    const remaining = COLS * ROWS - cursor;
+    const remaining = L.cols * L.rows - cursor;
     const doodleCount = Math.round(remaining * 0.5);
     const doodleSlots = take(doodleCount);
     doodleSlots.forEach((idx) => {
@@ -269,11 +319,11 @@ function GridBlankPoster({
     });
 
     return map;
-  }, [dataSeed, stats, covers]);
+  }, [dataSeed, stats, covers, L]);
 
   /* ── Grid geometry ── */
-  const gridW = COLS * cellW + (COLS - 1) * GAP;
-  const gridH = ROWS * cellH + (ROWS - 1) * GAP;
+  const gridW = L.cols * cellW + (L.cols - 1) * GAP;
+  const gridH = L.rows * cellH + (L.rows - 1) * GAP;
   const ox = (W - gridW) / 2;
   const oy = (H - gridH) / 2;
 
@@ -282,19 +332,19 @@ function GridBlankPoster({
     const out = new Map<number, React.ReactElement>();
     for (const [idx, cell] of cellMap.entries()) {
       if (cell.kind === "doodle") {
-        const iconSize = Math.min(cellW, cellH) * 0.7;
+        const iconSize = Math.min(cellW, cellH) * L.iconSizeFrac;
         const el = buildCellIconElement(cell.iconType, cell.seed, iconSize, BLUE);
         if (el) out.set(idx, el);
       }
     }
     return out;
-  }, [cellMap, cellW, cellH, BLUE]);
+  }, [cellMap, cellW, cellH, BLUE, L]);
 
   /* ── Build grid outline rects ── */
   const gridRects = useMemo(() => {
     const rects: { x: number; y: number }[] = [];
-    for (let row = 0; row < ROWS; row++) {
-      for (let col = 0; col < COLS; col++) {
+    for (let row = 0; row < L.rows; row++) {
+      for (let col = 0; col < L.cols; col++) {
         rects.push({
           x: ox + col * (cellW + GAP),
           y: oy + row * (cellH + GAP),
@@ -302,7 +352,7 @@ function GridBlankPoster({
       }
     }
     return rects;
-  }, [ox, oy, cellW, cellH, GAP]);
+  }, [ox, oy, cellW, cellH, GAP, L]);
 
   /* ── Build filled cell render data ── */
   const filledCells = useMemo(() => {
@@ -314,8 +364,8 @@ function GridBlankPoster({
     }[] = [];
     for (const [idx, cell] of cellMap.entries()) {
       if (cell.kind === "empty") continue;
-      const row = Math.floor(idx / COLS);
-      const col = idx % COLS;
+      const row = Math.floor(idx / L.cols);
+      const col = idx % L.cols;
       out.push({
         idx,
         cell,
@@ -324,14 +374,14 @@ function GridBlankPoster({
       });
     }
     return out;
-  }, [cellMap, ox, oy, cellW, cellH, GAP]);
+  }, [cellMap, ox, oy, cellW, cellH, GAP, L]);
 
   return (
     <KonvaPosterStage width={W} height={H}>
       {/* Rounded-corner clip */}
       <Group
         clipFunc={(ctx) => {
-          const r = 24;
+          const r = L.clipR;
           ctx.beginPath();
           ctx.moveTo(r, 0);
           ctx.arcTo(W, 0, W, H, r);
@@ -354,7 +404,7 @@ function GridBlankPoster({
             height={cellH}
             fill="transparent"
             stroke={BLUE}
-            strokeWidth={SW}
+            strokeWidth={L.sw}
           />
         ))}
 
@@ -382,8 +432,8 @@ function GridBlankPoster({
           }
 
           if (cell.kind === "stat") {
-            const labelFS = 8;
-            const valueFS = cell.value.length <= 3 ? 18 : 11;
+            const labelFS = L.labelFS;
+            const valueFS = cell.value.length <= 3 ? L.valueShortFS : L.valueFS;
             const hasLabel = !!cell.label;
 
             // Vertical centering: compute total text block height
@@ -441,7 +491,7 @@ function GridBlankPoster({
           if (cell.kind === "doodle") {
             const el = doodleElements.get(idx);
             if (!el) return null;
-            const iconSize = Math.min(cellW, cellH) * 0.7;
+            const iconSize = Math.min(cellW, cellH) * L.iconSizeFrac;
             // Center icon in cell
             const iconX = cx + (cellW - iconSize) / 2;
             const iconY = cy + (cellH - iconSize) / 2;

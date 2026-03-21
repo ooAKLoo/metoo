@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { Rect, Text, Line, Group, Circle, Path, Image as KImage } from "react-konva";
 import useImage from "use-image";
-import type { PosterModuleProps } from "../../lib/poster-modules";
+import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
 import { coverSrc } from "../map-shared";
+import { useMapStore } from "../../stores/useMapStore";
 
 /* ── Fonts ── */
 const FONT_SERIF =
@@ -405,6 +406,103 @@ function KonvaTransitMap({
   );
 }
 
+/* ── Per-ratio layout config ── */
+
+interface DiscoverLayout {
+  posterPad: number;
+  titleSize: number;
+  journeySize: number;
+  sideColW: number;
+  footerFs: number;
+  footerNumFs: number;
+  leftFrac: number;
+  titleMt: number;
+  journeyMt: number;
+  footerH: number;
+  footerTextFrac: number;
+  footerTextOffsetX: number;
+  footerTextOffsetY: number;
+  transitMapOffsetY: number;
+  transitMapScale: number;
+  isVerticalLayout: boolean;
+}
+
+const BASE_LAYOUT: DiscoverLayout = {
+  posterPad: 40,
+  titleSize: 100,
+  journeySize: 22,
+  sideColW: 180,
+  footerFs: 24,
+  footerNumFs: 28,
+  leftFrac: 0.32,
+  titleMt: 80,
+  journeyMt: 48,
+  footerH: 180,
+  footerTextFrac: 0.45,
+  footerTextOffsetX: 8,
+  footerTextOffsetY: 66,
+  transitMapOffsetY: 0,
+  transitMapScale: 1,
+  isVerticalLayout: false,
+};
+
+export const DISCOVER_RATIO_LAYOUTS: Record<PosterRatio, DiscoverLayout> = {
+  "4:3": BASE_LAYOUT,
+  "3:4": {
+    ...BASE_LAYOUT,
+    posterPad: 44,
+    titleSize: 74,
+    journeySize: 26,
+    sideColW: 240,
+    footerFs: 22,
+    footerNumFs: 26,
+    leftFrac: 0.32,
+    titleMt: 60,
+    journeyMt: 48,
+    footerH: 180,
+    footerTextFrac: 0.45,
+    footerTextOffsetX: -16,
+    footerTextOffsetY: 44,
+    transitMapOffsetY: 48,
+    transitMapScale: 1,
+    isVerticalLayout: true,
+  },
+  "1:1": {
+    ...BASE_LAYOUT,
+    posterPad: 40,
+    titleSize: 56,
+    journeySize: 18,
+    sideColW: 140,
+    footerFs: 20,
+    footerNumFs: 24,
+    leftFrac: 0.36,
+    titleMt: 56,
+    journeyMt: 32,
+    footerH: 180,
+    footerTextFrac: 0.48,
+    transitMapScale: 1,
+    isVerticalLayout: false,
+  },
+  "16:9": {
+    ...BASE_LAYOUT,
+    posterPad: 40,
+    titleSize: 80,
+    journeySize: 24,
+    sideColW: 220,
+    footerFs: 24,
+    footerNumFs: 28,
+    leftFrac: 0.28,
+    titleMt: 96,
+    journeyMt: 56,
+    footerH: 240,
+    footerTextFrac: 0.44,
+    footerTextOffsetX: 8,
+    footerTextOffsetY: 158,
+    transitMapScale: 1.35,
+    isVerticalLayout: false,
+  },
+};
+
 /* ── Main component ── */
 
 function DiscoverWestPoster({
@@ -413,11 +511,11 @@ function DiscoverWestPoster({
   posterWidth: W,
   posterHeight: H,
 }: PosterModuleProps) {
-  /* ── Aspect-ratio detection ── */
-  const aspect = W / H;
-  const isPortrait = aspect < 0.8;
-  const isSquare = aspect >= 0.8 && aspect < 1.15;
-  const isWide = aspect >= 1.5;
+  /* ── Ratio-based layout config (merged with store overrides) ── */
+  const ratio = detectPosterRatio(W, H);
+  const discoverConfigs = useMapStore((s) => s.discoverConfigs);
+  const storeOverride = discoverConfigs[ratio] ?? {};
+  const L = { ...DISCOVER_RATIO_LAYOUTS[ratio], ...storeOverride };
 
   /* ── Data ── */
   const totalCities = cityEntries.length;
@@ -444,13 +542,14 @@ function DiscoverWestPoster({
     ? `从收藏夹出发，${topCity.name}是你最常标记的城市。`
     : "从收藏夹出发，探索你的旅行足迹。";
 
-  /* ── Layout-adaptive values ── */
-  const posterPad = isPortrait ? 44 : 40;
-  const titleSize = isPortrait ? 64 : isSquare ? 56 : isWide ? 80 : 72;
-  const journeySize = isPortrait ? 20 : isSquare ? 18 : isWide ? 24 : 22;
-  const sideColW = isPortrait ? 180 : isSquare ? 140 : isWide ? 220 : 180;
-  const footerFs = isPortrait ? 22 : isSquare ? 20 : 24;
-  const footerNumFs = isPortrait ? 26 : isSquare ? 24 : 28;
+  /* ── Layout-adaptive values (from ratio config) ── */
+  const {
+    posterPad, titleSize, journeySize, sideColW,
+    footerFs, footerNumFs, leftFrac, titleMt,
+    journeyMt, footerH, footerTextFrac,
+    footerTextOffsetX, footerTextOffsetY, transitMapOffsetY, transitMapScale,
+    isVerticalLayout,
+  } = L;
 
   /* ── Title text lines ── */
   const titleLine1 = topCity
@@ -461,12 +560,6 @@ function DiscoverWestPoster({
       ? `${topCity.name.slice(2)}。`
       : "印记。"
     : "去远方。";
-
-  /* ── Horizontal layout proportions ── */
-  const leftFrac = isSquare ? 0.36 : isWide ? 0.28 : 0.32;
-  const titleMt = isSquare ? 56 : isWide ? 96 : 80;
-  const journeyMt = isSquare ? 32 : isWide ? 56 : 48;
-  const footerH = isWide ? 240 : 180;
 
   /* ── Pre-compute footer text layout ── */
   const footerLayout = useMemo(() => {
@@ -481,7 +574,7 @@ function DiscoverWestPoster({
 
   /* ── Compute layout positions ── */
   const layout = useMemo(() => {
-    if (isPortrait) {
+    if (isVerticalLayout) {
       /* ── Portrait (3:4) ── */
       const brandY = posterPad;
       const brandH = 40;
@@ -519,7 +612,7 @@ function DiscoverWestPoster({
       const titleY = titleAreaTop + (titleAreaH - titleBlockH) / 2;
 
       return {
-        isPortrait: true as const,
+        isVerticalLayout: true as const,
         brandY,
         coverY,
         coverH,
@@ -535,7 +628,7 @@ function DiscoverWestPoster({
         footerTextY: footerY,
         transitMapY: footerY + footerTextH + 20,
         brandingY: H - posterPad - 48,
-        transitMapScale: 1,
+        transitMapScale,
         transitMapX: posterPad,
       };
     } else {
@@ -575,11 +668,10 @@ function DiscoverWestPoster({
 
       // Footer
       const footerY = posterPad + topH + 32;
-      const footerTextFrac = isSquare ? 0.48 : isWide ? 0.38 : 0.45;
       const footerTextW = Math.round(innerW * footerTextFrac);
 
       return {
-        isPortrait: false as const,
+        isVerticalLayout: false as const,
         brandY,
         titleY,
         journeyY,
@@ -593,27 +685,11 @@ function DiscoverWestPoster({
         sideGap,
         footerY,
         footerMapX: posterPad + footerTextW,
-        transitMapScale: isWide ? 1.35 : 1,
+        transitMapScale,
         brandingY: H - posterPad - 48,
       };
     }
-  }, [
-    W,
-    H,
-    isPortrait,
-    isSquare,
-    isWide,
-    posterPad,
-    heroCovers,
-    sideColW,
-    titleSize,
-    journeySize,
-    titleMt,
-    journeyMt,
-    footerH,
-    leftFrac,
-    footerFs,
-  ]);
+  }, [W, H, L, heroCovers]);
 
   /* ── Brand elements helper ── */
   const renderBrand = (x: number, y: number) => (
@@ -859,7 +935,7 @@ function DiscoverWestPoster({
         {/* White background */}
         <Rect width={W} height={H} fill="white" />
 
-        {layout.isPortrait ? (
+        {layout.isVerticalLayout ? (
           /* ── Portrait layout (3:4) ── */
           <>
             {/* Brand */}
@@ -885,14 +961,14 @@ function DiscoverWestPoster({
             {renderJourney(posterPad, layout.journeyY)}
 
             {/* Footer stats text */}
-            {renderFooterText(posterPad, layout.footerTextY)}
+            {renderFooterText(posterPad + footerTextOffsetX, layout.footerTextY + footerTextOffsetY)}
 
             {/* Transit map + branding mark at bottom */}
             <KonvaTransitMap
               cities={transitCities}
               scale={layout.transitMapScale}
               offsetX={layout.transitMapX}
-              offsetY={layout.transitMapY}
+              offsetY={layout.transitMapY + transitMapOffsetY}
             />
 
             {/* Branding mark (bottom right) */}
@@ -927,14 +1003,14 @@ function DiscoverWestPoster({
             )}
 
             {/* Footer text (bottom-left) */}
-            {renderFooterText(posterPad, layout.footerY)}
+            {renderFooterText(posterPad + footerTextOffsetX, layout.footerY + footerTextOffsetY)}
 
             {/* Transit map (bottom-right) */}
             <KonvaTransitMap
               cities={transitCities}
               scale={layout.transitMapScale}
               offsetX={layout.footerMapX}
-              offsetY={layout.footerY}
+              offsetY={layout.footerY + transitMapOffsetY}
             />
 
             {/* Branding mark (bottom far right) */}

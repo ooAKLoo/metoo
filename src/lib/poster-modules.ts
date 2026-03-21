@@ -17,6 +17,21 @@ export const POSTER_RATIOS: Record<
 
 export const POSTER_RATIO_OPTIONS: PosterRatio[] = ["1:1", "3:4", "4:3", "16:9"];
 
+/** Derive a PosterRatio key from pixel dimensions. */
+export function detectPosterRatio(w: number, h: number): PosterRatio {
+  for (const [key, val] of Object.entries(POSTER_RATIOS)) {
+    if (val.w === w && val.h === h) return key as PosterRatio;
+  }
+  const aspect = w / h;
+  let best: PosterRatio = "4:3";
+  let bestDiff = Infinity;
+  for (const [key, val] of Object.entries(POSTER_RATIOS)) {
+    const diff = Math.abs(val.w / val.h - aspect);
+    if (diff < bestDiff) { bestDiff = diff; best = key as PosterRatio; }
+  }
+  return best;
+}
+
 export interface PosterModuleProps {
   items: FavoriteItem[];
   selectedCity: string | null;
