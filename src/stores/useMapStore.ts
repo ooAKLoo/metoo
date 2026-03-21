@@ -15,13 +15,14 @@ interface MapState {
   selectedItemId: number | null;
   hoveredProvince: string | null;
   selectedCity: string | null;
+  selectedProvince: string | null;
   selectedTag: string | null;
   viewMode: ViewMode;
   routePath: RouteNode[] | null;
   mapLevel: MapLevel;
   chartView: ChartView;
   activePosterModule: string | null;
-  posterRatio: PosterRatio;
+  posterRatios: Record<string, PosterRatio>;
   mujiConfigs: Record<string, MujiPosterConfig>;
   keyboardThemeIdx: number;
   patternStyleIdx: number;
@@ -29,6 +30,7 @@ interface MapState {
   popBoardHue: number;
   mujiTemplateIdx: number;
   mujiHue: number;
+  mujiTextHidden: boolean;
   mosaicThemeIdx: number;
   mosaicHue: number;
   mosaicStyleIdx: number;
@@ -44,6 +46,7 @@ interface MapState {
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
+  setSelectedProvince: (prov: string) => void;
   setSelectedTag: (tag: string | null) => void;
   clearCityFilter: () => void;
   generateRoute: (cities: RouteNode[]) => void;
@@ -51,7 +54,7 @@ interface MapState {
   setMapLevel: (level: MapLevel) => void;
   setChartView: (view: ChartView) => void;
   setActivePosterModule: (id: string | null) => void;
-  setPosterRatio: (ratio: PosterRatio) => void;
+  setPosterRatio: (moduleId: string, ratio: PosterRatio) => void;
   setMujiConfig: (templateId: string, config: MujiPosterConfig) => void;
   setKeyboardThemeIdx: (idx: number) => void;
   setPatternStyleIdx: (idx: number) => void;
@@ -59,6 +62,7 @@ interface MapState {
   setPopBoardHue: (hue: number) => void;
   setMujiTemplateIdx: (idx: number) => void;
   setMujiHue: (hue: number) => void;
+  toggleMujiTextHidden: () => void;
   setMosaicThemeIdx: (idx: number) => void;
   setMosaicHue: (hue: number) => void;
   setMosaicStyleIdx: (idx: number) => void;
@@ -110,13 +114,14 @@ export const useMapStore = create<MapState>((set, get) => ({
   selectedItemId: null,
   hoveredProvince: null,
   selectedCity: null,
+  selectedProvince: null,
   selectedTag: null,
   viewMode: "all",
   routePath: null,
   mapLevel: "world",
   chartView: "map",
   activePosterModule: null,
-  posterRatio: "4:3" as PosterRatio,
+  posterRatios: {} as Record<string, PosterRatio>,
   mujiConfigs: {},
   keyboardThemeIdx: 0,
   patternStyleIdx: 0,
@@ -124,6 +129,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   popBoardHue: 330,
   mujiTemplateIdx: -1,
   mujiHue: 30,
+  mujiTextHidden: false,
   mosaicThemeIdx: 0,
   mosaicHue: 250,
   mosaicStyleIdx: 0,
@@ -138,16 +144,24 @@ export const useMapStore = create<MapState>((set, get) => ({
   setSelectedCity: (city) => {
     const current = get().selectedCity;
     if (current === city) {
-      set({ selectedCity: null, viewMode: "all" });
+      set({ selectedCity: null, selectedProvince: null, viewMode: "all" });
     } else {
-      set({ selectedCity: city, viewMode: "city" });
+      set({ selectedCity: city, selectedProvince: null, viewMode: "city" });
+    }
+  },
+  setSelectedProvince: (prov) => {
+    const current = get().selectedProvince;
+    if (current === prov) {
+      set({ selectedProvince: null, selectedCity: null, viewMode: "all" });
+    } else {
+      set({ selectedProvince: prov, selectedCity: null, viewMode: "city" });
     }
   },
   setSelectedTag: (tag) => {
     const current = get().selectedTag;
     set({ selectedTag: current === tag ? null : tag });
   },
-  clearCityFilter: () => set({ selectedCity: null, viewMode: "all" }),
+  clearCityFilter: () => set({ selectedCity: null, selectedProvince: null, viewMode: "all" }),
   generateRoute: (cities) => {
     if (cities.length < 2) return;
     const path = nearestNeighbourRoute(cities);
@@ -157,7 +171,9 @@ export const useMapStore = create<MapState>((set, get) => ({
   setMapLevel: (level) => set({ mapLevel: level }),
   setChartView: (view) => set({ chartView: view, activePosterModule: null }),
   setActivePosterModule: (id) => set({ activePosterModule: id }),
-  setPosterRatio: (ratio) => set({ posterRatio: ratio }),
+  setPosterRatio: (moduleId, ratio) => set((s) => ({
+    posterRatios: { ...s.posterRatios, [moduleId]: ratio },
+  })),
   setMujiConfig: (templateId, config) => set((s) => ({
     mujiConfigs: { ...s.mujiConfigs, [templateId]: config },
   })),
@@ -167,6 +183,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   setPopBoardHue: (hue) => set({ popBoardHue: hue }),
   setMujiTemplateIdx: (idx) => set({ mujiTemplateIdx: idx }),
   setMujiHue: (hue) => set({ mujiHue: hue }),
+  toggleMujiTextHidden: () => set((s) => ({ mujiTextHidden: !s.mujiTextHidden })),
   setMosaicThemeIdx: (idx) => set({ mosaicThemeIdx: idx }),
   setMosaicHue: (hue) => set({ mosaicHue: hue }),
   setMosaicStyleIdx: (idx) => set({ mosaicStyleIdx: idx }),

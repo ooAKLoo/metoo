@@ -121,3 +121,21 @@ input[type="range"].hue-slider::-moz-range-thumb {
 .muji-map-bg [data-no-export] {
   display: none !important;
 }
+
+/* Bottom bar card rush-in — slide from right with directional motion blur */
+@keyframes bottomcard-in {
+  0% {
+    opacity: 0;
+    transform: translateX(140px);
+    filter: url(#motion-blur-heavy);
+  }
+  40% {
+    opacity: 1;
+    filter: url(#motion-blur-light);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    filter: none;
+  }
+}

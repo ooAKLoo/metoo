@@ -130,8 +130,11 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const items = useFavoriteStore((s) => s.items);
   const selectedItemId = useMapStore((s) => s.selectedItemId);
   const selectedCity = useMapStore((s) => s.selectedCity);
+  const selectedProvince = useMapStore((s) => s.selectedProvince);
   const routePath = useMapStore((s) => s.routePath);
+  const activePosterModule = useMapStore((s) => s.activePosterModule);
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
+  const setSelectedProvince = useMapStore((s) => s.setSelectedProvince);
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
 
   const [isZoomedIn, setIsZoomedIn] = useState(false);
@@ -199,6 +202,21 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       .sort((a, b) => b.count - a.count);
   }, [items, geo, isChina]);
 
+  // ── Province → city names mapping ──
+  const provToCities = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const item of items) {
+      for (const loc of item.locations) {
+        const fullProv = isChina
+          ? (PROV_FULL[loc.province] || loc.province)
+          : loc.province;
+        if (!map.has(fullProv)) map.set(fullProv, new Set());
+        map.get(fullProv)!.add(loc.name);
+      }
+    }
+    return map;
+  }, [items, isChina]);
+
   // ── Items filtered to current country (for legend) ──
   const countryItems = useMemo(() => {
     if (!geo) return [];
@@ -222,6 +240,9 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const dotCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const svgSpacingRef = useRef(0);
+
+  // ── Drag vs click detection ──
+  const pointerDownPos = useRef<[number, number] | null>(null);
 
   // ── Hover animation refs ──
   const hoverAnimRef = useRef({ provIdx: -1, dotOpacity: 1, rafId: 0 });
@@ -563,6 +584,20 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     startHoverAnimRef.current(-1);
   }, [setHoveredProvince]);
 
+  // ── Click province → show all items in that province ──
+  const handleProvClick = useCallback((provName: string, e: React.MouseEvent<SVGGElement>) => {
+    if (routePath) return; // skip during route mode
+    // Distinguish drag from click — ignore if pointer moved > 5px
+    if (pointerDownPos.current) {
+      const dx = e.clientX - pointerDownPos.current[0];
+      const dy = e.clientY - pointerDownPos.current[1];
+      if (dx * dx + dy * dy > 25) return;
+    }
+    const cityNames = provToCities.get(provName);
+    if (!cityNames || cityNames.size === 0) return;
+    setSelectedProvince(provName);
+  }, [routePath, provToCities, setSelectedProvince]);
+
   // ── Reset view ──
   const resetView = useCallback(() => {
     roam.resetView();
@@ -577,16 +612,10 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     setIsZoomedIn(true);
   }, [selectedCoord, geo, roam.centerOn]);
 
-  // ── Center on selected city ──
+  // ── Redraw dots when route mode toggles (restore dots hidden by avatar exclusion zones) ──
   useEffect(() => {
-    if (!geo || !selectedCity) return;
-    const city = entries.find((e) => e.name === selectedCity);
-    if (city) {
-      const [sx, sy] = geo.geoToSvg(city.coord[0], city.coord[1]);
-      roam.centerOn(sx, sy, 5);
-      setIsZoomedIn(true);
-    }
-  }, [selectedCity, entries, geo, roam.centerOn]);
+    drawDotMatrix();
+  }, [routePath, drawDotMatrix]);
 
   // ── Redraw canvas + sync avatars on viewBox change ──
   useEffect(() => {
@@ -739,7 +768,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
         className="absolute inset-0 w-full h-full z-[2]"
         viewBox={roam.viewBox}
         preserveAspectRatio="xMidYMid meet"
-        onPointerDown={roam.onPointerDown}
+        onPointerDown={(e) => { pointerDownPos.current = [e.clientX, e.clientY]; roam.onPointerDown(e); }}
         onPointerMove={roam.onPointerMove}
         onPointerUp={roam.onPointerUp}
         style={{ touchAction: "none", cursor: "grab" }}
@@ -754,18 +783,22 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
         {/* Transparent province paths for event detection */}
         {geo.provinces.map((prov) => {
           const isHovered = hoveredProv === prov.name;
+          const isSelected = selectedProvince === prov.name;
           return (
             <g
               key={prov.name}
               onMouseEnter={() => handleProvEnter(prov.name)}
               onMouseLeave={handleProvLeave}
+              onClick={(e) => handleProvClick(prov.name, e)}
+              style={{ cursor: provToCities.has(prov.name) ? "pointer" : undefined }}
             >
               {prov.paths.map((d, i) => (
                 <path
                   key={i}
                   d={d}
-                  fill={isHovered ? "rgba(0,0,0,0.045)" : "transparent"}
-                  stroke="none"
+                  fill={isSelected ? "rgba(230,57,70,0.08)" : isHovered ? "rgba(0,0,0,0.045)" : "transparent"}
+                  stroke={isSelected ? "rgba(230,57,70,0.3)" : "none"}
+                  strokeWidth={isSelected ? 1 / z : 0}
                 />
               ))}
               {isHovered && (
@@ -936,7 +969,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       </AnimatePresence>
 
       {/* Category legend */}
-      <MapLegend items={countryItems} />
+      {!activePosterModule && <MapLegend items={countryItems} />}
     </div>
   );
 }

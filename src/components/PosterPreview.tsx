@@ -7,13 +7,14 @@ import { getPosterModule, POSTER_RATIOS } from "../lib/poster-modules";
 export function PosterPreview() {
   const activePosterModule = useMapStore((s) => s.activePosterModule);
   const selectedCity = useMapStore((s) => s.selectedCity);
-  const posterRatio = useMapStore((s) => s.posterRatio);
+  const posterRatios = useMapStore((s) => s.posterRatios);
   const items = useFavoriteStore((s) => s.items);
   const { entries } = useCityAggregation();
 
   const mod = activePosterModule ? getPosterModule(activePosterModule) : null;
   if (!mod) return null;
 
+  const posterRatio = posterRatios[activePosterModule!] ?? "4:3";
   const { w, h } = POSTER_RATIOS[posterRatio];
 
   return (

@@ -1,5 +1,5 @@
-import { MapPin } from "lucide-react";
 import { SettingsPanel } from "./SettingsPanel";
+import { WeatherIcon } from "./WeatherIcon";
 
 export function TitleBar() {
   return (
@@ -11,7 +11,7 @@ export function TitleBar() {
       <div data-tauri-drag-region className="w-[78px] shrink-0" />
 
       <div data-tauri-drag-region className="flex items-center gap-2 pointer-events-none">
-        <MapPin size={16} className="text-[var(--accent-pink)]" />
+        <WeatherIcon className="w-4 h-4 text-primary" />
         <span className="text-[13px] font-bold tracking-wide text-primary">
           觅途
         </span>

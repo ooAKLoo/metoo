@@ -485,12 +485,7 @@ function Persp3DContent({ items, cityEntries, posterWidth, posterHeight }: Poste
 
   return (
     <KonvaPosterStage width={W} height={H}>
-      <Group clipFunc={(ctx) => {
-        const r = 24;
-        ctx.beginPath(); ctx.moveTo(r, 0);
-        ctx.arcTo(W, 0, W, H, r); ctx.arcTo(W, H, 0, H, r);
-        ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
-      }}>
+      <Group>
         <Rect width={W} height={H} fill={theme.posterBg} />
         <ScatteredFigures W={W} H={H} seed={figureSeed}
           figureColor={figureColor} groundColor={groundColor} avoidZones={perspAvoid} />
@@ -627,12 +622,7 @@ function IsometricContent({ items, cityEntries, posterWidth, posterHeight }: Pos
 
   return (
     <KonvaPosterStage width={W} height={H}>
-      <Group clipFunc={(ctx) => {
-        const r = 24;
-        ctx.beginPath(); ctx.moveTo(r, 0);
-        ctx.arcTo(W, 0, W, H, r); ctx.arcTo(W, H, 0, H, r);
-        ctx.arcTo(0, H, 0, 0, r); ctx.arcTo(0, 0, W, 0, r); ctx.closePath();
-      }}>
+      <Group>
         <Rect width={W} height={H} fill={theme.posterBg} />
         {/* Noise texture */}
         <Shape sceneFunc={(ctx, shape) => {

@@ -356,6 +356,7 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
   const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const rawTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
   const mujiHue = useMapStore((s) => s.mujiHue);
+  const mujiTextHidden = useMapStore((s) => s.mujiTextHidden);
   const colorPreset = useMemo(() => deriveMujiColors(mujiHue), [mujiHue]);
   const listTitle = useFavoriteStore((s) => s.listTitle);
 
@@ -453,50 +454,54 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
 
   return (
     <KonvaPosterStage width={W} height={H} transparent>
-      {/* Top text (vertical) */}
-      <VerticalText
-        text={template.topText}
-        x={topTextX}
-        y={topTextY}
-        fontSize={mainFontSize}
-        fontWeight={mainFontWeight}
-        fill={colorPreset.textColor}
-        letterSpacing={mainLetterSpacing}
-        stroke={mainStroke}
-        strokeWidth={mainStrokeWidth}
-      />
+      {!mujiTextHidden && (
+        <>
+          {/* Top text (vertical) */}
+          <VerticalText
+            text={template.topText}
+            x={topTextX}
+            y={topTextY}
+            fontSize={mainFontSize}
+            fontWeight={mainFontWeight}
+            fill={colorPreset.textColor}
+            letterSpacing={mainLetterSpacing}
+            stroke={mainStroke}
+            strokeWidth={mainStrokeWidth}
+          />
 
-      {/* Bottom text (vertical) */}
-      {template.bottomText && (
-        <VerticalText
-          text={template.bottomText}
-          x={bottomTextX}
-          y={bottomTextY}
-          fontSize={mainFontSize}
-          fontWeight={mainFontWeight}
-          fill={colorPreset.textColor}
-          letterSpacing={mainLetterSpacing}
-          stroke={mainStroke}
-          strokeWidth={mainStrokeWidth}
-        />
+          {/* Bottom text (vertical) */}
+          {template.bottomText && (
+            <VerticalText
+              text={template.bottomText}
+              x={bottomTextX}
+              y={bottomTextY}
+              fontSize={mainFontSize}
+              fontWeight={mainFontWeight}
+              fill={colorPreset.textColor}
+              letterSpacing={mainLetterSpacing}
+              stroke={mainStroke}
+              strokeWidth={mainStrokeWidth}
+            />
+          )}
+
+          {/* Sub-texts (vertical, scattered) */}
+          {subPositions.map(({ text, x, y }, i) => (
+            <VerticalText
+              key={i}
+              text={text}
+              x={x}
+              y={y}
+              fontSize={subFontSize}
+              fontWeight={subFontWeight}
+              fill={colorPreset.textColor}
+              letterSpacing={subLetterSpacing}
+              stroke={subStroke}
+              strokeWidth={subStrokeWidth}
+              opacity={c.subOpacity}
+            />
+          ))}
+        </>
       )}
-
-      {/* Sub-texts (vertical, scattered) */}
-      {subPositions.map(({ text, x, y }, i) => (
-        <VerticalText
-          key={i}
-          text={text}
-          x={x}
-          y={y}
-          fontSize={subFontSize}
-          fontWeight={subFontWeight}
-          fill={colorPreset.textColor}
-          letterSpacing={subLetterSpacing}
-          stroke={subStroke}
-          strokeWidth={subStrokeWidth}
-          opacity={c.subOpacity}
-        />
-      ))}
     </KonvaPosterStage>
   );
 }

@@ -29,9 +29,7 @@ export function PosterModuleBar({ open }: { open: boolean }) {
               <motion.button
                 key={mod.id}
                 whileTap={{ scale: 0.95 }}
-                onClick={() =>
-                  setActivePosterModule(isActive ? null : mod.id)
-                }
+                onClick={() => setActivePosterModule(mod.id)}
                 className="relative flex items-center gap-1 px-1.5 py-1 rounded-lg
                            text-[9px] font-medium cursor-pointer z-[1]"
               >

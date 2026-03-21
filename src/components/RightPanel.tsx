@@ -36,7 +36,7 @@ export function RightPanel() {
   const setMapLevel = useMapStore((s) => s.setMapLevel);
   const activePosterModule = useMapStore((s) => s.activePosterModule);
   const setActivePosterModule = useMapStore((s) => s.setActivePosterModule);
-  const posterRatio = useMapStore((s) => s.posterRatio);
+  const posterRatios = useMapStore((s) => s.posterRatios);
   const setPosterRatio = useMapStore((s) => s.setPosterRatio);
   const mujiConfigs = useMapStore((s) => s.mujiConfigs);
   const setMujiConfig = useMapStore((s) => s.setMujiConfig);
@@ -54,6 +54,8 @@ export function RightPanel() {
   const setPopBoardHue = useMapStore((s) => s.setPopBoardHue);
   const mujiHue = useMapStore((s) => s.mujiHue);
   const setMujiHue = useMapStore((s) => s.setMujiHue);
+  const mujiTextHidden = useMapStore((s) => s.mujiTextHidden);
+  const toggleMujiTextHidden = useMapStore((s) => s.toggleMujiTextHidden);
   const mosaicHue = useMapStore((s) => s.mosaicHue);
   const setMosaicHue = useMapStore((s) => s.setMosaicHue);
   const mosaicStyleIdx = useMapStore((s) => s.mosaicStyleIdx);
@@ -174,6 +176,7 @@ export function RightPanel() {
   const inPosterMode = activePosterModule !== null;
   const activeMod = activePosterModule ? getPosterModule(activePosterModule) : undefined;
   const hideBackground = inPosterMode && !!activeMod?.opaqueBackground;
+  const posterRatio = activePosterModule ? (posterRatios[activePosterModule] ?? "4:3") : "4:3";
   const ratioPreset = POSTER_RATIOS[posterRatio];
 
   return (
@@ -426,7 +429,7 @@ export function RightPanel() {
                           <div className="absolute inset-0 pointer-events-none muji-map-bg">
                             <div
                               className="absolute inset-0"
-                              style={{ opacity: 0.18 }}
+                              style={{ opacity: mujiTextHidden ? 1 : 0.18 }}
                             >
                               <MapView />
                             </div>
@@ -446,7 +449,7 @@ export function RightPanel() {
                         return (
                           <button
                             key={ratio}
-                            onClick={() => setPosterRatio(ratio)}
+                            onClick={() => activePosterModule && setPosterRatio(activePosterModule, ratio)}
                             className="relative px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer z-[1]"
                           >
                             {isActive && (
@@ -544,9 +547,10 @@ export function RightPanel() {
                           );
                         })}
                         {/* Shuffle figures button */}
+                        <span className="ml-1.5 w-px h-4 bg-neutral-200" />
                         <button
                           onClick={shuffleFigures}
-                          className="ml-1.5 pl-1.5 border-l border-neutral-200 px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer text-neutral-500 hover:bg-neutral-100 active:scale-95 transition-all"
+                          className="ml-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer text-neutral-500 hover:bg-neutral-100 active:scale-95 transition-all"
                         >
                           随机
                         </button>
@@ -656,7 +660,7 @@ export function RightPanel() {
 
                     {activePosterModule === "muji" && (
                       <div className="flex items-center gap-0.5">
-                        {visibleMujiIndices.map((i) => {
+                        {!mujiTextHidden && visibleMujiIndices.map((i) => {
                           const t = MUJI_TEMPLATES[i];
                           const isActive = effectiveMujiIdx === i;
                           return (
@@ -682,6 +686,15 @@ export function RightPanel() {
                             </button>
                           );
                         })}
+                        {!mujiTextHidden && <span className="ml-1.5 w-px h-4 bg-neutral-200" />}
+                        <button
+                          onClick={toggleMujiTextHidden}
+                          className={`${!mujiTextHidden ? "ml-1.5" : ""} px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer transition-all active:scale-95 ${
+                            mujiTextHidden ? "bg-neutral-800 text-white" : "text-neutral-500 hover:bg-neutral-100"
+                          }`}
+                        >
+                          无文字
+                        </button>
                       </div>
                     )}
 
@@ -767,14 +780,6 @@ export function RightPanel() {
 
 
 
-                    {activePosterModule === "muji" && (
-                      <div className="ml-2 pl-2 border-l border-neutral-200">
-                        <input type="range" min={0} max={359} value={mujiHue}
-                          onChange={(e) => setMujiHue(Number(e.target.value))}
-                          className="hue-slider w-16"
-                          style={{ "--hue-thumb": deriveMujiColors(mujiHue).textColor } as React.CSSProperties} />
-                      </div>
-                    )}
 
                   </div>
                 </motion.div>

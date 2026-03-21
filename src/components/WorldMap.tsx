@@ -133,6 +133,7 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
   const routePath = useMapStore((s) => s.routePath);
+  const activePosterModule = useMapStore((s) => s.activePosterModule);
   const { entries } = useCityAggregation();
 
   // ── Geo data state ──
@@ -579,6 +580,11 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     );
   }, [roam.isDragging, roam.isAnimating, roam.animateTo, setHoveredProvince]);
 
+  // ── Redraw dots when route mode toggles (restore dots hidden by avatar exclusion zones) ──
+  useEffect(() => {
+    drawDotMatrix();
+  }, [routePath, drawDotMatrix]);
+
   // ── Redraw canvas on viewBox change ──
   useEffect(() => {
     drawDotMatrix();
@@ -972,7 +978,7 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
         })}
       </div>
 
-      <MapLegend columns={2} />
+      {!activePosterModule && <MapLegend columns={2} />}
     </div>
   );
 }
