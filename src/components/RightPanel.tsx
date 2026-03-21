@@ -1,12 +1,13 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Map as MapIcon, LayoutGrid, Shapes, ArrowLeft, Download, Loader2, Check, Layers } from "lucide-react";
+import { Map as MapIcon, LayoutGrid, Shapes, ArrowLeft, Download, Loader2, Check, Layers, ListFilter } from "lucide-react";
 import { Tooltip } from "./Tooltip";
+import { GridFilterMenu } from "./GridFilterMenu";
 import { MapView } from "./MapView";
 import { GridView } from "./GridView";
 import { BubbleCluster } from "./BubbleCluster";
 import { StatusBar } from "./StatusBar";
-import { RouteStopList } from "./RouteStopList";
+import { MapBottomBar } from "./MapBottomBar";
 import { PosterModuleBar } from "./PosterModuleBar";
 import { PosterPreview } from "./PosterPreview";
 import { useMapStore, type ChartView } from "../stores/useMapStore";
@@ -88,6 +89,7 @@ export function RightPanel() {
   const posterRef = useRef<HTMLDivElement>(null);
   const [dlState, setDlState] = useState<"idle" | "loading" | "done">("idle");
   const [showModuleBar, setShowModuleBar] = useState(false);
+  const [showGridFilter, setShowGridFilter] = useState(false);
 
   const handlePosterDownload = useCallback(async () => {
     if (!activePosterModule || dlState === "loading") return;
@@ -177,7 +179,7 @@ export function RightPanel() {
   return (
     <div className="flex-1 min-w-0 pr-3 pb-3">
       <div className="h-full relative overflow-hidden">
-        {/* Concave top-left notch */}
+        {/* Concave top-left notch — morphs in when a collection is loaded */}
         <div
           className="absolute top-0 left-0 z-10"
           style={{ width: 192, height: 52 }}
@@ -189,47 +191,60 @@ export function RightPanel() {
             viewBox="0 0 192 52"
             fill="none"
           >
-            <path
-              d="M0 0H192C160 0 175 35.5 150 35.5H15.9714C7.13487 35.5 0 42.6635 0 51.5V0Z"
+            <motion.path
+              initial={false}
+              animate={{
+                d: status === "done"
+                  ? "M0 0H192C160 0 175 35.5 150 35.5H15.9714C7.13487 35.5 0 42.6635 0 51.5V0Z"
+                  : "M0 0H0C0 0 0 0 0 0H0C0 0 0 0 0 0V0Z",
+              }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
               fill="white"
             />
           </svg>
 
-          {status === "done" && (
-            <div
-              className="absolute flex items-center justify-evenly"
-              style={{ left: 16, top: 6, width: 128, height: 26 }}
-            >
-              {VIEW_OPTIONS.map((opt) => {
-                const Icon = opt.icon;
-                const active = chartView === opt.id;
-                return (
-                  <Tooltip key={opt.id} label={opt.label}>
-                    <button
-                      onClick={() => setChartView(opt.id)}
-                      className="relative flex items-center justify-center"
-                      style={{ width: 28, height: 26 }}
-                    >
-                      {active && (
-                        <motion.div
-                          layoutId="notch-view-indicator"
-                          className="absolute inset-0 bg-neutral-100 rounded-lg"
-                          transition={{ type: "spring", stiffness: 500, damping: 35 }}
+          <AnimatePresence>
+            {status === "done" && (
+              <motion.div
+                key="view-buttons"
+                className="absolute flex items-center justify-evenly"
+                style={{ left: 16, top: 6, width: 128, height: 26 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, delay: 0.08 }}
+              >
+                {VIEW_OPTIONS.map((opt) => {
+                  const Icon = opt.icon;
+                  const active = chartView === opt.id;
+                  return (
+                    <Tooltip key={opt.id} label={opt.label}>
+                      <button
+                        onClick={() => setChartView(opt.id)}
+                        className="relative flex items-center justify-center"
+                        style={{ width: 28, height: 26 }}
+                      >
+                        {active && (
+                          <motion.div
+                            layoutId="notch-view-indicator"
+                            className="absolute inset-0 bg-neutral-100 rounded-lg"
+                            transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                          />
+                        )}
+                        <Icon
+                          size={14}
+                          strokeWidth={active ? 2.2 : 1.6}
+                          className={`relative z-[1] transition-colors duration-200 ${
+                            active ? "text-neutral-700" : "text-neutral-400 hover:text-neutral-500"
+                          }`}
                         />
-                      )}
-                      <Icon
-                        size={14}
-                        strokeWidth={active ? 2.2 : 1.6}
-                        className={`relative z-[1] transition-colors duration-200 ${
-                          active ? "text-neutral-700" : "text-neutral-400 hover:text-neutral-500"
-                        }`}
-                      />
-                    </button>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          )}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Action button in notch area */}
@@ -278,20 +293,51 @@ export function RightPanel() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={() => setMapLevel("world")}
                 className="flex items-center justify-center
                            w-[26px] h-[26px] rounded-full
-                           text-white hover:text-black
+                           text-neutral-400 hover:text-neutral-800
                            transition-colors cursor-pointer"
               >
                 <ArrowLeft size={16} strokeWidth={2.5} />
               </motion.button>
             </Tooltip>
+          ) : status === "done" && chartView === "grid" ? (
+            <div
+              className="absolute z-[11]"
+              style={{ top: 21 - 13, left: 189 - 13 }}
+              onMouseEnter={() => setShowGridFilter(true)}
+              onMouseLeave={() => setShowGridFilter(false)}
+            >
+              <motion.button
+                key="grid-filter"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                className={`flex items-center justify-center
+                           w-[26px] h-[26px] rounded-full
+                           transition-colors cursor-pointer
+                           ${showGridFilter
+                             ? "bg-neutral-800 text-white"
+                             : "text-neutral-400 hover:text-neutral-800"
+                           }`}
+              >
+                <ListFilter size={14} strokeWidth={2} />
+              </motion.button>
+              <GridFilterMenu open={showGridFilter} />
+            </div>
           ) : null}
         </AnimatePresence>
 
         {/* Content card */}
-        <div className="h-full relative overflow-hidden bg-neutral-100 rounded-2xl rounded-tl-none">
+        <motion.div
+          className="h-full relative overflow-hidden bg-neutral-100 rounded-2xl"
+          initial={false}
+          animate={{ borderTopLeftRadius: status === "done" ? 0 : 16 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        >
           <AnimatePresence mode="wait">
             {chartView === "map" && !hideBackground && (
               <motion.div
@@ -787,9 +833,9 @@ export function RightPanel() {
             )}
           </AnimatePresence>
 
-          {!inPosterMode && chartView === "map" && <RouteStopList />}
+          {!inPosterMode && chartView === "map" && <MapBottomBar />}
           {!inPosterMode && <StatusBar />}
-        </div>
+        </motion.div>
       </div>
     </div>
   );

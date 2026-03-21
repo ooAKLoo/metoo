@@ -137,6 +137,10 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
+  // Ref for route state (read inside drawDotMatrix without adding dependency)
+  const routeActiveRef = useRef(!!routePath);
+  routeActiveRef.current = !!routePath;
+
   // ── GeoJSON → SVG data + raw features ──
   const [geo, setGeo] = useState<GeoSvgData | null>(null);
   const [countryFeatures, setCountryFeatures] = useState<GeoFeature[] | null>(null);
@@ -193,6 +197,18 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     return Array.from(cityAgg.entries())
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.count - a.count);
+  }, [items, geo, isChina]);
+
+  // ── Items filtered to current country (for legend) ──
+  const countryItems = useMemo(() => {
+    if (!geo) return [];
+    const provNames = new Set(geo.provinces.map((p) => p.name));
+    return items.filter((item) =>
+      item.locations.some((loc) => {
+        const full = isChina ? (PROV_FULL[loc.province] || loc.province) : loc.province;
+        return provNames.has(full);
+      }),
+    );
   }, [items, geo, isChina]);
 
   // ── SVG element ref ──
@@ -368,6 +384,20 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     const visMaxY = vb.y + vb.h + padSvg;
 
     const maxCount = provIdxCounts.size > 0 ? Math.max(...provIdxCounts.values()) : 1;
+
+    // Build avatar exclusion zones (skip when avatars are hidden in route mode)
+    const avatars = avatarPosRef.current;
+    const exclusions: { x: number; y: number; r2: number }[] = [];
+    if (!routeActiveRef.current) {
+      for (const ap of avatars) {
+        if (!ap.visible) continue;
+        const ax = (ap.x !== undefined) ? ap.x : 0;
+        const ay = (ap.y !== undefined) ? ap.y : 0;
+        const er = ap.size / 2 + baseR + 1;
+        exclusions.push({ x: ax, y: ay, r2: er * er });
+      }
+    }
+
     const defaultDots: { x: number; y: number }[] = [];
     const activeBuckets = new Map<number, { x: number; y: number }[]>();
     const hoverIdx = hoverAnimRef.current.provIdx;
@@ -380,6 +410,16 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
 
       const screenX = (dot.svgX - vb.x) * scale + offX;
       const screenY = (dot.svgY - vb.y) * scale + offY;
+
+      // Skip dots covered by avatars
+      if (exclusions.length > 0) {
+        let excluded = false;
+        for (const ez of exclusions) {
+          const dx = screenX - ez.x, dy = screenY - ez.y;
+          if (dx * dx + dy * dy < ez.r2) { excluded = true; break; }
+        }
+        if (excluded) continue;
+      }
 
       const isHovered = hoverIdx >= 0 && dot.provIdx === hoverIdx;
       const targetDefault = isHovered ? hoverDefaultDots : defaultDots;
@@ -475,12 +515,20 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const startHoverAnimRef = useRef(startHoverAnim);
   startHoverAnimRef.current = startHoverAnim;
 
+  // ── Filter route to cities within this country ──
+  const countryRoutePath = useMemo(() => {
+    if (!routePath || entries.length === 0) return null;
+    const countryNames = new Set(entries.map((e) => e.name));
+    const filtered = routePath.filter((node) => countryNames.has(node.name));
+    return filtered.length >= 2 ? filtered : null;
+  }, [routePath, entries]);
+
   // ── Progressive route drawing ──
-  const totalSegments = routePath ? routePath.length - 1 : 0;
+  const totalSegments = countryRoutePath ? countryRoutePath.length - 1 : 0;
   const [revealedSegments, setRevealedSegments] = useState(0);
 
   useEffect(() => {
-    if (!routePath || totalSegments === 0) { setRevealedSegments(0); return; }
+    if (!countryRoutePath || totalSegments === 0) { setRevealedSegments(0); return; }
     setRevealedSegments(0);
     let current = 0;
     const timer = setInterval(() => {
@@ -489,7 +537,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       if (current >= totalSegments) clearInterval(timer);
     }, 600);
     return () => clearInterval(timer);
-  }, [routePath, totalSegments]);
+  }, [countryRoutePath, totalSegments]);
 
   // ── Selected item coord ──
   const selectedCoord = useMemo(() => {
@@ -580,23 +628,51 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
     return () => clearTimeout(timer);
   }, [dotGrid, provIdxCounts, drawDotMatrix, updateAvatarPositions]);
 
-  // ── Route geometry in SVG coords ──
+  // ── Route geometry in SVG coords (Bezier curves) ──
   const routeSvgData = useMemo(() => {
-    if (!geo || !routePath || revealedSegments === 0) return null;
-    const segCount = Math.min(revealedSegments, routePath.length - 1);
-    const nodeCount = Math.min(revealedSegments + 1, routePath.length);
-    const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    for (let i = 0; i < segCount; i++) {
-      const [x1, y1] = geo.geoToSvg(routePath[i].coord[0], routePath[i].coord[1]);
-      const [x2, y2] = geo.geoToSvg(routePath[i + 1].coord[0], routePath[i + 1].coord[1]);
-      segments.push({ x1, y1, x2, y2 });
+    if (!geo || !countryRoutePath || revealedSegments === 0) return null;
+    const nodeCount = Math.min(revealedSegments + 1, countryRoutePath.length);
+    const points = countryRoutePath.slice(0, nodeCount).map((node) => {
+      const [x, y] = geo.geoToSvg(node.coord[0], node.coord[1]);
+      return { x, y };
+    });
+
+    // Build smooth cubic Bezier path through all revealed points
+    let curvePath = "";
+    if (points.length >= 2) {
+      curvePath = `M${points[0].x},${points[0].y}`;
+      if (points.length === 2) {
+        // Single segment: simple curve with slight bend
+        const p0 = points[0], p1 = points[1];
+        const mx = (p0.x + p1.x) / 2;
+        const my = (p0.y + p1.y) / 2;
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const off = Math.sqrt(dx * dx + dy * dy) * 0.2;
+        curvePath += ` C${mx - dy * 0.15 + off * 0.3},${my + dx * 0.15} ${mx - dy * 0.15 - off * 0.3},${my + dx * 0.15} ${p1.x},${p1.y}`;
+      } else {
+        // Catmull-Rom to cubic Bezier conversion for smooth spline
+        const tension = 0.3;
+        for (let i = 0; i < points.length - 1; i++) {
+          const p0 = points[Math.max(i - 1, 0)];
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          const p3 = points[Math.min(i + 2, points.length - 1)];
+          const cp1x = p1.x + (p2.x - p0.x) * tension;
+          const cp1y = p1.y + (p2.y - p0.y) * tension;
+          const cp2x = p2.x - (p3.x - p1.x) * tension;
+          const cp2y = p2.y - (p3.y - p1.y) * tension;
+          curvePath += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+        }
+      }
     }
-    const nodes = routePath.slice(0, nodeCount).map((node, i) => {
+
+    const nodes = countryRoutePath.slice(0, nodeCount).map((node, i) => {
       const [cx, cy] = geo.geoToSvg(node.coord[0], node.coord[1]);
       return { cx, cy, label: i + 1, name: node.name };
     });
-    return { segments, nodes };
-  }, [geo, routePath, revealedSegments]);
+    return { curvePath, nodes };
+  }, [geo, countryRoutePath, revealedSegments]);
 
   // ── Selected item in SVG coords ──
   const selectedSvg = useMemo(() => {
@@ -611,7 +687,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
   const [dashOffset, setDashOffset] = useState(0);
 
   useEffect(() => {
-    if (!routeSvgData || routeSvgData.segments.length === 0) {
+    if (!routeSvgData || !routeSvgData.curvePath) {
       cancelAnimationFrame(dashRafRef.current);
       return;
     }
@@ -712,11 +788,11 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
           );
         })}
 
-        {/* Route lines */}
-        {routeSvgData?.segments.map((seg, i) => (
-          <line
-            key={`route-seg-${i}`}
-            x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+        {/* Route curve */}
+        {routeSvgData?.curvePath && (
+          <path
+            d={routeSvgData.curvePath}
+            fill="none"
             stroke="url(#route-grad)"
             strokeWidth={2 / z}
             strokeDasharray={`${6 / z} ${4 / z}`}
@@ -724,7 +800,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
             strokeLinecap="round"
             opacity={0.7}
           />
-        ))}
+        )}
 
         {/* Route node circles */}
         {routeSvgData?.nodes.map((node) => {
@@ -762,8 +838,12 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
         )}
       </svg>
 
-      {/* City avatar overlay */}
-      <div ref={avatarContainerRef} className="absolute inset-0 pointer-events-none z-[5]">
+      {/* City avatar overlay — hidden during route mode */}
+      <div
+        ref={avatarContainerRef}
+        className="absolute inset-0 pointer-events-none z-[5] transition-opacity duration-300"
+        style={{ opacity: routePath ? 0 : 1, pointerEvents: routePath ? "none" : undefined }}
+      >
         {avatarPositions.map((ap) => {
           if (!ap.visible) return null;
           const cover = ap.city.covers[0];
@@ -856,7 +936,7 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       </AnimatePresence>
 
       {/* Category legend */}
-      <MapLegend />
+      <MapLegend items={countryItems} />
     </div>
   );
 }

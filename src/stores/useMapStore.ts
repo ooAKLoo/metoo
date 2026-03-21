@@ -35,8 +35,12 @@ interface MapState {
   keyboardStyleIdx: number;
   figureSeed: number;
   gridBlankHue: number;
+  gridCountry: string | null;
+  gridCity: string | null;
   shuffleFigures: () => void;
   setGridBlankHue: (hue: number) => void;
+  setGridCountry: (country: string | null) => void;
+  setGridCity: (city: string | null) => void;
   setSelectedItem: (id: number | null) => void;
   setHoveredProvince: (name: string | null) => void;
   setSelectedCity: (city: string) => void;
@@ -126,6 +130,8 @@ export const useMapStore = create<MapState>((set, get) => ({
   keyboardStyleIdx: 0,
   figureSeed: 42,
   gridBlankHue: 245,
+  gridCountry: null,
+  gridCity: null,
   shuffleFigures: () => set({ figureSeed: Math.floor(Math.random() * 100000) }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),
@@ -166,4 +172,6 @@ export const useMapStore = create<MapState>((set, get) => ({
   setMosaicStyleIdx: (idx) => set({ mosaicStyleIdx: idx }),
   setKeyboardStyleIdx: (idx) => set({ keyboardStyleIdx: idx }),
   setGridBlankHue: (hue) => set({ gridBlankHue: hue }),
+  setGridCountry: (country) => set({ gridCountry: country, gridCity: null }),
+  setGridCity: (city) => set({ gridCity: city }),
 }));

@@ -29,8 +29,9 @@ export function titleMatchesTag(title: string, tag: string): boolean {
   return false;
 }
 
-export function useTagExtraction() {
-  const items = useFavoriteStore((s) => s.items);
+export function useTagExtraction(filterItems?: import("../stores/useFavoriteStore").FavoriteItem[]) {
+  const storeItems = useFavoriteStore((s) => s.items);
+  const items = filterItems ?? storeItems;
 
   return useMemo(() => {
     const agg = new Map<string, { emoji: string; count: number }>();

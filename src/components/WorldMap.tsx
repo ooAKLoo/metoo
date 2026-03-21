@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { useCityAggregation } from "../hooks/useCityAggregation";
+import { MapLegend } from "./MapLegend";
 import {
   ensureWorldGeo, ensureWorldGeoJson, ensureCountryGeo,
   buildGeoSvg, useSvgRoam,
   coverSrc, hasCountryGeo,
-  AVATAR_MIN, AVATAR_MAX,
+  AVATAR_MIN, AVATAR_MAX, PROV_FULL,
   type AvatarPos, type GeoSvgData,
 } from "./map-shared";
 
@@ -131,6 +132,7 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const selectedCity = useMapStore((s) => s.selectedCity);
   const setSelectedCity = useMapStore((s) => s.setSelectedCity);
   const setHoveredProvince = useMapStore((s) => s.setHoveredProvince);
+  const routePath = useMapStore((s) => s.routePath);
   const { entries } = useCityAggregation();
 
   // ── Geo data state ──
@@ -160,6 +162,10 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const [avatarPositions, setAvatarPositions] = useState<AvatarPos[]>([]);
   const avatarPosRef = useRef<AvatarPos[]>([]);
   const avatarContainerRef = useRef<HTMLDivElement>(null);
+
+  // Ref for route state (read inside drawDotMatrix without adding dependency)
+  const routeActiveRef = useRef(!!routePath);
+  routeActiveRef.current = !!routePath;
 
   // Stable ref for drill-down callback
   const drillDownRef = useRef(onDrillDown);
@@ -208,8 +214,18 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
   const countryDataCounts = useMemo(() => {
     const counts = new Map<number, number>();
     if (worldDotData.countryPolygons.length === 0) return counts;
+    const chinaProvs = new Set([...Object.keys(PROV_FULL), ...Object.values(PROV_FULL)]);
+    const chinaIdx = worldFeatures
+      ? worldFeatures.findIndex((f) => f.properties?.name === "China")
+      : -1;
+
     for (const item of items) {
       for (const loc of item.locations) {
+        // Known Chinese province → count directly as China
+        if (chinaIdx >= 0 && chinaProvs.has(loc.province)) {
+          counts.set(chinaIdx, (counts.get(chinaIdx) || 0) + 1);
+          continue;
+        }
         const { lng, lat } = loc;
         for (let ci = 0; ci < worldDotData.countryPolygons.length; ci++) {
           const ct = worldDotData.countryPolygons[ci];
@@ -227,7 +243,7 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
       }
     }
     return counts;
-  }, [items, worldDotData.countryPolygons]);
+  }, [items, worldDotData.countryPolygons, worldFeatures]);
 
   // ── Avatar position computation ──
   const computeAvatarPositions = useCallback((): AvatarPos[] => {
@@ -359,6 +375,18 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const visMaxY = vb.y + vb.h + padSvg;
 
     const maxCount = countryDataCounts.size > 0 ? Math.max(...countryDataCounts.values()) : 1;
+
+    // Build avatar exclusion zones (skip when avatars hidden in route mode)
+    const avatars = avatarPosRef.current;
+    const exclusions: { x: number; y: number; r2: number }[] = [];
+    if (!routeActiveRef.current) {
+      for (const ap of avatars) {
+        if (!ap.visible) continue;
+        const er = ap.size / 2 + baseR + 1;
+        exclusions.push({ x: ap.x, y: ap.y, r2: er * er });
+      }
+    }
+
     const defaultDots: { x: number; y: number }[] = [];
     const activeBuckets = new Map<number, { x: number; y: number }[]>();
     const hoverIdx = hoverAnimRef.current.countryIdx;
@@ -366,13 +394,21 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     const hoverActiveBuckets = new Map<number, { x: number; y: number }[]>();
 
     for (const dot of dotGrid) {
-      // Cull dots outside visible SVG area
       if (dot.svgX < visMinX || dot.svgX > visMaxX) continue;
       if (dot.svgY < visMinY || dot.svgY > visMaxY) continue;
 
-      // Convert SVG coords to canvas pixels (uniform scale + offset, matching SVG meet)
       const screenX = (dot.svgX - vb.x) * scale + offX;
       const screenY = (dot.svgY - vb.y) * scale + offY;
+
+      // Skip dots covered by avatars
+      if (exclusions.length > 0) {
+        let excluded = false;
+        for (const ez of exclusions) {
+          const dx = screenX - ez.x, dy = screenY - ez.y;
+          if (dx * dx + dy * dy < ez.r2) { excluded = true; break; }
+        }
+        if (excluded) continue;
+      }
 
       const isHovered = hoverIdx >= 0 && dot.countryIdx === hoverIdx;
       const targetDefault = isHovered ? hoverDefaultDots : defaultDots;
@@ -583,6 +619,155 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
     return () => clearTimeout(timer);
   }, [dotGrid, countryDataCounts, drawDotMatrix, updateAvatarPositions]);
 
+  // ── Known Chinese city names (from item locations with Chinese provinces) ──
+  const chineseCityNames = useMemo(() => {
+    const names = new Set<string>();
+    const chinaProvs = new Set([...Object.keys(PROV_FULL), ...Object.values(PROV_FULL)]);
+    for (const item of items) {
+      for (const loc of item.locations) {
+        if (chinaProvs.has(loc.province)) names.add(loc.name);
+      }
+    }
+    return names;
+  }, [items]);
+
+  // ── Aggregate route by country for world-level display ──
+  const worldRoutePath = useMemo(() => {
+    if (!routePath || worldDotData.countryPolygons.length === 0 || !worldFeatures) return null;
+    const { countryPolygons } = worldDotData;
+    const featureNames = worldFeatures.map((f) => f.properties?.name ?? "");
+
+    // Find China's index in world features
+    const chinaIdx = featureNames.indexOf("China");
+
+    // Map each route node → country index
+    const nodeCountryIdx: number[] = routePath.map((node) => {
+      // If city is known to be Chinese, skip point-in-polygon
+      if (chinaIdx >= 0 && chineseCityNames.has(node.name)) return chinaIdx;
+
+      const [lng, lat] = node.coord;
+      for (let ci = 0; ci < countryPolygons.length; ci++) {
+        const cp = countryPolygons[ci];
+        if (cp.rings.length === 0) continue;
+        if (lng < cp.bbox[0] || lng > cp.bbox[2] || lat < cp.bbox[1] || lat > cp.bbox[3]) continue;
+        for (const ring of cp.rings) {
+          if (pointInRing(lng, lat, ring)) return ci;
+        }
+      }
+      return -1;
+    });
+
+    // Group consecutive same-country nodes
+    const groups: { country: string; centroid: [number, number]; cityCount: number }[] = [];
+    let prevIdx = -2;
+    let sumLng = 0, sumLat = 0, count = 0;
+
+    const flush = () => {
+      if (count > 0 && prevIdx >= 0) {
+        groups.push({
+          country: featureNames[prevIdx] || "Unknown",
+          centroid: [sumLng / count, sumLat / count],
+          cityCount: count,
+        });
+      }
+    };
+
+    for (let i = 0; i < routePath.length; i++) {
+      const ci = nodeCountryIdx[i];
+      if (ci !== prevIdx) {
+        flush();
+        prevIdx = ci;
+        sumLng = 0; sumLat = 0; count = 0;
+      }
+      sumLng += routePath[i].coord[0];
+      sumLat += routePath[i].coord[1];
+      count++;
+    }
+    flush();
+
+    return groups.length >= 2 ? groups : null;
+  }, [routePath, worldDotData, worldFeatures]);
+
+  // ── Progressive route drawing ──
+  const totalSegments = worldRoutePath ? worldRoutePath.length - 1 : 0;
+  const [revealedSegments, setRevealedSegments] = useState(0);
+
+  useEffect(() => {
+    if (!worldRoutePath || totalSegments === 0) { setRevealedSegments(0); return; }
+    setRevealedSegments(0);
+    let current = 0;
+    const timer = setInterval(() => {
+      current++;
+      setRevealedSegments(current);
+      if (current >= totalSegments) clearInterval(timer);
+    }, 600);
+    return () => clearInterval(timer);
+  }, [worldRoutePath, totalSegments]);
+
+  // ── Route geometry in SVG coords (Bezier curves) ──
+  const routeSvgData = useMemo(() => {
+    if (!geoSvgData || !worldRoutePath || revealedSegments === 0) return null;
+    const nodeCount = Math.min(revealedSegments + 1, worldRoutePath.length);
+    const points = worldRoutePath.slice(0, nodeCount).map((g) => {
+      const [x, y] = geoSvgData.geoToSvg(g.centroid[0], g.centroid[1]);
+      return { x, y };
+    });
+
+    let curvePath = "";
+    if (points.length >= 2) {
+      curvePath = `M${points[0].x},${points[0].y}`;
+      if (points.length === 2) {
+        const p0 = points[0], p1 = points[1];
+        const mx = (p0.x + p1.x) / 2;
+        const my = (p0.y + p1.y) / 2;
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const off = Math.sqrt(dx * dx + dy * dy) * 0.2;
+        curvePath += ` C${mx - dy * 0.15 + off * 0.3},${my + dx * 0.15} ${mx - dy * 0.15 - off * 0.3},${my + dx * 0.15} ${p1.x},${p1.y}`;
+      } else {
+        const tension = 0.3;
+        for (let i = 0; i < points.length - 1; i++) {
+          const p0 = points[Math.max(i - 1, 0)];
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          const p3 = points[Math.min(i + 2, points.length - 1)];
+          const cp1x = p1.x + (p2.x - p0.x) * tension;
+          const cp1y = p1.y + (p2.y - p0.y) * tension;
+          const cp2x = p2.x - (p3.x - p1.x) * tension;
+          const cp2y = p2.y - (p3.y - p1.y) * tension;
+          curvePath += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+        }
+      }
+    }
+
+    const nodes = worldRoutePath.slice(0, nodeCount).map((g, i) => {
+      const [cx, cy] = geoSvgData.geoToSvg(g.centroid[0], g.centroid[1]);
+      return { cx, cy, label: i + 1, country: g.country, cityCount: g.cityCount };
+    });
+    return { curvePath, nodes };
+  }, [geoSvgData, worldRoutePath, revealedSegments]);
+
+  // ── Dash animation for routes ──
+  const dashAnimRef = useRef(0);
+  const dashRafRef = useRef(0);
+  const [dashOffset, setDashOffset] = useState(0);
+
+  useEffect(() => {
+    if (!routeSvgData || !routeSvgData.curvePath) {
+      cancelAnimationFrame(dashRafRef.current);
+      return;
+    }
+    let active = true;
+    const tick = () => {
+      if (!active) return;
+      dashAnimRef.current = (dashAnimRef.current + 0.5) % 20;
+      setDashOffset(dashAnimRef.current);
+      dashRafRef.current = requestAnimationFrame(tick);
+    };
+    dashRafRef.current = requestAnimationFrame(tick);
+    return () => { active = false; cancelAnimationFrame(dashRafRef.current); };
+  }, [routeSvgData]);
+
   return (
     <div ref={containerRef} className="absolute inset-0" style={{ background: DOT_BG }}>
       {/* Radial vignette */}
@@ -608,6 +793,13 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
           onPointerUp={roam.onPointerUp}
           style={{ touchAction: "none", cursor: "grab" }}
         >
+          <defs>
+            <linearGradient id="world-route-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ff6b6b" />
+              <stop offset="100%" stopColor="#ee5a24" />
+            </linearGradient>
+          </defs>
+
           {geoSvgData.provinces.map((prov, provIdx) => {
             const isHovered = hoveredCountry === prov.name;
             return (
@@ -644,11 +836,64 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
               </g>
             );
           })}
+
+          {/* Route curve */}
+          {routeSvgData?.curvePath && (
+            <path
+              d={routeSvgData.curvePath}
+              fill="none"
+              stroke="url(#world-route-grad)"
+              strokeWidth={2 / roam.zoom}
+              strokeDasharray={`${6 / roam.zoom} ${4 / roam.zoom}`}
+              strokeDashoffset={-dashOffset / roam.zoom}
+              strokeLinecap="round"
+              opacity={0.7}
+              style={{ pointerEvents: "none" }}
+            />
+          )}
+
+          {/* Route country nodes */}
+          {routeSvgData?.nodes.map((node) => {
+            const r = 14 / roam.zoom;
+            return (
+              <g key={`route-node-${node.label}`} style={{ pointerEvents: "none" }}>
+                <circle
+                  cx={node.cx} cy={node.cy} r={r}
+                  fill="url(#world-route-grad)"
+                  stroke="#fff"
+                  strokeWidth={2 / roam.zoom}
+                />
+                <text
+                  x={node.cx} y={node.cy}
+                  textAnchor="middle" dominantBaseline="central"
+                  fill="#fff" fontSize={10 / roam.zoom}
+                  fontWeight={600}
+                  fontFamily="ZCOOL KuaiLe, cursive"
+                >
+                  {node.label}
+                </text>
+                {/* Country name label below */}
+                <text
+                  x={node.cx} y={node.cy + (r + 8 / roam.zoom)}
+                  textAnchor="middle" dominantBaseline="hanging"
+                  fill="#555" fontSize={9 / roam.zoom}
+                  fontWeight={500}
+                  fontFamily="system-ui, sans-serif"
+                >
+                  {node.country}
+                </text>
+              </g>
+            );
+          })}
         </svg>
       )}
 
-      {/* City avatar overlay */}
-      <div ref={avatarContainerRef} className="absolute inset-0 pointer-events-none z-[5]">
+      {/* City avatar overlay — hidden during route mode */}
+      <div
+        ref={avatarContainerRef}
+        className="absolute inset-0 pointer-events-none z-[5] transition-opacity duration-300"
+        style={{ opacity: routePath ? 0 : 1, pointerEvents: routePath ? "none" : undefined }}
+      >
         {avatarPositions.map((ap) => {
           if (!ap.visible) return null;
           const cover = ap.city.covers[0];
@@ -726,6 +971,8 @@ export function WorldMap({ onDrillDown }: WorldMapProps) {
           );
         })}
       </div>
+
+      <MapLegend columns={2} />
     </div>
   );
 }

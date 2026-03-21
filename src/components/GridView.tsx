@@ -1,8 +1,10 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useMemo } from "react";
 import { motion } from "motion/react";
 import { Play, Heart } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useFavoriteStore, type FavoriteItem } from "../stores/useFavoriteStore";
+import { useMapStore } from "../stores/useMapStore";
+import { PROV_FULL } from "./map-shared";
 
 function coverSrc(cover: string) {
   if (!cover) return "";
@@ -80,9 +82,31 @@ function ItemCard({ item, index }: { item: FavoriteItem; index: number }) {
   );
 }
 
+const CHINA_PROV_SET = new Set([
+  ...Object.keys(PROV_FULL),
+  ...Object.values(PROV_FULL),
+]);
+
 export function GridView() {
-  const items = useFavoriteStore((s) => s.items);
+  const allItems = useFavoriteStore((s) => s.items);
+  const gridCountry = useMapStore((s) => s.gridCountry);
+  const gridCity = useMapStore((s) => s.gridCity);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const items = useMemo(() => {
+    if (!gridCountry) return allItems;
+    if (gridCountry === "未归类") {
+      return allItems.filter((item) => item.locations.length === 0);
+    }
+    return allItems.filter((item) =>
+      item.locations.some((loc) => {
+        const country = CHINA_PROV_SET.has(loc.province) ? "中国" : loc.province;
+        if (country !== gridCountry) return false;
+        if (gridCity && loc.name !== gridCity) return false;
+        return true;
+      }),
+    );
+  }, [allItems, gridCountry, gridCity]);
 
   if (items.length === 0) {
     return (
