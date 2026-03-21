@@ -108,7 +108,7 @@ export function AddPanel() {
   };
 
   return (
-    <div className="absolute bottom-3 left-4 right-4 z-10">
+    <div className="shrink-0 pt-2">
       {/* Outer shell — bg transitions to gray when toolbar visible */}
       <div
         className={`rounded-2xl overflow-hidden

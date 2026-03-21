@@ -163,21 +163,32 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       }
     }
 
-    // Persist — download_cover runs server-side, then reload to pick up local paths
-    try {
-      const rawItems = allItems.map(({ locations: _l, source: _s, likes: _k, ...rest }) => rest);
-      await invoke("save_favorite_list", {
-        mediaId,
-        title: listTitle,
-        items: rawItems,
-      });
-      get().loadSavedLists();
-      await get().loadList(mediaId);
-    } catch (e) {
-      console.warn("Failed to persist:", e);
-    }
-
+    // Data is ready — unblock UI immediately
     set({ status: "done" });
+
+    // Optimistically update savedLists so Left Panel renders now
+    set((state) => ({
+      savedLists: [
+        ...state.savedLists.filter((l) => l.media_id !== mediaId),
+        {
+          media_id: mediaId,
+          title: listTitle,
+          count: allItems.length,
+          saved_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+          preview_covers: allItems.map((i) => i.cover).filter(Boolean).slice(0, 10),
+        },
+      ],
+    }));
+
+    // Persist metadata (instant), then download covers in background
+    const rawItems = allItems.map(({ locations: _l, source: _s, likes: _k, ...rest }) => rest);
+    invoke("save_favorite_list", { mediaId, title: listTitle, items: rawItems })
+      .then(() => invoke("download_covers_background", { mediaId }))
+      .then(() => {
+        get().loadSavedLists();
+        if (get().mediaId === mediaId) get().loadList(mediaId);
+      })
+      .catch((e) => console.warn("Failed to persist:", e));
   },
 
   importFromXhsHtml: async (html: string) => {
@@ -205,30 +216,40 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         likes: note.likes,
       }));
 
+      // Data is ready — unblock UI immediately
       set({
         mediaId,
         listTitle,
         items,
-        status: "fetching",
+        status: "done",
         error: null,
         url: "",
         progress: { current: items.length, total: board.noteCount },
       });
 
-      // Persist — reload to pick up locally-downloaded cover paths
-      try {
-        const rawItems = items.map(({ locations: _l, source: _s, likes: _k, ...rest }) => rest);
-        await invoke("save_favorite_list", {
-          mediaId,
-          title: listTitle,
-          items: rawItems,
-        });
-        get().loadSavedLists();
-        await get().loadList(mediaId);
-      } catch (e) {
-        console.warn("Failed to persist XHS:", e);
-        set({ status: "done" });
-      }
+      // Optimistically update savedLists so Left Panel renders now
+      set((state) => ({
+        savedLists: [
+          ...state.savedLists.filter((l) => l.media_id !== mediaId),
+          {
+            media_id: mediaId,
+            title: listTitle,
+            count: items.length,
+            saved_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+            preview_covers: items.map((i) => i.cover).filter(Boolean).slice(0, 10),
+          },
+        ],
+      }));
+
+      // Persist metadata (instant), then download covers in background
+      const rawItems = items.map(({ locations: _l, source: _s, likes: _k, ...rest }) => rest);
+      invoke("save_favorite_list", { mediaId, title: listTitle, items: rawItems })
+        .then(() => invoke("download_covers_background", { mediaId }))
+        .then(() => {
+          get().loadSavedLists();
+          if (get().mediaId === mediaId) get().loadList(mediaId);
+        })
+        .catch((e) => console.warn("Failed to persist XHS:", e));
     } catch (err) {
       set({ error: `解析失败: ${err}`, status: "error" });
     }

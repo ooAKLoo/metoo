@@ -57,13 +57,15 @@ function CollectionCard({
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`group rounded-2xl p-3 cursor-pointer transition-colors
+      animate={{ opacity: 1, y: 0, scale: mergeMode && isSelected ? 0.95 : 1 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      className={`group rounded-2xl p-3 cursor-pointer
+        border-2 transition-colors
         ${mergeMode && isSelected
-          ? "bg-neutral-100 ring-2 ring-neutral-800 ring-offset-1"
+          ? "bg-neutral-100 border-neutral-800"
           : isActive
-            ? "bg-neutral-100"
-            : "hover:bg-neutral-50"
+            ? "bg-neutral-100 border-transparent"
+            : "hover:bg-neutral-50 border-transparent"
         }`}
       onClick={mergeMode ? onToggleSelect : onSelect}
     >

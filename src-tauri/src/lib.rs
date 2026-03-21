@@ -158,7 +158,7 @@ async fn try_download(client: &reqwest::Client, url: &str, referer: &str) -> Opt
 
 /// Download a cover image to the local covers directory.
 /// Returns the absolute path of the local file, or the original URL on failure.
-async fn download_cover(url: &str, covers_dir: &Path) -> String {
+async fn download_cover(client: &reqwest::Client, url: &str, covers_dir: &Path) -> String {
     if url.is_empty() {
         return String::new();
     }
@@ -193,15 +193,13 @@ async fn download_cover(url: &str, covers_dir: &Path) -> String {
         "https://www.bilibili.com/"
     };
 
-    let client = reqwest::Client::new();
-
     // Try the original URL first
-    let bytes = if let Some(b) = try_download(&client, url, referer).await {
+    let bytes = if let Some(b) = try_download(client, url, referer).await {
         b
     } else if is_xhs {
         // XHS CDN signature may have expired — try without the signature prefix
         if let Some(unsigned_url) = strip_xhs_cdn_signature(url) {
-            if let Some(b) = try_download(&client, &unsigned_url, referer).await {
+            if let Some(b) = try_download(client, &unsigned_url, referer).await {
                 b
             } else {
                 return String::new();
@@ -330,22 +328,13 @@ async fn save_favorite_list(
     items: Vec<FavoriteItem>,
 ) -> Result<(), String> {
     let dir = data_dir(&app)?;
-    let covers = covers_dir(&app)?;
 
-    // Download cover images locally
-    let mut local_items = items.clone();
-    for item in &mut local_items {
-        if !item.cover.is_empty() && !item.cover.starts_with('/') {
-            item.cover = download_cover(&item.cover, &covers).await;
-        }
-    }
-
-    // Save list data
+    // Save list data with remote URLs (cover download is handled separately)
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let list = SavedFavoriteList {
         media_id: media_id.clone(),
         title: title.clone(),
-        items: local_items.clone(),
+        items: items.clone(),
         saved_at: now.clone(),
     };
     let list_path = dir.join(format!("{}.json", media_id));
@@ -363,7 +352,7 @@ async fn save_favorite_list(
     };
 
     // Upsert entry
-    let preview_covers: Vec<String> = local_items
+    let preview_covers: Vec<String> = items
         .iter()
         .map(|it| it.cover.clone())
         .filter(|c| !c.is_empty())
@@ -372,7 +361,7 @@ async fn save_favorite_list(
     let entry = FavoriteIndexEntry {
         media_id: media_id.clone(),
         title,
-        count: local_items.len(),
+        count: items.len(),
         saved_at: now,
         preview_covers,
     };
@@ -385,6 +374,86 @@ async fn save_favorite_list(
     let index_json = serde_json::to_string_pretty(&index)
         .map_err(|e| format!("Serialize index error: {}", e))?;
     fs::write(&index_path, index_json).map_err(|e| format!("Write index error: {}", e))?;
+
+    Ok(())
+}
+
+/// Download all covers for a saved list concurrently (max 8 parallel),
+/// then update the JSON file with local paths.
+#[tauri::command]
+async fn download_covers_background(
+    app: tauri::AppHandle,
+    media_id: String,
+) -> Result<(), String> {
+    use futures::stream::StreamExt;
+
+    let dir = data_dir(&app)?;
+    let covers = covers_dir(&app)?;
+
+    let list_path = dir.join(format!("{}.json", media_id));
+    if !list_path.exists() {
+        return Err("List not found".to_string());
+    }
+    let raw = fs::read_to_string(&list_path).map_err(|e| format!("Read error: {}", e))?;
+    let mut list: SavedFavoriteList =
+        serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
+
+    // Shared client — enables connection reuse across downloads
+    let client = reqwest::Client::new();
+
+    let futs: Vec<_> = list
+        .items
+        .iter()
+        .map(|item| {
+            let client = client.clone();
+            let cover = item.cover.clone();
+            let covers_dir = covers.clone();
+            async move {
+                if cover.is_empty() || cover.starts_with('/') {
+                    return cover; // already local or empty
+                }
+                download_cover(&client, &cover, &covers_dir).await
+            }
+        })
+        .collect();
+
+    let results: Vec<String> = futures::stream::iter(futs)
+        .buffer_unordered(8)
+        .collect()
+        .await;
+
+    // Update items with local paths
+    for (item, local_path) in list.items.iter_mut().zip(results) {
+        if !local_path.is_empty() {
+            item.cover = local_path;
+        }
+    }
+
+    // Re-save with local paths
+    let json = serde_json::to_string_pretty(&list)
+        .map_err(|e| format!("Serialize error: {}", e))?;
+    fs::write(&list_path, json).map_err(|e| format!("Write error: {}", e))?;
+
+    // Update index preview covers
+    let index_path = dir.join("index.json");
+    if index_path.exists() {
+        let idx_raw = fs::read_to_string(&index_path).unwrap_or_default();
+        let mut index: FavoriteIndex =
+            serde_json::from_str(&idx_raw).unwrap_or(FavoriteIndex { lists: vec![] });
+        if let Some(entry) = index.lists.iter_mut().find(|e| e.media_id == media_id) {
+            entry.preview_covers = list
+                .items
+                .iter()
+                .map(|it| it.cover.clone())
+                .filter(|c| !c.is_empty())
+                .take(10)
+                .collect();
+            let idx_json = serde_json::to_string_pretty(&index)
+                .map_err(|e| format!("Serialize index error: {}", e))?;
+            fs::write(&index_path, idx_json)
+                .map_err(|e| format!("Write index error: {}", e))?;
+        }
+    }
 
     Ok(())
 }
@@ -579,6 +648,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fetch_favorites,
             save_favorite_list,
+            download_covers_background,
             load_favorite_list,
             list_saved_favorites,
             delete_favorite_list,
