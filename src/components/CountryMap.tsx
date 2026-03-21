@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Maximize2 } from "lucide-react";
 import { MapLegend } from "./MapLegend";
-import { CountryMapDevPanel } from "./CountryMapDevPanel";
 import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { useMapStore } from "../stores/useMapStore";
 import { getCountryViewOverride } from "../lib/country-view-overrides";
@@ -978,13 +977,6 @@ export default function CountryMap({ countryName, onBack }: CountryMapProps) {
       {/* Category legend */}
       {!activePosterModule && <MapLegend items={countryItems} />}
 
-      {/* Dev panel for viewport tuning */}
-      <CountryMapDevPanel
-        countryName={countryName}
-        getViewBox={() => roam.vbRef.current}
-        baseW={geo.svgW}
-        baseH={geo.svgH}
-      />
     </div>
   );
 }

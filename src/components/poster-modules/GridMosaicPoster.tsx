@@ -597,13 +597,14 @@ function GridMosaicPoster({ items, cityEntries, posterWidth: POSTER_W, posterHei
   /* ── Pick palette & style ── */
   const mosaicHue = useMapStore((s) => s.mosaicHue);
   const mosaicStyleIdx = useMapStore((s) => s.mosaicStyleIdx);
+  const figureSeed = useMapStore((s) => s.figureSeed);
   const sty = MOSAIC_STYLES[mosaicStyleIdx] ?? MOSAIC_STYLES[0];
   const pal = useMemo(() => deriveMosaicPalette(mosaicHue, sty.id), [mosaicHue, sty.id]);
 
   /* ── Stats ── */
   const cityCount = cityEntries.length;
   const totalItems = items.length;
-  const iconSeed = cityCount * 31 + totalItems;
+  const iconSeed = cityCount * 31 + totalItems + figureSeed;
   const subtitle = `${cityCount} 座城市的足迹`;
   const cityNames = cityEntries.slice(0, 3).map((c) => c.name).join("、");
   const description = cityCount > 0

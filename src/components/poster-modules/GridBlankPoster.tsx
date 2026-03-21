@@ -225,6 +225,7 @@ function GridBlankPoster({
 }: PosterModuleProps) {
   /* Absolute monochrome — single vivid hue + white */
   const gridBlankHue = useMapStore((s) => s.gridBlankHue);
+  const figureSeed = useMapStore((s) => s.figureSeed);
   const BLUE = hslToHex(gridBlankHue, 100, 50);
 
   /* Per-ratio layout */
@@ -242,7 +243,7 @@ function GridBlankPoster({
     ? Math.floor((H * L.fillFrac - (L.rows - 1) * GAP) / L.rows)
     : cellW; /* square for non-fill layouts */
 
-  const dataSeed = cityEntries.length * 31 + items.length;
+  const dataSeed = cityEntries.length * 31 + items.length + figureSeed;
 
   /* ── Derive stats ── */
   const stats = useMemo(() => {

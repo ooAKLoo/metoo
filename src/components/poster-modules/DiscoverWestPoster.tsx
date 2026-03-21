@@ -514,6 +514,7 @@ function DiscoverWestPoster({
   /* ── Ratio-based layout config (merged with store overrides) ── */
   const ratio = detectPosterRatio(W, H);
   const discoverConfigs = useMapStore((s) => s.discoverConfigs);
+  const figureSeed = useMapStore((s) => s.figureSeed);
   const storeOverride = discoverConfigs[ratio] ?? {};
   const L = { ...DISCOVER_RATIO_LAYOUTS[ratio], ...storeOverride };
 
@@ -529,8 +530,15 @@ function DiscoverWestPoster({
       const cover = city.covers[0];
       if (cover) out.push({ src: coverSrc(cover), city: city.name });
     }
+    // shuffle with figureSeed
+    if (figureSeed !== 42 && out.length > 1) {
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.abs(Math.round(Math.sin(figureSeed * 0.1 + i * 7.919) * 10000)) % (i + 1);
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+    }
     return out;
-  }, [cityEntries]);
+  }, [cityEntries, figureSeed]);
 
   const transitCities = useMemo(
     () =>

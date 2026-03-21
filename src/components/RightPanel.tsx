@@ -15,14 +15,13 @@ import { useFavoriteStore } from "../stores/useFavoriteStore";
 import { invoke } from "@tauri-apps/api/core";
 import { posterStageRef, saveKonvaPosterToDownloads, posterFilename } from "../lib/poster-stage";
 import { getPosterModule, posterModules, POSTER_RATIOS, POSTER_RATIO_OPTIONS } from "../lib/poster-modules";
-import { MujiPosterDevPanel, DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
+import { DEFAULT_CONFIG } from "./poster-modules/MujiPosterDevPanel";
 import { KEYBOARD_THEMES, KEYBOARD_STYLES } from "./poster-modules/KeyboardPoster";
 import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
 import { MUJI_TEMPLATES, getDefaultTemplateIdx, classifyCollection, getVisibleTemplateIndices, templateConfigId } from "./poster-modules/MujiPoster";
 import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
 import { derivePopBoardPalette, hslToHex } from "./poster-modules/PopBoardPoster";
 import { deriveMujiColors } from "./poster-modules/MujiPoster";
-import { DiscoverDevPanel } from "./poster-modules/DiscoverDevPanel";
 import { DISCOVER_RATIO_LAYOUTS } from "./poster-modules/DiscoverWestPoster";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
@@ -452,6 +451,7 @@ export function RightPanel() {
               {inPosterMode && (
                 <motion.div
                   key="poster-area"
+                  data-dbg="PosterArea"
                   className="flex-1 min-h-0 flex flex-col bg-neutral-100 rounded-2xl overflow-hidden"
                   initial={{ opacity: 0, scale: 0.96, y: 12 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -464,12 +464,13 @@ export function RightPanel() {
                   }}
                 >
                   {/* White preview area */}
-                  <div className="flex-1 min-h-0 bg-white rounded-b-xl relative overflow-hidden">
-                    <div className="absolute inset-0 flex items-center justify-center p-5">
+                  <div data-dbg="WhitePreview" className="flex-1 min-h-0 bg-white rounded-b-xl relative overflow-hidden">
+                    <div data-dbg="CenterWrap" className="absolute inset-0 flex items-center justify-center p-5">
                       <motion.div
                         layout
                         ref={posterRef}
-                        className="relative overflow-hidden rounded-xl"
+                        data-dbg="PosterFrame"
+                        className={`relative overflow-hidden ${activePosterModule === "pop-board" ? "" : "rounded-xl"}`}
                         style={{
                           aspectRatio: `${ratioPreset.w} / ${ratioPreset.h}`,
                           height: "100%",
@@ -602,14 +603,6 @@ export function RightPanel() {
                             </button>
                           );
                         })}
-                        {/* Shuffle figures button */}
-                        <span className="ml-1.5 w-px h-4 bg-neutral-200" />
-                        <button
-                          onClick={shuffleFigures}
-                          className="ml-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer text-neutral-500 hover:bg-neutral-100 active:scale-95 transition-all"
-                        >
-                          随机
-                        </button>
                       </div>
                     )}
 
@@ -834,36 +827,21 @@ export function RightPanel() {
                       </div>
                     )}
 
-
-
+                    {/* Shuffle button — shared across supported modules */}
+                    {["keyboard", "grid-blank", "grid-mosaic", "discover", "muji"].includes(activePosterModule ?? "") && (
+                      <button
+                        onClick={shuffleFigures}
+                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer text-neutral-500 hover:bg-neutral-100 active:scale-95 transition-all"
+                      >
+                        随机
+                      </button>
+                    )}
 
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Muji dev panel — floating over poster area */}
-            {activePosterModule === "muji" && (
-              <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
-                <MujiPosterDevPanel
-                  config={currentMujiConfig}
-                  onChange={(c) => setMujiConfig(currentMujiCfgKey, c)}
-                  templateLabel={currentMujiTemplate.label}
-                  ratioLabel={ratioPreset.label}
-                />
-              </div>
-            )}
-
-            {/* Discover dev panel */}
-            {activePosterModule === "discover" && (
-              <div className="absolute top-2 right-2 z-20 w-56 pointer-events-auto">
-                <DiscoverDevPanel
-                  config={{ ...DISCOVER_RATIO_LAYOUTS[posterRatio], ...discoverConfigs[posterRatio] }}
-                  onChange={(c) => setDiscoverConfig(posterRatio, c)}
-                  ratioLabel={ratioPreset.label}
-                />
-              </div>
-            )}
           </div>
 
           {/* Module bar toggle — inside content card, top-right */}

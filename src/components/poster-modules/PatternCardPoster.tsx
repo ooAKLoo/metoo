@@ -365,11 +365,6 @@ function CityCircleCell({
           />
         ) : null}
 
-        {/* Star overlay */}
-        <Path
-          data={starPath(d)}
-          fill={cell.cover ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}
-        />
       </Group>
 
       {/* Brutalism border ring */}
@@ -395,6 +390,7 @@ export default function PatternCardPoster({
   posterHeight: PH,
 }: PosterModuleProps) {
   const patternStyleIdx = useMapStore((s) => s.patternStyleIdx);
+  const figureSeed = useMapStore((s) => s.figureSeed);
   const cardStyle = PATTERN_STYLES[patternStyleIdx % PATTERN_STYLES.length].id;
   const isBrutal = cardStyle === "brutalism";
 
@@ -423,19 +419,30 @@ export default function PatternCardPoster({
   const cellCount = cols * rows;
 
   /* ── Build city cells ── */
+  const shuffledColors = useMemo(() => {
+    const arr = [...CITY_COLORS];
+    if (figureSeed !== 42) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.abs(Math.round(Math.sin(figureSeed * 0.1 + i * 7.919) * 10000)) % (i + 1);
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+    return arr;
+  }, [figureSeed]);
+
   const cells: CityCell[] = useMemo(() => {
     const out: CityCell[] = [];
     for (let i = 0; i < cellCount; i++) {
       const city = cityEntries[i];
       if (city) {
         const cover = city.covers[0] ? coverSrc(city.covers[0]) : "";
-        out.push({ name: city.name, count: city.count, cover, color: CITY_COLORS[i % CITY_COLORS.length] });
+        out.push({ name: city.name, count: city.count, cover, color: shuffledColors[i % shuffledColors.length] });
       } else {
-        out.push({ name: "", count: 0, cover: "", color: CITY_COLORS[i % CITY_COLORS.length] });
+        out.push({ name: "", count: 0, cover: "", color: shuffledColors[i % shuffledColors.length] });
       }
     }
     return out;
-  }, [cityEntries, cellCount]);
+  }, [cityEntries, cellCount, shuffledColors]);
 
   /* ── Layout constants ── */
   const GRID_GAP = isBrutal ? L.gridGapBrutal : L.gridGapFlat;

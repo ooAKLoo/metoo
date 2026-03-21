@@ -37,7 +37,7 @@ export function KonvaPosterStage({ width, height, children, transparent }: Props
   const measure = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    const pad = transparent ? 0 : 48;
+    const pad = 0;
     setScale(
       Math.min(
         (el.clientWidth - pad) / width,
@@ -76,10 +76,12 @@ export function KonvaPosterStage({ width, height, children, transparent }: Props
     <div
       ref={containerRef}
       data-poster-root
+      data-dbg="PosterRoot"
       className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
       style={transparent ? { zIndex: 10 } : undefined}
     >
       <div
+        data-dbg="ScaleWrap"
         style={{
           transform: `scale(${scale})`,
           transformOrigin: "center",

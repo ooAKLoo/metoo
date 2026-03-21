@@ -39,8 +39,10 @@ interface MapState {
   keyboardStyleIdx: number;
   figureSeed: number;
   gridBlankHue: number;
+  posterDebug: boolean;
   gridCountry: string | null;
   gridCity: string | null;
+  togglePosterDebug: () => void;
   shuffleFigures: () => void;
   setGridBlankHue: (hue: number) => void;
   setGridCountry: (country: string | null) => void;
@@ -140,8 +142,10 @@ export const useMapStore = create<MapState>((set, get) => ({
   keyboardStyleIdx: 0,
   figureSeed: 42,
   gridBlankHue: 245,
+  posterDebug: false,
   gridCountry: null,
   gridCity: null,
+  togglePosterDebug: () => set((s) => ({ posterDebug: !s.posterDebug })),
   shuffleFigures: () => set({ figureSeed: Math.floor(Math.random() * 100000) }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
   setHoveredProvince: (name) => set({ hoveredProvince: name }),

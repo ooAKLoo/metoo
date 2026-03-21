@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import {
   Rect,
   Text,
@@ -589,16 +589,39 @@ function PopBoardPoster({ cityEntries, posterWidth: PW, posterHeight: PH }: Post
 
   const mode = useMapStore((s) => s.popBoardMode);
   const popBoardHue = useMapStore((s) => s.popBoardHue);
+  const figureSeed = useMapStore((s) => s.figureSeed);
   const dp = useMemo(() => derivePopBoardPalette(popBoardHue), [popBoardHue]);
   const C = { pink: dp.primary, yellow: dp.secondary, blue: dp.tertiary, mint: dp.quad, orange: dp.quinary };
   const INK = dp.ink;
 
-  const CELL_PALETTE = useMemo(
-    () => [C.pink, C.yellow, "#fff", C.mint, C.orange, "#fff"],
-    [C.pink, C.yellow, C.mint, C.orange],
-  );
+  const CELL_PALETTE = useMemo(() => {
+    const base = [C.pink, C.yellow, "#fff", C.mint, C.orange, "#fff"];
+    if (figureSeed === 42) return base;
+    const arr = [...base];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.abs(Math.round(Math.sin(figureSeed * 0.1 + i * 7.919) * 10000)) % (i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, [C.pink, C.yellow, C.mint, C.orange, figureSeed]);
   const CORNER_META = useMemo(() => buildCornerMeta(dp), [dp]);
-  const [slots, setSlots] = useState<ScatterSlot[]>(DEFAULT_SCATTER);
+  const initialSlots = useMemo<ScatterSlot[]>(() => {
+    if (figureSeed === 42) return DEFAULT_SCATTER;
+    // derive randomized scatter from seed
+    const r = (i: number) => {
+      const x = Math.sin(figureSeed * 0.1 + i * 7.919) * 10000;
+      return x - Math.floor(x);
+    };
+    return DEFAULT_SCATTER.map((s, i) => ({
+      x: 5 + r(i * 4) * 85,
+      y: 5 + r(i * 4 + 1) * 85,
+      rot: (r(i * 4 + 2) - 0.5) * 40,
+      w: 85 + r(i * 4 + 3) * 25,
+    }));
+  }, [figureSeed]);
+  const [slots, setSlots] = useState<ScatterSlot[]>(initialSlots);
+  // sync when figureSeed changes
+  useEffect(() => { setSlots(initialSlots); }, [initialSlots]);
   const csW = cellSize(PW, L.PAD, L.GAP);
   const csH = cellSize(PH, L.PAD, L.GAP);
 

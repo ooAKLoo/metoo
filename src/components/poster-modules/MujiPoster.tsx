@@ -376,6 +376,7 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
   const rawTemplateIdx = useMapStore((s) => s.mujiTemplateIdx);
   const mujiHue = useMapStore((s) => s.mujiHue);
   const mujiTextHidden = useMapStore((s) => s.mujiTextHidden);
+  const figureSeed = useMapStore((s) => s.figureSeed);
   const colorPreset = useMemo(() => deriveMujiColors(mujiHue), [mujiHue]);
   const listTitle = useFavoriteStore((s) => s.listTitle);
 
@@ -400,12 +401,21 @@ function MujiPoster({ items, cityEntries, posterWidth, posterHeight }: PosterMod
     : baseConfig;
 
   const subLabels = useMemo(
-    () =>
-      template.getSubLabels(items, cityEntries).map((text, i) => ({
+    () => {
+      const labels = template.getSubLabels(items, cityEntries);
+      // shuffle with figureSeed
+      if (figureSeed !== 42) {
+        for (let i = labels.length - 1; i > 0; i--) {
+          const j = Math.abs(Math.round(Math.sin(figureSeed * 0.1 + i * 7.919) * 10000)) % (i + 1);
+          [labels[i], labels[j]] = [labels[j], labels[i]];
+        }
+      }
+      return labels.map((text, i) => ({
         text,
         dy: template.flatSubs ? 0 : WAVE_DY[i % WAVE_DY.length],
-      })),
-    [template, items, cityEntries],
+      }));
+    },
+    [template, items, cityEntries, figureSeed],
   );
 
   /* ── Convert cqmin-based config values to absolute pixels ── */
