@@ -3,6 +3,9 @@ import { Settings, X, ShieldCheck, Send, Check } from "lucide-react";
 import { useState } from "react";
 import { Orbit } from "@ooakloowj/orbit";
 import { Tooltip } from "./Tooltip";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import bilibiliIcon from "../assets/icons/bilibili.png";
+import xiaohongshuIcon from "../assets/icons/xiaohongshu.png";
 
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
@@ -148,6 +151,26 @@ export function SettingsPanel() {
                       </p>
                     </div>
                   </section>
+                </div>
+
+                {/* Brand Footer */}
+                <div className="pt-4 pb-4 flex items-center justify-center gap-2.5">
+                  <span className="text-[10px] text-neutral-300 tracking-wide">唔叽唔哩 ｜ 捕捉"附近"</span>
+                  <span className="w-px h-3 bg-neutral-200" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openExternal("https://space.bilibili.com/22541325")}
+                      className="opacity-30 hover:opacity-100 transition-opacity duration-200"
+                    >
+                      <img src={bilibiliIcon} alt="哔哩哔哩" className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => openExternal("https://www.xiaohongshu.com/user/profile/5e4125ff00000000010064fd")}
+                      className="opacity-30 hover:opacity-100 transition-opacity duration-200"
+                    >
+                      <img src={xiaohongshuIcon} alt="小红书" className="w-3.5 h-3.5 rounded" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>

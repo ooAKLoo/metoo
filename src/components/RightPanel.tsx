@@ -20,6 +20,7 @@ import { PATTERN_STYLES } from "./poster-modules/PatternCardPoster";
 import { MUJI_TEMPLATES, getDefaultTemplateIdx, classifyCollection, getVisibleTemplateIndices } from "./poster-modules/MujiPoster";
 import { MOSAIC_THEMES, deriveMosaicPalette, MOSAIC_STYLES } from "./poster-modules/GridMosaicPoster";
 import { derivePopBoardPalette, hslToHex } from "./poster-modules/PopBoardPoster";
+import { PosterDevPanelHost } from "./poster-dev";
 
 const VIEW_OPTIONS: { id: ChartView; icon: typeof MapIcon; label: string }[] = [
   { id: "map", icon: MapIcon, label: "地图" },
@@ -59,6 +60,7 @@ export function RightPanel() {
   const shuffleFigures = useMapStore((s) => s.shuffleFigures);
   const gridBlankHue = useMapStore((s) => s.gridBlankHue);
   const setGridBlankHue = useMapStore((s) => s.setGridBlankHue);
+  const posterDebug = useMapStore((s) => s.posterDebug);
   const status = useFavoriteStore((s) => s.status);
   const favItems = useFavoriteStore((s) => s.items);
   const listTitle = useFavoriteStore((s) => s.listTitle);
@@ -87,6 +89,9 @@ export function RightPanel() {
     if (!mod) return;
 
     setDlState("loading");
+    const t0 = performance.now();
+    // Yield a frame so React can paint the loading spinner before heavy canvas work
+    await new Promise<void>((r) => requestAnimationFrame(() => { requestAnimationFrame(() => r()); }));
     try {
       const filename = posterFilename(mod.name);
 
@@ -157,6 +162,12 @@ export function RightPanel() {
         await saveKonvaPosterToDownloads(posterStageRef.current, mod.name);
       }
 
+      // Ensure loading spinner shows for at least 600ms so the transition feels intentional
+      const elapsed = performance.now() - t0;
+      const MIN_LOADING_MS = 600;
+      if (elapsed < MIN_LOADING_MS) {
+        await new Promise<void>((r) => setTimeout(r, MIN_LOADING_MS - elapsed));
+      }
       setDlState("done");
       setTimeout(() => setDlState("idle"), 2000);
     } catch (err) {
@@ -268,10 +279,10 @@ export function RightPanel() {
                   {dlState === "loading" ? (
                     <motion.span
                       key="spin"
-                      initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
-                      animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                      initial={{ opacity: 1 }}
+                      animate={{ opacity: 1 }}
                       exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.1 }}
                       className="flex"
                     >
                       <Loader2 size={12} className="animate-spin" />
@@ -821,49 +832,64 @@ export function RightPanel() {
                     )}
 
                   </div>
+
                 </motion.div>
               )}
             </AnimatePresence>
 
           </div>
 
-          {/* Module bar toggle — inside content card, top-right */}
+          {/* Top-right buttons: poster toggle + debug panel */}
           <AnimatePresence>
             {status === "done" && chartView === "map" && favItems.length > 0 && (
-              <Tooltip
-                label={showModuleBar ? "关闭海报" : "海报模式"}
-                side="bottom"
-                className="absolute z-[11] top-2.5 right-2.5 inline-flex"
-              >
-                <motion.button
-                  key="module-bar-toggle"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => {
-                    const next = !showModuleBar;
-                    setShowModuleBar(next);
-                    if (next) {
-                      if (!activePosterModule) {
-                        setActivePosterModule(posterModules[0].id);
+              <div className="absolute z-[11] top-2.5 right-2.5 inline-flex items-center gap-1.5">
+                {/* Poster mode toggle */}
+                <Tooltip label={showModuleBar ? "关闭海报" : "海报模式"} side="bottom">
+                  <motion.button
+                    key="module-bar-toggle"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      const next = !showModuleBar;
+                      setShowModuleBar(next);
+                      if (next) {
+                        if (!activePosterModule) {
+                          setActivePosterModule(posterModules[0].id);
+                        }
+                      } else {
+                        setActivePosterModule(null);
                       }
-                    } else {
-                      setActivePosterModule(null);
-                    }
-                  }}
-                  className={`flex items-center justify-center
-                             w-[26px] h-[26px] rounded-full cursor-pointer
-                             transition-colors duration-200
-                             ${showModuleBar
-                               ? "bg-neutral-800 text-white"
-                               : "text-neutral-400 hover:text-neutral-600"
-                             }`}
-                >
-                  <Layers size={12} strokeWidth={2} />
-                </motion.button>
-              </Tooltip>
+                    }}
+                    className={`flex items-center justify-center
+                               w-[26px] h-[26px] rounded-full cursor-pointer
+                               transition-colors duration-200
+                               ${showModuleBar
+                                 ? "bg-neutral-800 text-white"
+                                 : "text-neutral-400 hover:text-neutral-600"
+                               }`}
+                  >
+                    <Layers size={12} strokeWidth={2} />
+                  </motion.button>
+                </Tooltip>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* Dev panel — self-contained, reads posterDebug + activePosterModule from store */}
+          <AnimatePresence>
+            {posterDebug && inPosterMode && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="absolute z-[12] top-12 right-2.5 w-[240px] pointer-events-auto"
+              >
+                <PosterDevPanelHost />
+              </motion.div>
             )}
           </AnimatePresence>
 

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { PosterRatio } from "../lib/poster-modules";
-import type { MujiPosterConfig } from "../components/poster-modules/MujiPosterDevPanel";
-import type { DiscoverLayoutConfig } from "../components/poster-modules/DiscoverDevPanel";
+import type { MujiPosterConfig } from "../components/poster-dev/MujiDevPanel";
+import type { DiscoverLayoutConfig } from "../components/poster-dev/DiscoverDevPanel";
 
 type ViewMode = "all" | "city";
 export type MapLevel = "world" | `country:${string}`;

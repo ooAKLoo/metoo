@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Text, Group } from "react-konva";
 import { detectPosterRatio, type PosterModuleProps, type PosterRatio } from "../../lib/poster-modules";
 import { KonvaPosterStage } from "../../lib/poster-stage";
-import { DEFAULT_CONFIG, type MujiPosterConfig } from "./MujiPosterDevPanel";
+import { DEFAULT_CONFIG, type MujiPosterConfig } from "../poster-dev/MujiDevPanel";
 import { useFavoriteStore, type FavoriteItem } from "../../stores/useFavoriteStore";
 import type { CityEntry } from "../../hooks/useCityAggregation";
 import { useMapStore } from "../../stores/useMapStore";

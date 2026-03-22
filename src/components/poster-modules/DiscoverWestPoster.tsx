@@ -260,48 +260,6 @@ function KonvaTransitMap({
         />
       )}
 
-      {/* Route label: 收藏线 */}
-      <Group x={210} y={14}>
-        <Rect
-          width={42}
-          height={14}
-          fill="rgba(255,255,255,0.85)"
-          cornerRadius={2}
-        />
-        <Text
-          x={4}
-          y={1}
-          text="收藏线"
-          fontSize={9}
-          fontStyle="700"
-          fill="#6b7280"
-          fontFamily={FONT_CN}
-          letterSpacing={9 * 0.15}
-        />
-      </Group>
-
-      {/* Route label: 发现支线 */}
-      {hasBranch && (
-        <Group x={180} y={131}>
-          <Rect
-            width={52}
-            height={14}
-            fill="rgba(255,255,255,0.85)"
-            cornerRadius={2}
-          />
-          <Text
-            x={4}
-            y={1}
-            text="发现支线"
-            fontSize={9}
-            fontStyle="700"
-            fill="#6b7280"
-            fontFamily={FONT_CN}
-            letterSpacing={9 * 0.15}
-          />
-        </Group>
-      )}
-
       {/* Station nodes */}
       {nodes.map((node) => {
         if (node.type === "highlight") {
